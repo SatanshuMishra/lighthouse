@@ -1,28 +1,17 @@
-import argparse
 import json
 import os
-import tempfile
 from typing import Any, Dict, List, Optional, Tuple
 
 from lighthouse_tool import credentials
 from lighthouse_tool import profile as profiles
 from lighthouse_tool import repo as repository
+from lighthouse_tool.repo import Parser, Refusal, require_root
 
 Outcome = Tuple[int, Optional[str], Optional[str]]
 Item = Dict[str, Optional[str]]
 
-ANSWERS_FILE = "answers.json"
 UNREADABLE_PROFILE_KINDS = ("missing", "malformed")
 UNFILLED_CREDENTIAL_KINDS = ("missing", "empty")
-
-
-class Refusal(Exception):
-    pass
-
-
-class Parser(argparse.ArgumentParser):
-    def error(self, message: str) -> None:
-        raise Refusal(message)
 
 
 def readiness_parser() -> Parser:
@@ -48,13 +37,6 @@ def run(argv: List[str]) -> Outcome:
         return readiness(argv[1:])
     except Refusal as refusal:
         return 2, json.dumps({"error": str(refusal)}), "lighthouse {}: {}".format(subcommand, refusal)
-
-
-def require_root(repo: str) -> str:
-    root = repository.toplevel(repo)
-    if root is None:
-        raise Refusal("{} is not a git repository".format(repo))
-    return root
 
 
 def profile_path_option(path: Optional[str]) -> Optional[str]:
@@ -102,7 +84,7 @@ def open_items(root: str, path: Optional[str]) -> List[Item]:
     profile = readable_profile(root, path)
     if profile is None:
         return [item("profile", None, "Run lighthouse:init to write the profile.")]
-    return [*fact_items(profile, profiles.read_answers(root)), *credential_items(root, profile)]
+    return [*fact_items(profile, repository.read_answers(root)), *credential_items(root, profile)]
 
 
 def readiness(arguments: List[str]) -> Outcome:
@@ -125,14 +107,15 @@ def parsed_setting(setting: str) -> Tuple[str, str]:
 
 def parsed_value(text: str) -> Any:
     try:
-        return json.loads(text)
+        parsed = json.loads(text)
     except ValueError:
         return text
+    return parsed if json.dumps(parsed) == text else text
 
 
 def needed_credential_names(root: str, path: Optional[str]) -> List[str]:
     profile = repository.load_profile(root, path)
-    return credentials.needed_names(profile) if isinstance(profile, dict) else []
+    return credentials.credential_names(profile) if isinstance(profile, dict) else []
 
 
 def credential_refusal(root: str, profile: Dict[str, Any], name: str) -> str:
@@ -153,18 +136,6 @@ def answer(arguments: List[str]) -> Outcome:
     if folder is None:
         raise Refusal("cannot create the state folder for {}".format(root))
     new_answers = {name: parsed_value(value) for name, value in settings}
-    write_answers(folder, {**profiles.read_answers(root), **new_answers})
+    repository.write_answers(folder, {**repository.read_answers(root), **new_answers})
     return 0, json.dumps({"stored": list(new_answers)}), None
 
-
-def write_answers(folder: str, answers: Dict[str, Any]) -> None:
-    descriptor, staging = tempfile.mkstemp(prefix=".answers-", suffix=".json", dir=folder)
-    try:
-        os.fchmod(descriptor, 0o600)
-        with os.fdopen(descriptor, "w", encoding="utf-8") as answers_file:
-            answers_file.write(json.dumps(answers, indent=2) + "\n")
-        os.replace(staging, os.path.join(folder, ANSWERS_FILE))
-    except OSError:
-        if os.path.exists(staging):
-            os.remove(staging)
-        raise

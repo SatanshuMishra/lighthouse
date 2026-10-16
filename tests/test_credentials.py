@@ -191,5 +191,61 @@ class CredentialsTest(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(work, "out.txt")))
 
 
+    def test_an_empty_production_entry_is_not_asked_for(self):
+        work, home, env = setting(self, profile_needing_user_and_password(production=True))
+        code, stdout, stderr = scratch.run_lighthouse(["credentials", "init", "--repo", work], env)
+        self.assertEqual(code, 0, stderr)
+        self.assertEqual(json.loads(stdout)["added"], ["APP_USER"])
+        write_credentials(credentials_file(home, work), "APP_USER=tester\n", 0o600)
+        outside = scratch.temporary_folder(self, "lh-child-")
+        marker, command = marker_command(outside)
+
+        check_code, check_out, check_err = scratch.run_lighthouse(["credentials", "check", "--repo", work], env)
+        run_code, _, run_err = scratch.run_lighthouse(["with-credentials", "--repo", work, "--", *command], env)
+        ready_code, ready_out, ready_err = scratch.run_lighthouse(["readiness", "--repo", work], env)
+
+        self.assertEqual(check_code, 0, check_err)
+        self.assertEqual(json.loads(check_out)["problems"], [])
+        self.assertEqual(run_code, 0, run_err)
+        self.assertTrue(os.path.exists(marker))
+        self.assertEqual(ready_code, 0, ready_err)
+        self.assertEqual(json.loads(ready_out), {"ready": True, "open": []})
+
+    def test_hides_encoded_forms_of_a_value(self):
+        value = 'pa"ss/w0 rd'
+        work, home, env = setting(self, profile_needing_user_and_password())
+        write_credentials(
+            credentials_file(home, work), "APP_USER=tester\nAPP_PASSWORD='{}'\n".format(value), 0o600
+        )
+        printer = (
+            "import base64, json, os, urllib.parse as parse; v = os.environ['APP_PASSWORD']; "
+            "print(json.dumps(v), parse.quote(v, safe=''), parse.quote_plus(v), parse.quote(v, safe='').lower(), "
+            "base64.b64encode(v.encode()).decode())"
+        )
+
+        code, stdout, stderr = scratch.run_lighthouse(
+            ["with-credentials", "--repo", work, "--", "python3", "-c", printer], env
+        )
+
+        self.assertEqual(code, 0, stderr)
+        self.assertEqual(stdout.count("[redacted:APP_PASSWORD]"), 5)
+        for fragment in ("pa", "w0"):
+            self.assertNotIn(fragment, stdout)
+
+    def test_refuses_an_exported_production_entry(self):
+        work, home, env = setting(self, profile_needing_user_and_password(production=True))
+        path = write_credentials(
+            credentials_file(home, work), "APP_USER=tester\nexport APP_PASSWORD={}\n".format(PLANTED), 0o600
+        )
+        outside = scratch.temporary_folder(self, "lh-child-")
+        marker, command = marker_command(outside)
+
+        code, stdout, stderr = scratch.run_lighthouse(["with-credentials", "--repo", work, "--", *command], env)
+
+        self.assertEqual(code, 2, stderr)
+        self.assertFalse(os.path.exists(marker))
+        self.assertEqual(json.loads(stdout)["problems"], [{"kind": "production", "name": "APP_PASSWORD"}])
+        self.assert_value_confined([stdout, stderr], [home, work, outside], [path])
+
 if __name__ == "__main__":
     unittest.main()

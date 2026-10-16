@@ -1,28 +1,19 @@
-import argparse
 import json
 import subprocess
 from typing import Any, Dict, List, Optional, Tuple
 
 from lighthouse_tool import repo as repository
+from lighthouse_tool.repo import Parser, Refusal, checked_git, require_root
 
 RECORD_SEPARATOR = "\x1e"
 FIELD_SEPARATOR = "\x1f"
 PULL_REQUEST_FIELDS = ("number", "title", "body", "url")
 
 
-class Refusal(Exception):
-    pass
-
-
 class MissingBranch(Refusal):
     def __init__(self, branch: str) -> None:
         super().__init__("branch {} does not exist locally or on origin".format(branch))
         self.branch = branch
-
-
-class Parser(argparse.ArgumentParser):
-    def error(self, message: str) -> None:
-        raise Refusal(message)
 
 
 def parser() -> Parser:
@@ -43,9 +34,7 @@ def run(argv: List[str]) -> Tuple[int, Optional[str], Optional[str]]:
 
 
 def change_set(repo: str, core: str, feature: str) -> Dict[str, Any]:
-    root = repository.toplevel(repo)
-    if root is None:
-        raise Refusal("{} is not a git repository".format(repo))
+    root = require_root(repo)
     core_commit = repository.resolve_branch(root, core)
     if core_commit is None:
         raise MissingBranch(core)
@@ -63,13 +52,6 @@ def change_set(repo: str, core: str, feature: str) -> Dict[str, Any]:
         "pull_requests": pull_requests,
         "pull_requests_error": pull_requests_error,
     }
-
-
-def checked_git(root: str, args: List[str]) -> str:
-    code, stdout, stderr = repository.git(root, args)
-    if code != 0:
-        raise Refusal("git {} failed: {}".format(args[0], stderr.strip()))
-    return stdout
 
 
 def commits_between(root: str, core_commit: str, feature_commit: str) -> List[Dict[str, str]]:
