@@ -1,6 +1,6 @@
 # retest-what-changed: S4: lighthouse retests only what changed since the previous results
 Status: active
-Updated: 2026-10-16T21:47:09.775Z
+Updated: 2026-10-16T21:47:11.703Z
 Next ids: c4 D3 R3 S1
 
 ## Goal
@@ -19,7 +19,7 @@ MSP retest is committed on mitosis/retest (head dfa32cb, base feat/retest-what-c
 
 ## Next step
 
-When the three round-1 reviewers return, collect their JSON arrays into review/round-1/retest.findings.json, run pipeline candidates, the validator, record and verdict.
+When the round-1 validator returns, save its array as review/round-1/retest.verdicts.json, run pipeline record and verdict, then diagnose each confirmed defect class with a fresh Opus agent before fixing.
 
 Needs: D2, R1.
 
