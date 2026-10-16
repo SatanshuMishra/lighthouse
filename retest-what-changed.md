@@ -1,7 +1,7 @@
 # retest-what-changed: S4: lighthouse retests only what changed since the previous results
 Status: parked
-Updated: 2026-10-16T23:50:54.793Z
-Next ids: c6 D4 R4 S1
+Updated: 2026-10-16T23:50:54.898Z
+Next ids: c6 D5 R4 S1
 
 ## Goal
 
@@ -29,6 +29,7 @@ Needs: R3.
 
 - D2 Interphase hand-off: build S4 as one MSP from the handed-off retest-what-changed spec: Build MSP retest on feat/retest-what-changed with the installed mitosis 0.5.0 and lighthouse 0.1.0; fill later gaps from I1-I4 as recorded assumptions.
 - D3 Ship boundary: push MSP retest and open its pull request into feat/retest-what-changed: Ship now as one ready-for-review pull request from mitosis/retest into feat/retest-what-changed, assigned to the owner, with the review notes comment.
+- D4 Integration profile: test with the owner's draft profile, unpublished: Used the copy of the draft, unpublished; it passed profile check on the FEATURE tip and the run's profile lives only in the results folder.
 
 ## Open risks
 
