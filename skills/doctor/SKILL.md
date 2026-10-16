@@ -25,7 +25,7 @@ Run the lighthouse command as `lighthouse` when it is on PATH, otherwise as `${C
    - `malformed`, `version` or `schema`: rewrite the profile as version 1 with every required key, keeping every entry that is still true.
 4. Run `lighthouse profile check --repo <repo>` again. When it still fails, stop and report every remaining problem, so a caller treats the profile as blocked.
 5. Run `lighthouse credentials check --repo <repo>`. Report each missing or empty name as a readiness item, naming the file it belongs in and never a value.
-6. For each surface whose `sign_in` records a command, run it through `lighthouse with-credentials --repo <repo> --profile <repo>/.lighthouse/profile.json -- /bin/sh -c '<the surface's sign_in command>'`, since the command is a shell command. Report a sign-in that fails as a readiness item for that surface. Never print, ask for or accept a credential value.
+6. For each surface whose `sign_in` records a command, run it through `lighthouse with-credentials --repo <repo> -- /bin/sh -c '<the surface's sign_in command>'`, since the command is a shell command. Pass no `--profile`: lighthouse then reads the profile at the root of the repository `--repo` is in, the one doctor just checked. Report a sign-in that fails as a readiness item for that surface. Never print, ask for or accept a credential value.
 
 ## Asking
 

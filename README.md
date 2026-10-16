@@ -40,6 +40,8 @@ Only init and doctor, when a person invokes them directly, ask anything, and onl
 
 Credential values live in `~/.lighthouse/<repository folder>/credentials.env`, mode 0600, readable by its owner alone, or in the project's own gitignored file when the profile names one. The repository folder is the name of the folder holding the repository's main working tree. Put test accounts only there, typed by you: a name the profile marks production is refused. The profile records names, never values. Only `lighthouse with-credentials` reads the values and puts them into a child process, redacting them from its output, so no value ever appears in the chat, a report or any lighthouse output.
 
+The profile a `with-credentials` call reads decides which names are production and which file holds the values. Without `--profile` it reads `.lighthouse/profile.json` at the root of the repository `--repo` is in, which is what lighthouse:doctor uses. lighthouse:test passes `--profile <results>/profile.json`, its checked copy of the FEATURE profile, because the user's checkout may hold an older profile or none.
+
 ## Readiness and answers
 
 `lighthouse readiness` lists the open items before an unattended run: a missing profile, each unconfirmed fact without a stored answer, and each credential name absent or empty in the credentials file. `lighthouse answer` stores fact answers in `~/.lighthouse/<repository folder>/answers.json`, and `lighthouse profile publish` folds them into the profile on the FEATURE branch.
