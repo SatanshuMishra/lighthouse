@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "sources": [],
+  "suite": {"command": "python3 -m unittest discover -s tests", "junit": null, "timeout_minutes": null},
+  "surfaces": [
+    {
+      "name": "heating programme planner",
+      "kind": "command line",
+      "paths": ["hearthctl/schedule.py", "hearthctl/cli.py"],
+      "driver": "the shell, running python3 -m hearthctl plan from the repository root",
+      "available": true,
+      "sign_in": {"method": "none", "command": null},
+      "credentials": [],
+      "trials": 1
+    },
+    {
+      "name": "thermostat",
+      "kind": "device",
+      "paths": ["hearthctl/device.py"],
+      "driver": "the physical thermostat on the USB serial port HEARTH_PORT names, driven through python3 -m hearthctl",
+      "available": false,
+      "sign_in": {"method": "none", "command": null},
+      "credentials": [],
+      "trials": 1
+    }
+  ],
+  "credentials": {"file": null, "names": {}},
+  "facts": {},
+  "off_limits": ["sending any command to a real thermostat"]
+}

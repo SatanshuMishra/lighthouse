@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "sources": ["pyproject.toml", "scripts/run_tests.sh"],
+  "suite": {"command": "sh scripts/run_tests.sh", "junit": null, "timeout_minutes": null},
+  "surfaces": [
+    {
+      "name": "pricing library",
+      "kind": "library",
+      "paths": ["tillkit/pricing.py", "tillkit/receipt.py"],
+      "driver": "the Python interpreter, importing tillkit from the repository root",
+      "available": true,
+      "sign_in": {"method": "none", "command": null},
+      "credentials": [],
+      "trials": 1
+    }
+  ],
+  "credentials": {"file": null, "names": {}},
+  "facts": {},
+  "off_limits": []
+}

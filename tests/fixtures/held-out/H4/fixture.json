@@ -1,0 +1,20 @@
+{
+  "kind": "library",
+  "feature": "feature/wholesale-and-basket",
+  "suite": "sh scripts/run_tests.sh",
+  "changes": ["change-1", "change-2"],
+  "clean": {"change-2": "clean"},
+  "pull_requests": [
+    {
+      "title": "feat(pricing): add wholesale invoices and make line_total net by default",
+      "body": "Wholesale invoices are net of tax, and most new callers want the net amount, so line_total now leaves tax out unless add_tax=True is passed. receipt passes add_tax=True, so till receipts are unchanged. Adds invoice(items), which returns net lines and a net total."
+    },
+    {
+      "title": "feat(basket): add basket_summary for the checkout page",
+      "body": "basket_summary(items) takes (name, unit_cents, quantity) tuples and returns each line with its tax-inclusive total, the number of units, and the tax-inclusive basket total the checkout page shows the shopper."
+    }
+  ],
+  "markers": ["basket_summary", "basket", "add_tax"],
+  "surfaces": ["tillkit"],
+  "expect": {"broken": "failures", "clean": "green"}
+}
