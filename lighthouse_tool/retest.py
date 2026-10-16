@@ -132,7 +132,7 @@ def evidence_source(previous: str, item: str) -> str:
     if os.path.isabs(item) or normal == ".." or normal.startswith("../"):
         raise Refusal("carried evidence {} must be a relative path inside the previous folder".format(item))
     source = os.path.realpath(os.path.join(previous, normal))
-    if os.path.commonpath([previous, source]) != previous or not os.path.isfile(source):
+    if not verdict.is_under(previous, normal) or not os.path.isfile(source):
         raise Refusal("carried evidence {} is not a file in the previous folder {}".format(item, previous))
     return source
 
