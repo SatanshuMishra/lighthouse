@@ -1,6 +1,6 @@
 # retest-what-changed: S4: lighthouse retests only what changed since the previous results
 Status: active
-Updated: 2026-10-16T22:20:58.229Z
+Updated: 2026-10-16T22:21:06.799Z
 Next ids: c4 D4 R4 S1
 
 ## Goal
@@ -15,7 +15,7 @@ Build the handed-off spec docs/specs/retest-what-changed.md through the pipeline
 
 ## Where things stand
 
-MSP retest lives on mitosis/retest (base feat/retest-what-changed at 2e00295) in worktree ~/.mitosis/runs/lighthouse/retest-what-changed/trees/retest, head 5f80f5f. Review round 2 is green: P1-P5 fixed, advisory C1 fixed, S1 rejected at the bar. The glossary terms are committed on the branch and review/retest.comment.md holds the review notes. The SHIP=1 resume run is in progress (log ship.log in the run home).
+Pull request https://github.com/SatanshuMishra/lighthouse/pull/7 (mitosis/retest at 5f80f5f into feat/retest-what-changed) waits for the owner's review and merge. Its body's What changed lines repeat each Step's opening sentence, because mitosis takes that line from the task; the body is mitosis's and stays unedited.
 
 ## Next step
 
