@@ -1,6 +1,6 @@
 # retest-what-changed: S4: lighthouse retests only what changed since the previous results
 Status: active
-Updated: 2026-10-16T21:47:11.703Z
+Updated: 2026-10-16T21:52:36.337Z
 Next ids: c4 D3 R3 S1
 
 ## Goal
@@ -15,11 +15,11 @@ Build the handed-off spec docs/specs/retest-what-changed.md through the pipeline
 
 ## Where things stand
 
-MSP retest is committed on mitosis/retest (head dfa32cb, base feat/retest-what-changed at 2e00295) in worktree ~/.mitosis/runs/lighthouse/retest-what-changed/trees/retest; the full suite passes there on 3.14 and 3.9. Review round 1: conformance-auditor returned no findings (5.1-5.4 met, 5.5 not applicable); code-reviewer returned 3 MEDIUM (C1 renames escape the surface match, C2 empty evidence counts as driven, C3 full plan does not keep previous names) and 3 LOW; security-reviewer returned S2 HIGH (verdict counts empty or respelled copied evidence as driven), S1 and S3 MEDIUM, S4 LOW. All 10 are in review/round-1/retest.findings.json and the validator is judging them.
+MSP retest is committed on mitosis/retest (head dfa32cb, base feat/retest-what-changed at 2e00295) in worktree ~/.mitosis/runs/lighthouse/retest-what-changed/trees/retest; the full suite passes there on 3.14 and 3.9. Round 1 outcome is loop (review/round-1/retest.md). Confirmed blockers in three classes: rename hides changed file (C1), skipped retest judged green (C2, S2, S3), retest name mismatch (C3). Advisories C4, C5, S4. Three fresh Opus diagnosis agents, one per class, are running.
 
 ## Next step
 
-When the round-1 validator returns, save its array as review/round-1/retest.verdicts.json, run pipeline record and verdict, then diagnose each confirmed defect class with a fresh Opus agent before fixing.
+When the three diagnoses return, fix each class classed fixable on mitosis/retest in the worktree with a receipt test that fails first and one class-wide change, fix advisories C4, C5 and S4, commit naming the ids, and start review round 2.
 
 Needs: D2, R1.
 
