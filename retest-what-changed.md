@@ -1,7 +1,7 @@
 # retest-what-changed: S4: lighthouse retests only what changed since the previous results
 Status: parked
-Updated: 2026-10-16T22:21:20.232Z
-Next ids: c4 D4 R4 S1
+Updated: 2026-10-16T23:50:54.793Z
+Next ids: c6 D4 R4 S1
 
 ## Goal
 
@@ -13,15 +13,17 @@ Build the handed-off spec docs/specs/retest-what-changed.md through the pipeline
 - [x] c2 Every confirmed blocker is fixed with a receipt test, or the pull request is a draft naming the blocker at the top because a diagnosis classed it blocked by a named constraint evidence: Round-1 blockers C1, C2, C3, S2, S3 were each diagnosed fixable by a fresh Opus agent and fixed with receipt tests that failed first; round 2 validator marked P1-P5 fixed and pipeline verdict printed green with no blocker
 - [x] c3 The thread is parked with the next step saying the owner starts Integration by saying the MSP pull request merged evidence: park_thread set Status parked with the next step saying the owner starts Integration by saying the MSP pull request https://github.com/SatanshuMishra/lighthouse/pull/7 merged
 
+- [ ] c4 lighthouse:test has run on feat/retest-what-changed against main and opened the FEATURE pull request, with every failure diagnosed and fixed or diagnosed blocked, and the live end-to-end surface reported unproven
+- [ ] c5 The thread is parked with the next step saying the owner starts Clean-up by saying the FEATURE pull request merged
 ## Where things stand
 
-Pull request https://github.com/SatanshuMishra/lighthouse/pull/7 (mitosis/retest at 5f80f5f into feat/retest-what-changed) waits for the owner's review and merge. Its body's What changed lines repeat each Step's opening sentence, because mitosis takes that line from the task; the body is mitosis's and stays unedited.
+Integration is under way: PR #7 merged into feat/retest-what-changed at 2edefe6 and pipeline integration-ready reports ready.
 
 ## Next step
 
-The owner starts Integration by saying the MSP pull request https://github.com/SatanshuMishra/lighthouse/pull/7 merged; then resume this thread, read ~/.mitosis/lighthouse/retest-what-changed/CHARTER.md, Sync, run pipeline integration-ready --repo /Users/satanshumishra/Documents/DevLabs/lighthouse --slug retest-what-changed and invoke lighthouse:test as the pipeline run skill's Integration section says.
+Invoke lighthouse:test with --repo /Users/satanshumishra/Documents/DevLabs/lighthouse --core main --feature feat/retest-what-changed --spec the charter's spec --results ~/.mitosis/lighthouse/retest-what-changed/lighthouse, without LIGHTHOUSE_E2E.
 
-Needs: D3, R3.
+Needs: R3.
 
 ## Decisions in force
 
