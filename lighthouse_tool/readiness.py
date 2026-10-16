@@ -107,10 +107,16 @@ def parsed_setting(setting: str) -> Tuple[str, str]:
 
 def parsed_value(text: str) -> Any:
     try:
-        parsed = json.loads(text)
+        return json.loads(text, parse_float=exact_number)
     except ValueError:
         return text
-    return parsed if json.dumps(parsed) == text else text
+
+
+def exact_number(text: str) -> float:
+    number = float(text)
+    if repr(number) != text:
+        raise ValueError("{} would not survive as a number".format(text))
+    return number
 
 
 def needed_credential_names(root: str, path: Optional[str]) -> List[str]:
