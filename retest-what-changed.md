@@ -1,6 +1,6 @@
 # retest-what-changed: S4: lighthouse retests only what changed since the previous results
 Status: active
-Updated: 2026-10-16T22:21:06.799Z
+Updated: 2026-10-16T22:21:11.112Z
 Next ids: c4 D4 R4 S1
 
 ## Goal
@@ -30,8 +30,6 @@ Needs: D3, R3.
 
 ## Open risks
 
-- R1 Items copy in the run home tags every Step with msp retest so the four Steps ship as one MSP, as the decisions file requires; the spec's own items file would split into four MSPs. Bears on c1.
-- R2 GLOSSARY.md holds the uncommitted terms Previous results and Carried path in the owner's checkout; Workers build from the committed state and the terms ship in a separate glossary commit at Ship. Bears on c1.
 - R3 The C1 fix changes lighthouse_tool/change.py, which no MSP Step owns and the spec lists as Reused as is; the pull request must name it under risk and the assumption is in review/retest.assumptions.txt. Bears on c1.
 
 ## Settled, do not reopen
