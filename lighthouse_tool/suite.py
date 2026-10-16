@@ -89,7 +89,14 @@ def resolved(root: str, branch: str) -> str:
     return commit
 
 
+def is_inside(root: str, path: str) -> bool:
+    folder, base = os.path.realpath(path), os.path.realpath(root)
+    return folder == base or folder.startswith(base + os.sep)
+
+
 def make_worktrees(root: str, core: str, feature: str, results: str) -> Dict[str, Dict[str, str]]:
+    if is_inside(root, results):
+        raise Refusal("the results folder {} is inside the repository {}; choose a folder outside it".format(results, root))
     commits = {"core": resolved(root, core), "feature": resolved(root, feature)}
     os.makedirs(results, exist_ok=True)
     folder = os.path.realpath(results)

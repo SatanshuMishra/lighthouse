@@ -295,6 +295,16 @@ class SuiteTest(unittest.TestCase):
         self.assertEqual(result["result"], "failures")
         self.assertEqual(result["failures"], ["suite"])
 
+    def test_refuses_a_results_folder_inside_the_repository(self):
+        work = project_with(self, {}, scratch.sample_profile())
+        for results in (os.path.join(work, "lh-results"), os.path.join(work, "docs", "lh-results")):
+            for subcommand in ("worktrees", "suite"):
+                code, _, stderr = lighthouse(self, subcommand, work, results)
+                self.assertEqual(code, 2)
+                self.assertIn("inside the repository", stderr)
+            self.assertFalse(os.path.exists(results))
+        self.assertEqual(listed_worktrees(work), [os.path.realpath(work)])
+
     def test_refuses_a_worktree_it_did_not_create(self):
         work = project_with(self, {}, scratch.sample_profile())
         results = results_folder(self)
