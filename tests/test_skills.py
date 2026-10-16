@@ -58,5 +58,37 @@ class SkillsTest(unittest.TestCase):
         )
 
 
+    def test_test_skill_retests_with_previous(self):
+        text = scratch.skill_text("test")
+
+        for phrase in [
+            "--previous",
+            "lighthouse retest",
+            "a folder other than --results",
+            "full is true",
+            "carried_paths",
+            "one-hop neighbours of the changed files",
+            "replacing its copy",
+            "exited non-zero",
+            "plan every path as without --previous",
+            "lighthouse suite on both builds",
+        ]:
+            self.assertIn(phrase, text)
+
+    def test_test_skill_keeps_every_planned_retest_name(self):
+        text = scratch.skill_text("test")
+        planning = text.split("5. Plan the paths.", 1)[1].split("6. Build and start", 1)[0]
+        writing = text.split("9. Write", 1)[1].split("10. When the verdict", 1)[0]
+
+        for phrase in [
+            "Every name in the plan's retest list is a planned path, whether full is true or not",
+            "record it in findings.json under exactly that name",
+            "never renamed, merged with another path or split into several",
+            "add any fresh path beside them under a name of its own",
+            "A carried path driven again keeps its name",
+        ]:
+            self.assertIn(phrase, planning)
+        self.assertIn("It matches each name exactly", writing)
+
 if __name__ == "__main__":
     unittest.main()

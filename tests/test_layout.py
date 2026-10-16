@@ -43,5 +43,14 @@ class LayoutTest(unittest.TestCase):
         self.assertRegex(workflow, r"(?m)plugin validate --strict \.claude-plugin/plugin\.json$")
 
 
+    def test_version_is_0_2_0(self):
+        plugin = read_json(".claude-plugin", "plugin.json")
+        self.assertEqual(plugin["version"], "0.2.0")
+
+        code, stdout, stderr = scratch.run_lighthouse(["version"], scratch.environment(scratch.make_home(self)))
+
+        self.assertEqual(code, 0, stderr)
+        self.assertEqual(json.loads(stdout), {"version": "0.2.0"})
+
 if __name__ == "__main__":
     unittest.main()
