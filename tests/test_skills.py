@@ -58,5 +58,22 @@ class SkillsTest(unittest.TestCase):
         )
 
 
+    def test_test_skill_retests_with_previous(self):
+        text = scratch.skill_text("test")
+
+        for phrase in [
+            "--previous",
+            "lighthouse retest",
+            "a folder other than --results",
+            "full is true",
+            "carried_paths",
+            "one-hop neighbours of the changed files",
+            "replacing its copy",
+            "exited non-zero",
+            "plan every path as without --previous",
+            "lighthouse suite on both builds",
+        ]:
+            self.assertIn(phrase, text)
+
 if __name__ == "__main__":
     unittest.main()

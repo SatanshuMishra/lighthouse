@@ -1,6 +1,6 @@
 ---
 name: test
-description: Use when a FEATURE branch holding merged changes must be proven before it merges into its core branch, for any kind of software. Runs the project's own suite on both branches, drives the running product the way a person or calling program uses it, rechecks the surfaces next to the change, has the lighthouse command compute the verdict, and opens the FEATURE pull request on green or with --final. Takes --repo, --core, --feature, --results, --spec and --final, and ends with one JSON verdict line.
+description: Use when a FEATURE branch holding merged changes must be proven before it merges into its core branch, for any kind of software. Runs the project's own suite on both branches, drives the running product the way a person or calling program uses it, rechecks the surfaces next to the change, has the lighthouse command compute the verdict, and opens the FEATURE pull request on green or with --final. Takes --repo, --core, --feature, --results, --previous, --spec and --final, and ends with one JSON verdict line.
 ---
 
 # lighthouse:test
@@ -13,6 +13,7 @@ Prove the FEATURE branch works: its suite, its new behaviour as used, and its ne
 - `--core <branch>`: the core branch, the long-lived branch the repository ships from.
 - `--feature <branch>`: the FEATURE branch holding the merged changes under test.
 - `--results <dir>`: the results folder this run writes into.
+- `--previous <dir>`: an earlier results folder for the same FEATURE branch, never the same folder as `--results`; this run retests only what failed there and what new commits touched.
 - `--spec <path>`: the spec, when one exists.
 - `--final`: open the pull request whatever the verdict, listing every failure as unresolved.
 
@@ -20,8 +21,9 @@ Run the lighthouse command as `lighthouse` when it is on PATH, otherwise as `${C
 
 ## Steps
 
-1. Note the start time as UTC ISO-8601, the current directory as the start directory, and the untracked paths of the checkout at `--repo` from `git -C <repo> status --porcelain --untracked-files=all`. When `--results` is inside that checkout, stop before writing anything, as Stopping early says, with the reason that the results folder must be outside the checkout.
+1. Note the start time as UTC ISO-8601, the current directory as the start directory, and the untracked paths of the checkout at `--repo` from `git -C <repo> status --porcelain --untracked-files=all`. When `--results` is inside that checkout, stop before writing anything, as Stopping early says, with the reason that the results folder must be outside the checkout. When `--previous` names the same folder as `--results`, stop the same way, with the reason that `--previous` must name a folder other than `--results`.
 2. Run `lighthouse worktrees --repo <repo> --core <core> --feature <feature> --results <results>`. It checks out both tips at `<results>/core` and `<results>/feature`, and refuses with exit 2 a results folder inside the repository; on any refusal, stop as Stopping early says, with its reason.
+   - When `--previous` is given, run `lighthouse retest --previous <dir> --results <results> --repo <repo> --core <core> --feature <feature> --profile <results>/feature/.lighthouse/profile.json` and keep its plan: `full`, `changed`, `retest`, `surfaces` and `carried`. It writes the same plan, with `carried_paths`, to `<results>/retest.json` and copies each carried path's evidence under `<results>/previous/`.
 3. Run `lighthouse profile check --repo <results>/feature`.
    - When a problem has kind `missing`, invoke lighthouse:init `--unattended --repo <results>/feature`. On any other problem, invoke lighthouse:doctor `--unattended --repo <results>/feature`. Then run the check again.
    - When it still fails, record the suite as `{"result": "blocked", "reason": "profile: <problems>", "failures": [], "pre_existing": [], "flaky": [], "core": null, "feature": null}`, the build as `{"result": "blocked", "reason": "profile"}` and no paths, and go to step 8.
@@ -29,6 +31,7 @@ Run the lighthouse command as `lighthouse` when it is on PATH, otherwise as `${C
    - Then copy `<results>/feature/.lighthouse/profile.json` to `<results>/profile.json`. This copy is the run's profile: every later `--profile` names it, because `lighthouse suite` resets `<results>/feature` to the branch tip and would discard a repair that was not published.
 4. Run `lighthouse change --repo <repo> --core <core> --feature <feature>` for the commits, the changed files and the merged pull requests. Then run `lighthouse suite --repo <repo> --core <core> --feature <feature> --results <results> --profile <results>/profile.json` and keep its JSON object as the suite.
 5. Plan the paths. Nothing else is tested.
+   - With `--previous`: when the plan's `full` is true, or `lighthouse retest` exited non-zero (say why), plan every path as without `--previous`, by the rules below. Otherwise plan only the plan's `retest` paths, the new-behaviour and neighbour paths of its `surfaces`, and the one-hop neighbours of the changed files in its `changed` list, found as the Neighbours rule below finds them but from those files rather than the whole change. Step 4 still runs `lighthouse suite` on both builds.
    - New-behaviour paths: one product path for each thing the change adds, with its expected outcome, from the spec's intent and acceptance criteria when `--spec` is given, otherwise from the merged pull requests' titles and bodies and the commit messages.
    - Neighbours: each profile surface whose recorded `paths` include a changed file, or a file that uses something the change altered. Go one hop only. Use `graphify-out/graph.json` when the repository has one, otherwise a text search of `<results>/feature` for the altered names.
    - In a Claude Code plugin, a live session decides which skill, agent, command or MCP tool handles a request by reading all of their names and descriptions together, and fires each hook by its event and matcher, as the plugin manifest and component files declare them. So when the change alters any of those names, descriptions, matchers, events or manifest entries, every other component of the plugin that a session could pick in place of the changed one, or that fires on the same event, uses what the change altered: it is a one-hop neighbour, and so is the changed component.
@@ -54,6 +57,7 @@ Run the lighthouse command as `lighthouse` when it is on PATH, otherwise as `${C
                "retry": "passed" or "failed" or null, "core": "passed" or "failed" or null, "trials": null}],
     "spend": {"tokens": <n>, "minutes": <n>}}
    ```
+   With `--previous`, `paths` holds the paths driven in this run plus every entry of `<results>/retest.json`'s `carried_paths`, copied unchanged, except that a carried path also driven in this run appears once, with its new result replacing its copy. `lighthouse verdict` lists as unproven any planned retest path left out of `paths` or backed only by copied evidence under `previous/`.
    Then run `lighthouse verdict --results <results>`. It writes `report.md` and `verdict.json` and prints the verdict line. Never write or change a verdict yourself.
 10. When the verdict is green, or `--final` is given, run `lighthouse pr --repo <repo> --core <core> --feature <feature> --results <results> --summary '<a lowercase summary of the feature>' --why '<the intent>'`, adding `--final` when given. When the repository's remote is on GitHub, open the pull request with its `title`, `body`, `base` and `head`, ready for review and never a draft: through the GitHub MCP `create_pull_request` tool when this session has it, otherwise `gh pr create --base <core> --head <feature> --title '<title>' --body-file <results>/pr-body.md` after writing the body there. With any other remote, open nothing and say why.
 11. Run `lighthouse release --repo <repo> --results <results>`. Then compare the checkout's untracked paths with those noted in step 1, and name every path that appeared during the run in the reply as a change to the checkout. Move, delete or edit nothing in the checkout: a new path may be the person's own work.
