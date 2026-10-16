@@ -5,9 +5,21 @@ import unittest
 from tests import scratch
 
 
-def lighthouse_verdict(test, findings, plan=None):
+def results_folder(test, files=()):
     results = scratch.temporary_folder(test, "lh-results-")
     os.makedirs(os.path.join(results, "evidence"))
+    for name in files:
+        os.makedirs(os.path.dirname(os.path.join(results, name)), exist_ok=True)
+        with open(os.path.join(results, name), "w", encoding="utf-8") as handle:
+            handle.write(name + "\n")
+    return results
+
+
+def lighthouse_verdict(test, findings, plan=None, files=()):
+    return verdict_in(test, results_folder(test, files), findings, plan)
+
+
+def verdict_in(test, results, findings, plan=None):
     with open(os.path.join(results, "findings.json"), "w", encoding="utf-8") as handle:
         handle.write(json.dumps(findings, indent=2) + "\n")
     if plan is not None:
@@ -30,6 +42,22 @@ def verdict_line(test, stdout, results):
     for title in ("Verdict", "Suite", "New behaviour", "Neighbours", "Unproven", "Flaky", "Pre-existing", "Spend"):
         test.assertIn("## " + title + "\n", report)
     return line, report
+
+
+RETEST_PLAN = {"full": False, "changed": ["src/importer.py"], "retest": ["import reads the csv back"], "surfaces": ["cli"], "carried": [], "carried_paths": []}
+
+
+def retest_findings(evidence):
+    return {
+        "version": 1,
+        "suite": {"result": "passed", "reason": None, "failures": [], "pre_existing": [], "flaky": [], "core": None, "feature": None},
+        "build": {"result": "ok", "reason": None},
+        "paths": [
+            {"name": "export writes a csv", "kind": "new", "surface": "cli", "expected": "a csv with a header row", "evidence": ["evidence/export.txt"], "status": "passed", "retry": None, "core": None, "trials": None},
+            {"name": "import reads the csv back", "kind": "new", "surface": "cli", "expected": "the same rows", "evidence": evidence, "status": "passed", "retry": None, "core": None, "trials": None},
+        ],
+        "spend": {"tokens": 6000, "minutes": 2},
+    }
 
 
 class VerdictTest(unittest.TestCase):
@@ -259,7 +287,7 @@ class VerdictTest(unittest.TestCase):
             "spend": {"tokens": 6000, "minutes": 2},
         }
 
-        code, stdout, stderr, results = lighthouse_verdict(self, findings, plan)
+        code, stdout, stderr, results = lighthouse_verdict(self, findings, plan, files=["evidence/import.txt"])
 
         self.assertEqual(code, 0, stderr)
         line, _ = verdict_line(self, stdout, results)
@@ -283,6 +311,39 @@ class VerdictTest(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(results, "retest.json")))
         line, _ = verdict_line(self, stdout, results)
         self.assertEqual(line["verdict"], "green")
+
+    def assert_retest_not_driven(self, results, evidence):
+        code, stdout, stderr, _ = verdict_in(self, results, retest_findings(evidence), RETEST_PLAN)
+
+        self.assertEqual(code, 0, stderr)
+        line, report = verdict_line(self, stdout, results)
+        self.assertEqual(line["verdict"], "unproven")
+        self.assertEqual(line["unproven"], ["import reads the csv back"])
+        self.assertIn("import reads the csv back: planned for retest but not driven again", report)
+
+    def test_retest_path_passed_with_no_evidence_is_unproven(self):
+        self.assert_retest_not_driven(results_folder(self, ["evidence/export.txt"]), [])
+
+    def test_retest_path_with_copied_evidence_spelled_from_dot_is_unproven(self):
+        results = results_folder(self, ["evidence/export.txt", "previous/evidence/import.txt"])
+        self.assert_retest_not_driven(results, ["./previous/evidence/import.txt"])
+
+    def test_retest_path_with_copied_evidence_spelled_absolute_is_unproven(self):
+        results = results_folder(self, ["evidence/export.txt", "previous/evidence/import.txt"])
+        self.assert_retest_not_driven(results, [os.path.join(results, "previous", "evidence", "import.txt")])
+
+    def test_retest_path_whose_evidence_is_not_in_the_results_folder_is_unproven(self):
+        self.assert_retest_not_driven(results_folder(self, ["evidence/export.txt"]), ["evidence/import.txt"])
+
+    def test_retest_path_with_evidence_linked_into_previous_is_unproven(self):
+        results = results_folder(self, ["evidence/export.txt", "previous/evidence/import.txt"])
+        os.symlink(os.path.join(results, "previous", "evidence", "import.txt"), os.path.join(results, "evidence", "import.txt"))
+        self.assert_retest_not_driven(results, ["evidence/import.txt"])
+
+    @unittest.skipUnless(os.path.exists(os.path.join(os.path.dirname(os.path.abspath(__file__)), "TEST_VERDICT.PY")), "the file system tells letter case apart")
+    def test_retest_path_with_copied_evidence_spelled_in_capitals_is_unproven(self):
+        results = results_folder(self, ["evidence/export.txt", "previous/evidence/import.txt"])
+        self.assert_retest_not_driven(results, ["PREVIOUS/evidence/import.txt"])
 
 
 if __name__ == "__main__":

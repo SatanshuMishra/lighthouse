@@ -10,8 +10,8 @@ from lighthouse_tool import suite, verdict
 from lighthouse_tool.change import changed_files
 from lighthouse_tool.repo import Parser, Refusal, require_root
 
-RETEST = "retest.json"
-CARRIED_FOLDER = "previous"
+RETEST = verdict.RETEST
+CARRIED_FOLDER = verdict.CARRIED_FOLDER
 BLOCKED = "blocked"
 PASSED = "passed"
 RETESTED_STATUSES = ("failed", "unproven")
