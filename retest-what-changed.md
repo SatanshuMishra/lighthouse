@@ -1,6 +1,6 @@
 # retest-what-changed: S4: lighthouse retests only what changed since the previous results
 Status: active
-Updated: 2026-10-16T22:13:05.595Z
+Updated: 2026-10-16T22:15:34.365Z
 Next ids: c4 D3 R4 S1
 
 ## Goal
@@ -15,7 +15,7 @@ Build the handed-off spec docs/specs/retest-what-changed.md through the pipeline
 
 ## Where things stand
 
-MSP retest lives on mitosis/retest (base feat/retest-what-changed at 2e00295) in worktree ~/.mitosis/runs/lighthouse/retest-what-changed/trees/retest, head 159c369. Round 1 (head dfa32cb) was loop; all three blocker classes were diagnosed fixable and every round-1 blocker and advisory (C1, C2, C3, S2, S3, C4, C5, S4) is fixed there with receipt tests that failed first. Round 2 at head 159c369: the full suite passes (128 tests on 3.14 and 3.9) and code-reviewer and security-reviewer are reviewing the fix commits from dfa32cb.
+MSP retest lives on mitosis/retest (base feat/retest-what-changed at 2e00295) in worktree ~/.mitosis/runs/lighthouse/retest-what-changed/trees/retest, head 159c369. Round 1 (head dfa32cb) was loop; all three blocker classes were diagnosed fixable and every round-1 blocker and advisory (C1, C2, C3, S2, S3, C4, C5, S4) is fixed there with receipt tests that failed first. Round 2 at head 159c369: the full suite passes (128 tests on 3.14 and 3.9) code-reviewer found one LOW smell (C1, duplicated containment check in retest.py) and no new defect; security-reviewer is still reviewing the fix commits from dfa32cb.
 
 ## Next step
 
