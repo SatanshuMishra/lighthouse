@@ -1,6 +1,6 @@
 # retest-what-changed: S4: lighthouse retests only what changed since the previous results
 Status: active
-Updated: 2026-10-16T21:38:08.031Z
+Updated: 2026-10-16T21:47:09.775Z
 Next ids: c4 D3 R3 S1
 
 ## Goal
@@ -15,7 +15,7 @@ Build the handed-off spec docs/specs/retest-what-changed.md through the pipeline
 
 ## Where things stand
 
-MSP retest is committed on mitosis/retest (head dfa32cb, base feat/retest-what-changed at 2e00295) in worktree ~/.mitosis/runs/lighthouse/retest-what-changed/trees/retest; the full suite passes there on 3.14 and 3.9. Review round 1: conformance-auditor returned no findings (5.1-5.4 met, 5.5 not applicable); code-reviewer returned 3 MEDIUM (C1 renames escape the surface match, C2 empty evidence counts as driven, C3 full plan does not keep previous names) and 3 LOW; security-reviewer is still running.
+MSP retest is committed on mitosis/retest (head dfa32cb, base feat/retest-what-changed at 2e00295) in worktree ~/.mitosis/runs/lighthouse/retest-what-changed/trees/retest; the full suite passes there on 3.14 and 3.9. Review round 1: conformance-auditor returned no findings (5.1-5.4 met, 5.5 not applicable); code-reviewer returned 3 MEDIUM (C1 renames escape the surface match, C2 empty evidence counts as driven, C3 full plan does not keep previous names) and 3 LOW; security-reviewer returned S2 HIGH (verdict counts empty or respelled copied evidence as driven), S1 and S3 MEDIUM, S4 LOW. All 10 are in review/round-1/retest.findings.json and the validator is judging them.
 
 ## Next step
 
