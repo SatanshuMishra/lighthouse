@@ -1,20 +1,20 @@
 {
   "kind": "command-line tool",
-  "feature": "feature/note-search",
+  "feature": "feature/trip-tidying",
   "suite": "python3 -m unittest discover -s tests",
   "changes": ["change-1", "change-2"],
   "clean": {"change-2": "clean"},
   "pull_requests": [
     {
-      "title": "refactor(cli): rename the shared --store option to --notebook",
-      "body": "Every jotbook subcommand takes the notes file through one shared option. People read --store as a database setting, so the option is now --notebook. add and list read it under the new name, and the README and tests follow."
+      "title": "feat(show): list the newest trips first",
+      "body": "People filing a monthly mileage claim look for the trips they logged last, which sat at the bottom of a long list. milepost show now lists trips newest first by the day of the trip, numbered from 1 at the top. log and total are unchanged."
     },
     {
-      "title": "feat(cli): add a search subcommand",
-      "body": "jotbook search TERM prints every note containing TERM, ignoring case, numbered the way list numbers them. Like add and list, it reads the notes file the shared option names, falling back to JOTBOOK_FILE and then ~/.jotbook.json. It exits 1 when nothing matches."
+      "title": "feat(cli): add a drop command to remove a mistaken trip",
+      "body": "A mistyped trip could only be fixed by editing milepost.json by hand. milepost drop N removes trip number N, the number show prints beside it, and prints the trip it removed. It exits 1 and changes nothing when no trip has that number."
     }
   ],
-  "markers": ["search", "--notebook", "--store"],
-  "surfaces": ["jotbook"],
+  "markers": ["drop", "wrong trip", "newest first"],
+  "surfaces": ["milepost"],
   "expect": {"broken": "failures", "clean": "green"}
 }

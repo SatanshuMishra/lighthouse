@@ -1,20 +1,20 @@
 {
   "kind": "library",
-  "feature": "feature/wholesale-and-basket",
-  "suite": "sh scripts/run_tests.sh",
+  "feature": "feature/template-defaults",
+  "suite": "sh scripts/check.sh",
   "changes": ["change-1", "change-2"],
   "clean": {"change-2": "clean"},
   "pull_requests": [
     {
-      "title": "feat(pricing): add wholesale invoices and make line_total net by default",
-      "body": "Wholesale invoices are net of tax, and most new callers want the net amount, so line_total now leaves tax out unless add_tax=True is passed. receipt passes add_tax=True, so till receipts are unchanged. Adds invoice(items), which returns net lines and a net total."
+      "title": "perf(parser): cache parsed templates",
+      "body": "A mail merge renders one template for every recipient, and each render parsed that template again. parse now keeps the segments of the templates it has parsed and returns them on the next call for the same template, so a long-running calling program parses each template once. render and fields keep their behaviour."
     },
     {
-      "title": "feat(basket): add basket_summary for the checkout page",
-      "body": "basket_summary(items) takes (name, unit_cents, quantity) tuples and returns each line with its tax-inclusive total, the number of units, and the tax-inclusive basket total the checkout page shows the shopper."
+      "title": "feat(render): let a field name a default value",
+      "body": "A field written {name|default} renders its default when the values passed to render hold no entry for name, so a mail merge can greet a recipient without a name as 'Dear friend'. A field without a default still raises MissingField when its value is missing, and fields lists each field as written."
     }
   ],
-  "markers": ["basket_summary", "basket", "add_tax"],
-  "surfaces": ["tillkit"],
+  "markers": ["cache", "cached", "default", "previous recipient", "first recipient"],
+  "surfaces": ["quillmark"],
   "expect": {"broken": "failures", "clean": "green"}
 }

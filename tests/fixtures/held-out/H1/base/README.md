@@ -1,13 +1,16 @@
-# jotbook
+# milepost
 
-jotbook is a tiny command-line notebook. It keeps numbered notes in one JSON file.
+milepost is a small command-line log of car journeys for mileage claims. It keeps every trip in one JSON file.
 
 ## Use
 
-    python3 -m jotbook add --store notes.json "buy milk"
-    python3 -m jotbook list --store notes.json
+    python3 -m milepost log 2026-03-02 Lyon 42
+    python3 -m milepost show
+    python3 -m milepost total
 
-Every subcommand takes the shared `--store PATH` option naming the notes file. Without it, jotbook uses the file the `JOTBOOK_FILE` environment variable names, and otherwise `~/.jotbook.json`.
+`log DATE PLACE KM` records one trip. `show` prints every trip with its number. `total` adds up the distance of every trip.
+
+Trips live in `milepost.json` in the current folder, or in the file the `MILEPOST_DATA` environment variable names.
 
 ## Tests
 

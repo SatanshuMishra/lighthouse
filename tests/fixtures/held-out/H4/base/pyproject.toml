@@ -1,5 +1,5 @@
 [project]
-name = "tillkit"
-version = "0.3.0"
-description = "Pricing helpers for a shop's till and checkout"
+name = "quillmark"
+version = "1.2.0"
+description = "Fill message templates with named fields"
 requires-python = ">=3.9"

@@ -49,3 +49,9 @@ lighthouse's per-repository folder outside the repository, ~/.lighthouse/<reposi
 
 **Held-out set**:
 Fixture projects with planted integration bugs that lighthouse is judged on and never tuned on.
+
+**Retired fixture**:
+A held-out fixture whose planted bug a skill author was shown, so it no longer counts as held out and is replaced.
+
+**Probe**:
+A script kept beside a held-out fixture's folders, never committed into its builds, that fails on the broken FEATURE and passes on the clean twin, proving the planted bug is real.

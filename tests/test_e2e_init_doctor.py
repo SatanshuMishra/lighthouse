@@ -10,6 +10,11 @@ DOCTOR_FIXTURE = "H4"
 RUNS = 2
 PROFILE = ".lighthouse/profile.json"
 SUITE_TIMEOUT_SECONDS = 600
+SUITE_SCRIPT = "scripts/check.sh"
+RENAMED_SUITE_SCRIPT = "scripts/verify.sh"
+SURFACE_MODULE = "quillmark/render.py"
+BENCH_PROJECT = "bench/pyproject.toml"
+BENCH_PROJECT_TEXT = '[project]\nname = "quillmark-bench"\nversion = "0.1.0"\n'
 
 
 def quiet_environment(env):
@@ -56,19 +61,19 @@ def commit_all(repo, message):
 
 
 def rename_suite_script(repo):
-    scratch.run_git(repo, "mv", "scripts/run_tests.sh", "scripts/test.sh")
+    scratch.run_git(repo, "mv", SUITE_SCRIPT, RENAMED_SUITE_SCRIPT)
     commit_all(repo, "rename the test script")
 
 
 def delete_surface_path(repo):
-    scratch.run_git(repo, "rm", "-q", "tillkit/receipt.py")
-    commit_all(repo, "remove the receipt module")
+    scratch.run_git(repo, "rm", "-q", SURFACE_MODULE)
+    commit_all(repo, "remove a surface module")
 
 
 def add_source_file(repo):
     scratch.commit_files(
         repo,
-        {"bench/pyproject.toml": '[project]\nname = "tillkit-bench"\nversion = "0.1.0"\n'},
+        {BENCH_PROJECT: BENCH_PROJECT_TEXT},
         "add a benchmark project",
     )
 

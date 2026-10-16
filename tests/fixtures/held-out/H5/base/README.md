@@ -1,22 +1,18 @@
-# greenhand
+# kilnmate
 
-greenhand is a Claude Code plugin that helps people look after houseplants. Each skill handles one kind of request, and its description decides which requests start it.
+A Claude Code plugin for studio potters.
 
 ## Skills
 
-- `houseplant-care`: how to water, feed or repot a specific houseplant.
-- `seed-sowing`: when and how to sow seeds indoors.
+- `firing-schedule` gives the cone and the ramp, hold and cooling segments for a glaze, read from the studio table in `data/glazes.json` through `scripts/schedule.py`.
+- `glaze-faults` names the likely cause of a glaze defect after firing and one change to try next time.
 
-## Use
+## Scripts
 
-Load the plugin into a Claude Code session from the repository root:
-
-    claude --plugin-dir .
-
-Then ask a plant question in plain words, for example "How often should I water a snake plant?". Each skill opens its reply with its own heading line, so the reply shows which skill answered.
+`python3 scripts/schedule.py "Floating Blue"` prints the glaze's cone and one numbered line per segment: rate in degrees Celsius per hour, target temperature and hold in minutes.
 
 ## Tests
 
-The tests check the plugin manifest and every skill's SKILL.md frontmatter. Run them from the repository root with:
-
-    python3 -m unittest discover -s tests
+```
+python3 -m unittest discover -s tests
+```
