@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "profile": {
+    "type": "object",
+    "required": {
+      "version": {"type": "integer", "enum": [1]},
+      "sources": {"type": "list", "items": {"type": "string"}},
+      "suite": {
+        "type": "object",
+        "required": {
+          "command": {"type": "string"},
+          "junit": {"type": ["string", "null"]},
+          "timeout_minutes": {"type": ["number", "null"]}
+        }
+      },
+      "surfaces": {
+        "type": "list",
+        "items": {
+          "type": "object",
+          "required": {
+            "name": {"type": "string"},
+            "kind": {"type": "string"},
+            "paths": {"type": "list", "items": {"type": "string"}},
+            "driver": {"type": "string"},
+            "available": {"type": "boolean"},
+            "sign_in": {
+              "type": "object",
+              "required": {
+                "method": {"type": "string", "enum": ["none", "command", "token", "form"]},
+                "command": {"type": ["string", "null"]}
+              }
+            },
+            "credentials": {"type": "list", "items": {"type": "string"}},
+            "trials": {"type": "integer", "minimum": 1}
+          }
+        }
+      },
+      "credentials": {
+        "type": "object",
+        "required": {
+          "file": {"type": ["string", "null"]},
+          "names": {
+            "type": "map",
+            "values": {
+              "type": "object",
+              "required": {
+                "production": {"type": "boolean"}
+              }
+            }
+          }
+        }
+      },
+      "facts": {
+        "type": "map",
+        "values": {
+          "type": "object",
+          "required": {
+            "value": {"type": "any"},
+            "confirmed": {"type": "boolean"},
+            "recheck": {"type": "string"}
+          }
+        }
+      },
+      "off_limits": {"type": "list", "items": {"type": "string"}}
+    },
+    "optional": {
+      "setup": {
+        "type": "object",
+        "required": {
+          "command": {"type": "string"}
+        }
+      },
+      "build": {
+        "type": "object",
+        "required": {
+          "command": {"type": "string"}
+        }
+      },
+      "start": {
+        "type": "object",
+        "required": {
+          "command": {"type": "string"},
+          "ready": {"type": "string"}
+        }
+      },
+      "test_data": {"type": "string"}
+    }
+  }
+}
