@@ -1,6 +1,6 @@
 # retest-what-changed: S4: lighthouse retests only what changed since the previous results
 Status: active
-Updated: 2026-10-16T21:12:16.179Z
+Updated: 2026-10-16T21:33:47.912Z
 Next ids: c4 D3 R3 S1
 
 ## Goal
@@ -15,11 +15,11 @@ Build the handed-off spec docs/specs/retest-what-changed.md through the pipeline
 
 ## Where things stand
 
-FEATURE branch feat/retest-what-changed is cut from main 2e00295. The run home is written and plan-only passed (4 Steps, 3 Lanes, 1 MSP). The first mitosis build of MSP retest is running in its worktree ~/.mitosis/runs/lighthouse/retest-what-changed/trees/retest on branch mitosis/retest.
+MSP retest is committed on mitosis/retest (head dfa32cb, base feat/retest-what-changed at 2e00295) in worktree ~/.mitosis/runs/lighthouse/retest-what-changed/trees/retest; the full suite passes there on 3.14 and 3.9. Review round 1 is running: code-reviewer, security-reviewer and conformance-auditor.
 
 ## Next step
 
-When the build ends, read the last JSON line of ~/.mitosis/lighthouse/retest-what-changed/build-1.log and start review round 1 on MSP retest.
+When the three round-1 reviewers return, collect their JSON arrays into review/round-1/retest.findings.json, run pipeline candidates, the validator, record and verdict.
 
 Needs: D2, R1.
 
