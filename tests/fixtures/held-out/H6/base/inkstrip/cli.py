@@ -4,24 +4,24 @@ import sys
 from inkstrip import layout, printer
 
 
-def show_preview(args, connect):
+def show_preview(args, open_printer):
     print("\n".join(layout.framed(layout.lay_out(args.rows))))
     return 0
 
 
-def print_one(args, connect):
+def print_one(args, open_printer):
     lines = layout.lay_out(args.rows)
-    print(printer.print_label(connect(), lines))
+    print(printer.print_label(open_printer(), lines))
     return 0
 
 
-def feed_one(args, connect):
-    print(printer.feed(connect()))
+def feed_one(args, open_printer):
+    print(printer.feed(open_printer()))
     return 0
 
 
-def show_status(args, connect):
-    print(connect().send("STATUS?"))
+def report_status(args, open_printer):
+    print(open_printer().transmit("STATUS?"))
     return 0
 
 
@@ -37,14 +37,14 @@ def build_parser():
     advance = subparsers.add_parser("feed", help="advance the strip by one label")
     advance.set_defaults(handler=feed_one)
     status = subparsers.add_parser("status", help="print what the label printer reports")
-    status.set_defaults(handler=show_status)
+    status.set_defaults(handler=report_status)
     return parser
 
 
-def main(argv=None, connect=printer.connect):
+def main(argv=None, open_printer=printer.open_printer):
     args = build_parser().parse_args(argv)
     try:
-        return args.handler(args, connect)
+        return args.handler(args, open_printer)
     except layout.LabelError as error:
         print("inkstrip: {}".format(error), file=sys.stderr)
         return 2

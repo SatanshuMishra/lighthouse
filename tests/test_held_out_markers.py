@@ -1,22 +1,14 @@
 import os
 import unittest
 
-from tests import scratch
-
-MARKERS = os.path.join(scratch.ROOT, "tests", "fixtures", "held-out", "LEAK_MARKERS")
 MARKERS_PER_FIXTURE = 3
-
-
-def leak_markers():
-    with open(MARKERS, encoding="utf-8") as handle:
-        return [line.strip() for line in handle if line.strip()]
 
 
 class HeldOutMarkersTest(unittest.TestCase):
     def test_leak_markers_name_only_the_new_set(self):
-        from tests import e2e_harness, held_out_checks
+        from tests import e2e_harness, held_out_checks, test_leak
 
-        markers = leak_markers()
+        markers = test_leak.leak_markers()
         fixture_texts = {
             fid: "\n".join(e2e_harness.tree_files(os.path.join(e2e_harness.FIXTURES, fid)).values())
             for fid in e2e_harness.fixture_ids()

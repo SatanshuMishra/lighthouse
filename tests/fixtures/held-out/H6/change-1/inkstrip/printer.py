@@ -1,6 +1,6 @@
 import os
 
-DEFAULT_PORT = "/dev/cu.usbserial-inkstrip"
+FALLBACK_DEVICE = "/dev/cu.usbserial-inkstrip"
 LABEL_PITCH_MM = 28
 
 
@@ -8,30 +8,30 @@ class PrinterUnavailable(Exception):
     pass
 
 
-class SerialLink:
-    def __init__(self, port):
-        self.port = port
+class LabelPrinter:
+    def __init__(self, device):
+        self.device = device
 
-    def send(self, command):
-        with open(self.port, "r+b", buffering=0) as line:
-            line.write((command + "\n").encode("ascii"))
-            return line.readline().decode("ascii").strip()
+    def transmit(self, instruction):
+        with open(self.device, "r+b", buffering=0) as stream:
+            stream.write(instruction.encode("ascii") + b"\n")
+            return stream.readline().decode("ascii").strip()
 
 
-def connect():
-    port = os.environ.get("INKSTRIP_PORT", DEFAULT_PORT)
+def open_printer():
+    port = os.environ.get("INKSTRIP_PORT", FALLBACK_DEVICE)
     if not os.path.exists(port):
         raise PrinterUnavailable("no label printer at {}".format(port))
-    return SerialLink(port)
+    return LabelPrinter(port)
 
 
 def feed(link):
-    return link.send("FEED {}".format(LABEL_PITCH_MM))
+    return link.transmit("FEED {}".format(LABEL_PITCH_MM))
 
 
 def print_label(link, lines):
     for line in lines:
-        link.send("TEXT {}".format(line))
-    printed = link.send("PRINT")
+        link.transmit("TEXT {}".format(line))
+    printed = link.transmit("PRINT")
     feed(link)
     return printed
