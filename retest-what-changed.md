@@ -1,6 +1,6 @@
 # retest-what-changed: S4: lighthouse retests only what changed since the previous results
 Status: active
-Updated: 2026-10-16T21:08:38.474Z
+Updated: 2026-10-16T21:08:49.431Z
 Next ids: c4 D2 R1 S1
 
 ## Goal
@@ -19,7 +19,9 @@ Not started.
 
 ## Next step
 
-Record the interphase hand-off boundary, then cut the FEATURE branch with pipeline feature-branch --type feat and write the run home ~/.mitosis/lighthouse/retest-what-changed/.
+Write the run home ~/.mitosis/lighthouse/retest-what-changed/ (CHARTER.md, worker-rules.txt, dispatch.zsh, run.zsh with --feature-branch feat/retest-what-changed), copy items.json and graph.json, and run run.zsh --plan-only.
+
+Needs: D1.
 
 ## Decisions in force
 
