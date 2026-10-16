@@ -1,0 +1,20 @@
+{
+  "kind": "a new behaviour that runs only on a physical device",
+  "feature": "feature/boost",
+  "suite": "python3 -m unittest discover -s tests",
+  "changes": ["change-1", "change-2"],
+  "clean": {"change-2": "clean"},
+  "pull_requests": [
+    {
+      "title": "feat(boost): add a boost command that heats at full power for a while",
+      "body": "hearthctl boost tells the thermostat to heat at full power for 30 minutes and then return to its programme. The thermostat takes BOOST <seconds>. It needs the thermostat connected over USB."
+    },
+    {
+      "title": "feat(boost): let boost take --minutes",
+      "body": "hearthctl boost --minutes N boosts for N minutes instead of the default 30."
+    }
+  ],
+  "markers": ["boost"],
+  "surfaces": ["hearthctl"],
+  "expect": {"broken": "not-green", "clean": "not-green"}
+}

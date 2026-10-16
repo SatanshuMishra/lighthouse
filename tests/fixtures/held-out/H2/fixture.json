@@ -1,0 +1,20 @@
+{
+  "kind": "locally served web page",
+  "feature": "feature/pantry-quick-picks",
+  "suite": "python3 -m unittest discover -s tests",
+  "changes": ["change-1", "change-2"],
+  "clean": {"change-2": "clean"},
+  "pull_requests": [
+    {
+      "title": "refactor(page): rename the add button's id to pantry-submit",
+      "body": "The add button's element id now matches the form's naming. list.js, which owns the button, looks it up under the new id."
+    },
+    {
+      "title": "feat(page): add quick-pick buttons for common items",
+      "body": "A row of quick-pick buttons (Milk, Eggs, Bread, Rice) sits under the item field. Clicking one adds that item to the list in one click, exactly as typing it and pressing Add does, and the count updates."
+    }
+  ],
+  "markers": ["quick pick", "quick-pick", "pantry-add"],
+  "surfaces": ["site"],
+  "expect": {"broken": "failures", "clean": "green"}
+}

@@ -1,0 +1,20 @@
+{
+  "kind": "HTTP JSON API",
+  "feature": "feature/loan-notices",
+  "suite": "python3 -m unittest discover -s tests",
+  "changes": ["change-1", "change-2"],
+  "clean": {"change-1": "clean"},
+  "pull_requests": [
+    {
+      "title": "feat(api): add GET /loan-notices with readable due dates",
+      "body": "Front-desk staff print return reminders from this list. GET /loan-notices answers {\"notices\": [{\"loan\", \"member\", \"message\"}]}, one notice per loan, and each message names the book and the day it is due written for people, such as 'Please return Dune by Tue 05 Mar 2024.'"
+    },
+    {
+      "title": "feat(api): include page counts in GET /books",
+      "body": "Each book in GET /books now carries pages, its page count, so the catalogue screen can show it."
+    }
+  ],
+  "markers": ["/loans", "loans endpoint", "format_day"],
+  "surfaces": ["shelfapi"],
+  "expect": {"broken": "failures", "clean": "green"}
+}
