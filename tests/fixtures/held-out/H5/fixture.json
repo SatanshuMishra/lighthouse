@@ -1,0 +1,20 @@
+{
+  "kind": "Claude Code plugin with model output",
+  "feature": "feature/leaf-pests",
+  "suite": "python3 -m unittest discover -s tests",
+  "changes": ["change-1", "change-2"],
+  "clean": {"change-2": "clean"},
+  "pull_requests": [
+    {
+      "title": "feat(skills): add leaf-pest-check for identifying pests",
+      "body": "New skill: when someone describes spots, holes, sticky residue, webbing or small insects on their plant's leaves, leaf-pest-check names the likely pest and how to treat it. Its reply opens with 'Leaf pest check:'."
+    },
+    {
+      "title": "feat(skills): let houseplant-care answer light and soil questions",
+      "body": "People asking where to put a plant or which soil to use got no skill at all. houseplant-care's description now also covers light and soil, so those questions reach it."
+    }
+  ],
+  "markers": ["leaf-pest-check", "leaf pest check", "houseplant-care", "pest"],
+  "surfaces": ["skills/houseplant-care", "skills/seed-sowing"],
+  "expect": {"broken": "failures", "clean": "green"}
+}

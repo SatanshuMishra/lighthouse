@@ -154,3 +154,29 @@ def write_profile(repo: str, profile: Dict[str, Any]) -> str:
     with open(path, "w", encoding="utf-8") as handle:
         handle.write(json.dumps(profile, indent=2) + "\n")
     return path
+
+
+def read_text(path: str) -> str:
+    with open(path, encoding="utf-8") as handle:
+        return handle.read()
+
+
+def skill_path(name: str) -> str:
+    return os.path.join(ROOT, "skills", name, "SKILL.md")
+
+
+def skill_text(name: str) -> str:
+    return " ".join(read_text(skill_path(name)).replace("`", "").split())
+
+
+def run_shell(command: str, repo: str, env: Dict[str, str], timeout_seconds: int) -> Tuple[int, str]:
+    completed = subprocess.run(
+        ["/bin/sh", "-c", command],
+        cwd=repo,
+        env=env,
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=timeout_seconds,
+    )
+    return completed.returncode, completed.stdout + completed.stderr
