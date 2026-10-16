@@ -32,12 +32,7 @@ def tree_files(folder: str) -> Dict[str, str]:
         for parent, _, names in os.walk(folder)
         for name in names
     )
-    return {path: read_text(os.path.join(folder, path)) for path in paths}
-
-
-def read_text(path: str) -> str:
-    with open(path, encoding="utf-8") as handle:
-        return handle.read()
+    return {path: scratch.read_text(os.path.join(folder, path)) for path in paths}
 
 
 def state_folder(name: str) -> str:

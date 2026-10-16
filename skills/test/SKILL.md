@@ -20,25 +20,30 @@ Run the lighthouse command as `lighthouse` when it is on PATH, otherwise as `${C
 
 ## Steps
 
-1. Note the start time as UTC ISO-8601 and the current directory as the start directory.
+1. Note the start time as UTC ISO-8601, the current directory as the start directory, and the untracked paths of the checkout at `--repo` from `git -C <repo> status --porcelain --untracked-files=all`.
 2. Run `lighthouse worktrees --repo <repo> --core <core> --feature <feature> --results <results>`. It checks out both tips at `<results>/core` and `<results>/feature`.
 3. Run `lighthouse profile check --repo <results>/feature`.
    - When a problem has kind `missing`, invoke lighthouse:init `--unattended --repo <results>/feature`. On any other problem, invoke lighthouse:doctor `--unattended --repo <results>/feature`. Then run the check again.
    - When it still fails, record the suite as `{"result": "blocked", "reason": "profile: <problems>", "failures": [], "pre_existing": [], "flaky": [], "core": null, "feature": null}`, the build as `{"result": "blocked", "reason": "profile"}` and no paths, and go to step 8.
-   - Otherwise run `lighthouse profile publish --repo <repo> --feature <feature> --profile <results>/feature/.lighthouse/profile.json`. It folds every stored answer in and commits only when the profile changed. When its JSON says `committed` is true, run `lighthouse worktrees` again with the same four flags, so `<results>/feature` moves to the new tip and holds the answered facts.
-4. Run `lighthouse change --repo <repo> --core <core> --feature <feature>` for the commits, the changed files and the merged pull requests. Then run `lighthouse suite --repo <repo> --core <core> --feature <feature> --results <results> --profile <results>/feature/.lighthouse/profile.json` and keep its JSON object as the suite.
+   - Otherwise run `lighthouse profile publish --repo <repo> --feature <feature> --profile <results>/feature/.lighthouse/profile.json`. It folds every stored answer in and commits only when the profile changed. When its JSON says `committed` is true, run `lighthouse worktrees` again with the same four flags, so `<results>/feature` moves to the new tip and holds the answered facts. When publish exits non-zero, carry on and keep its reason for step 12.
+   - Then copy `<results>/feature/.lighthouse/profile.json` to `<results>/profile.json`. This copy is the run's profile: every later `--profile` names it, because `lighthouse suite` resets `<results>/feature` to the branch tip and would discard a repair that was not published.
+4. Run `lighthouse change --repo <repo> --core <core> --feature <feature>` for the commits, the changed files and the merged pull requests. Then run `lighthouse suite --repo <repo> --core <core> --feature <feature> --results <results> --profile <results>/profile.json` and keep its JSON object as the suite.
 5. Plan the paths. Nothing else is tested.
    - New-behaviour paths: one product path for each thing the change adds, with its expected outcome, from the spec's intent and acceptance criteria when `--spec` is given, otherwise from the merged pull requests' titles and bodies and the commit messages.
    - Neighbours: each profile surface whose recorded `paths` include a changed file, or a file that uses something the change altered. Go one hop only. Use `graphify-out/graph.json` when the repository has one, otherwise a text search of `<results>/feature` for the altered names.
+   - In a Claude Code plugin, a live session decides which skill, agent, command or MCP tool handles a request by reading all of their names and descriptions together, and fires each hook by its event and matcher, as the plugin manifest and component files declare them. So when the change alters any of those names, descriptions, matchers, events or manifest entries, every other component of the plugin that a session could pick in place of the changed one, or that fires on the same event, uses what the change altered: it is a one-hop neighbour, and so is the changed component.
 6. Build and start each build in its own worktree, `<results>/core` and `<results>/feature`, with the profile's `setup`, `build` and `start` commands, giving each build its own ports and data and setting `LIGHTHOUSE_BUILD` to `core` or `feature`. Wait for `start.ready`.
    - When FEATURE will not build or start after two tries, record the build as `{"result": "blocked", "reason": "<the failing step>; core built"}` or `"...; core did not build"`, and test no product path on it. Otherwise record `{"result": "ok", "reason": null}`.
-   - Sign in only through `lighthouse with-credentials --repo <repo> --cwd <that build's worktree> -- /bin/sh -c '<the surface's sign_in command>'`.
+   - Sign in only through `lighthouse with-credentials --repo <repo> --profile <results>/profile.json --cwd <that build's worktree> -- /bin/sh -c '<the surface's sign_in command>'`, so the run's profile decides which entries are production and which credentials file is read.
    - A path is unproven, with its reason, when its surface is unavailable (`available` false), rests on an unconfirmed fact, needs an action the profile lists as off-limits, or cannot be signed into.
 7. Drive each path with its surface's recorded `driver`, as a person or calling program would. Save every screenshot, transcript, response and output under `<results>/evidence/`, and record each as a path relative to `<results>`.
    - A new-behaviour path runs on FEATURE and is judged against the intent. Its `core` is null.
    - A neighbour gets the same probe on core and on FEATURE. A difference the intent does not explain is a failure. A difference the intent explains is expected: write that outcome as `expected`, mark it passed and note the difference in its evidence.
    - Retry each failure once on FEATURE and record the second outcome as `retry`, otherwise null. Probe a failing neighbour on core and record that as `core`.
-   - When the surface's `trials` is above 1, run each case that many times on each build, graded on the outcome, never on wording. Record `trials` as `{"count": <n>, "feature_passed": <n>, "core_passed": <n or null>}`, and status passed only when every FEATURE trial passed. Otherwise `trials` is null.
+   - Reach a Claude Code plugin path only through a live Claude Code session that loads that build's copy of the plugin and no other copy of it, such as `claude -p` with `--plugin-dir` set to that build's worktree and an output format that records every tool call, started from a working folder under `<results>` prepared the same way for both builds. Send what a person would send: a plain request for the outcome, phrased from the intent and never copied from a component's own description, naming a component only where people name it, such as a slash command, and doing the thing that fires a hook. Reading a component's files, running its scripts on their own or naming a skill or agent a person would not name skips the session's choice, so it never reaches the path; when the recorded `driver` works that way, keep it only as an extra check.
+   - The observable outcome of a plugin path is which component handled the request, read from the saved transcript (the skill, agent, command, MCP tool or hook that ran), and what that component produced or changed. A path passes only when the component the intent names handled it and its outcome matches; a request handled by another component, or by none, fails even when the reply reads well. A neighbour gets the same requests on both builds, and a request core sends to one component and FEATURE sends to another is a difference the intent must explain.
+   - A plugin path goes through a model's choice even when the component's own output is fixed, so it is model-driven: run it with the surface's `trials` when above 1, otherwise 3, using the same requests on both builds.
+   - When the surface's `trials` is above 1, or the rule above sets 3, run each case that many times on each build, graded on the outcome, never on wording. Record `trials` as `{"count": <n>, "feature_passed": <n>, "core_passed": <n or null>}`, and status passed only when every FEATURE trial passed. Otherwise `trials` is null.
 8. Run `lighthouse spend --since <start time> --from <start directory>` and keep its `tokens` and `minutes`.
 9. Write `<results>/findings.json`:
    ```json
@@ -50,8 +55,8 @@ Run the lighthouse command as `lighthouse` when it is on PATH, otherwise as `${C
    ```
    Then run `lighthouse verdict --results <results>`. It writes `report.md` and `verdict.json` and prints the verdict line. Never write or change a verdict yourself.
 10. When the verdict is green, or `--final` is given, run `lighthouse pr --repo <repo> --core <core> --feature <feature> --results <results> --summary '<a lowercase summary of the feature>' --why '<the intent>'`, adding `--final` when given. When the repository's remote is on GitHub, open the pull request with its `title`, `body`, `base` and `head`, ready for review and never a draft: through the GitHub MCP `create_pull_request` tool when this session has it, otherwise `gh pr create --base <core> --head <feature> --title '<title>' --body-file <results>/pr-body.md` after writing the body there. With any other remote, open nothing and say why.
-11. Run `lighthouse release --repo <repo> --results <results>`.
-12. Print the verdict line from `<results>/verdict.json`, with `pr` set to the pull request's URL or null, as the last line of the reply, one JSON object on one line:
+11. Run `lighthouse release --repo <repo> --results <results>`. Then compare the checkout's untracked paths with those noted in step 1, and move every path that appeared during the run, such as a browser tool's output folder, into `<results>/evidence/stray/`, so the checkout ends as it began.
+12. When publish exited non-zero in step 3, say in one line that the profile was not published and why. Print the verdict line from `<results>/verdict.json`, with `pr` set to the pull request's URL or null, as the last line of the reply, one JSON object on one line:
     `{"verdict": "green", "failures": [], "unproven": [], "flaky": [], "tokens": 0, "minutes": 0, "pr": null}`
 
 ## Cost
@@ -61,7 +66,7 @@ Scope comes from the change: the new-behaviour paths and their one-hop neighbour
 ## Never
 
 - Never ask anything; init and doctor run with `--unattended`.
-- Never fix code, never merge, and never touch the checkout at `--repo` or anything the profile lists as off-limits. The profile commit from `lighthouse profile publish` is the only write to the project.
+- Never fix code, never merge, and never touch the checkout at `--repo` or anything the profile lists as off-limits. The profile commit from `lighthouse profile publish` is the only write to the project, and moving out what the run itself left in the checkout (step 11) is the only change to it.
 - Never read, print or pass a credential value; only `lighthouse with-credentials` puts values into a process.
 - Never add a tool or dependency to the project.
 - Never count an unreached path as passed; it is unproven.

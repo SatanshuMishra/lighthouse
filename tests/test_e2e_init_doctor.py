@@ -1,7 +1,6 @@
 import json
 import os
 import posixpath
-import subprocess
 import unittest
 
 from tests import e2e_harness, scratch
@@ -24,19 +23,6 @@ def profile_check(repo, env):
 def read_profile(repo):
     with open(os.path.join(repo, PROFILE), encoding="utf-8") as handle:
         return json.load(handle)
-
-
-def run_suite(command, repo, env):
-    completed = subprocess.run(
-        ["/bin/sh", "-c", command],
-        cwd=repo,
-        env=env,
-        stdin=subprocess.DEVNULL,
-        capture_output=True,
-        text=True,
-        timeout=SUITE_TIMEOUT_SECONDS,
-    )
-    return completed.returncode, completed.stdout + completed.stderr
 
 
 def normalized(path):
@@ -101,7 +87,7 @@ PROBLEMS = (
 
 
 def held_out_profile():
-    return e2e_harness.read_text(os.path.join(e2e_harness.FIXTURES, DOCTOR_FIXTURE, "profile.json"))
+    return scratch.read_text(os.path.join(e2e_harness.FIXTURES, DOCTOR_FIXTURE, "profile.json"))
 
 
 @unittest.skipUnless(e2e_harness.E2E, "end-to-end tests run only when LIGHTHOUSE_E2E=1")
@@ -121,7 +107,7 @@ class InitDoctorEndToEndTest(unittest.TestCase):
                     check_code, check_out, check_err = profile_check(repo, env)
                     self.assertEqual(check_code, 0, "claude exit {}\n{}\n{}\n{}".format(code, transcript, check_out, check_err))
                     profile = read_profile(repo)
-                    suite_code, suite_output = run_suite(profile["suite"]["command"], repo, env)
+                    suite_code, suite_output = scratch.run_shell(profile["suite"]["command"], repo, env, SUITE_TIMEOUT_SECONDS)
                     self.assertEqual(suite_code, 0, suite_output)
                     self.assertEqual(missing_surfaces(profile, fixture["surfaces"]), [], json.dumps(profile, indent=2))
 

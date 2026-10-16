@@ -1,4 +1,3 @@
-import subprocess
 import unittest
 
 from tests import e2e_harness, scratch
@@ -16,19 +15,6 @@ def checkouts(test, fid):
     return [("base", base)] + singles + features
 
 
-def run_suite(command, repo, home):
-    completed = subprocess.run(
-        ["/bin/sh", "-c", command],
-        cwd=repo,
-        env={**scratch.environment(home), "PYTHONDONTWRITEBYTECODE": "1"},
-        stdin=subprocess.DEVNULL,
-        capture_output=True,
-        text=True,
-        timeout=SUITE_TIMEOUT_SECONDS,
-    )
-    return completed.returncode, completed.stdout + completed.stderr
-
-
 class FixturesTest(unittest.TestCase):
     def test_fixtures_hide_their_bug_from_their_own_suite(self):
         fixture_ids = e2e_harness.fixture_ids()
@@ -38,7 +24,9 @@ class FixturesTest(unittest.TestCase):
             suite = e2e_harness.load(fid)["suite"]
             for label, checkout in checkouts(self, fid):
                 with self.subTest(fixture=fid, build=label):
-                    code, output = run_suite(suite, checkout["repo"], home)
+                    code, output = scratch.run_shell(
+                        suite, checkout["repo"], {**scratch.environment(home), "PYTHONDONTWRITEBYTECODE": "1"}, SUITE_TIMEOUT_SECONDS
+                    )
                     self.assertEqual(code, 0, output)
 
 

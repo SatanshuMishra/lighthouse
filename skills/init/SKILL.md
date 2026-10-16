@@ -25,6 +25,7 @@ Run the lighthouse command as `lighthouse` when it is on PATH, otherwise as `${C
    - `setup`: `command` that installs dependencies in a fresh checkout, when the project needs one.
    - `build`: `command`, when the product builds.
    - `start`: `command` and `ready`, a URL, log line or command that shows the product is up, when the product runs.
+   - Leave `setup`, `build` or `start` out of the profile entirely when the project has no such step. Never write one with a null, empty or placeholder field: each field it holds is a string.
    - `surfaces`: one entry for every way a person or calling program uses the product, such as each command, page or flow, endpoint group, public module, skill or device feature. Give each:
      - `name` and `kind`, in plain words.
      - `paths`: the repository-relative code paths behind it.
