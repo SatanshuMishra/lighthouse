@@ -107,6 +107,22 @@ def rewrite_feature(work):
     scratch.run_git(work, "checkout", "-q", "main")
 
 
+def move_on(work, branch, source, destination, message):
+    scratch.run_git(work, "checkout", "-q", branch)
+    scratch.run_git(work, "mv", source, destination)
+    scratch.run_git(work, "commit", "-q", "-m", message)
+    scratch.run_git(work, "push", "-q", "origin", branch)
+    scratch.run_git(work, "checkout", "-q", "main")
+
+
+def pin_submodule_on(work, branch, commit, message):
+    scratch.run_git(work, "checkout", "-q", branch)
+    scratch.run_git(work, "update-index", "--add", "--cacheinfo", "160000,{},a/mod".format(commit))
+    scratch.run_git(work, "commit", "-q", "-m", message)
+    scratch.run_git(work, "push", "-q", "origin", branch)
+    scratch.run_git(work, "checkout", "-q", "main")
+
+
 def results_folder(test):
     return os.path.join(scratch.make_home(test), "results")
 
@@ -255,6 +271,31 @@ class RetestTest(unittest.TestCase):
         plan, _ = planned(self, work, previous, profile_file(self, surface_a_paths=("./a/",)))
         self.assertEqual(plan["surfaces"], ["A"])
 
+
+    def test_file_moved_out_of_surface_touches_it(self):
+        work = project(self)
+        paths = [path_entry("open a", "A", "passed"), path_entry("open b", "B", "passed")]
+        previous = previous_folder(self, work, paths)
+        move_on(work, "feat/x", "a/x.txt", "c/x.txt", "move a file out of surface A")
+        plan, _ = planned(self, work, previous, profile_file(self))
+        self.assertFalse(plan["full"])
+        self.assertEqual(plan["changed"], ["a/x.txt", "c/x.txt"])
+        self.assertEqual(plan["surfaces"], ["A"])
+        self.assertEqual(plan["carried"], ["open b"])
+
+    def test_ignored_submodule_change_touches_its_surface(self):
+        work = project(self)
+        ignored = '[submodule "a/mod"]\n\tpath = a/mod\n\turl = ./mod\n\tignore = all\n'
+        commit_on(work, "main", {".gitmodules": ignored}, "ignore the submodule")
+        pin_submodule_on(work, "feat/x", scratch.run_git(work, "rev-parse", "main~1").strip(), "pin the submodule")
+        paths = [path_entry("open a", "A", "passed"), path_entry("open b", "B", "passed")]
+        previous = previous_folder(self, work, paths)
+        pin_submodule_on(work, "feat/x", scratch.run_git(work, "rev-parse", "main").strip(), "move the submodule")
+        plan, _ = planned(self, work, previous, profile_file(self))
+        self.assertFalse(plan["full"])
+        self.assertEqual(plan["changed"], ["a/mod"])
+        self.assertEqual(plan["surfaces"], ["A"])
+        self.assertEqual(plan["carried"], ["open b"])
 
 if __name__ == "__main__":
     unittest.main()

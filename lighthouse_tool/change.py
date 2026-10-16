@@ -69,7 +69,10 @@ def commit_record(record: str) -> Dict[str, str]:
 
 
 def changed_files(root: str, core_commit: str, feature_commit: str) -> List[str]:
-    names = checked_git(root, ["diff", "--name-only", "-z", "{}...{}".format(core_commit, feature_commit)])
+    names = checked_git(
+        root,
+        ["diff", "--name-only", "-z", "--no-renames", "--ignore-submodules=none", "{}...{}".format(core_commit, feature_commit)],
+    )
     return sorted(name for name in names.split("\0") if name)
 
 
