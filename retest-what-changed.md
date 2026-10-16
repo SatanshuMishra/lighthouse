@@ -1,7 +1,7 @@
 # retest-what-changed: S4: lighthouse retests only what changed since the previous results
 Status: active
-Updated: 2026-10-16T21:08:49.431Z
-Next ids: c4 D2 R1 S1
+Updated: 2026-10-16T21:10:55.643Z
+Next ids: c4 D2 R3 S1
 
 ## Goal
 
@@ -19,15 +19,16 @@ Not started.
 
 ## Next step
 
-Write the run home ~/.mitosis/lighthouse/retest-what-changed/ (CHARTER.md, worker-rules.txt, dispatch.zsh, run.zsh with --feature-branch feat/retest-what-changed), copy items.json and graph.json, and run run.zsh --plan-only.
-
-Needs: D1.
+Wait for the mitosis build (~/.mitosis/lighthouse/retest-what-changed/build-1.log), then read its last JSON line and start review round 1 on MSP retest.
 
 ## Decisions in force
 
 - D1 Interphase hand-off: build S4 from the handed-off retest-what-changed spec: Build the spec as one MSP on a feat FEATURE branch with the installed mitosis 0.5.0 and lighthouse 0.1.0; fill later gaps from I1-I4 as recorded assumptions.
 
 ## Open risks
+
+- R1 Items copy in the run home tags every Step with msp retest so the four Steps ship as one MSP, as the decisions file requires; the spec's own items file would split into four MSPs. Bears on c1.
+- R2 GLOSSARY.md holds the uncommitted terms Previous results and Carried path in the owner's checkout; Workers build from the committed state and the terms ship in a separate glossary commit at Ship. Bears on c1.
 
 ## Settled, do not reopen
 
