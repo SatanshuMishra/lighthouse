@@ -1,6 +1,6 @@
 # retest-what-changed: S4: lighthouse retests only what changed since the previous results
 Status: active
-Updated: 2026-10-16T22:19:39.571Z
+Updated: 2026-10-16T22:19:40.652Z
 Next ids: c4 D4 R4 S1
 
 ## Goal
@@ -19,9 +19,9 @@ MSP retest lives on mitosis/retest (base feat/retest-what-changed at 2e00295) in
 
 ## Next step
 
-When the round-2 validator returns, save its array as review/round-2/retest.verdicts.json, run pipeline record and verdict, and fix any advisory it confirms before ship.
+Run SHIP=1 ~/.mitosis/lighthouse/retest-what-changed/run.zsh --resume, then open the MSP pull request with create_pull_request using mitosis's title and body, assign it to the owner and post review/retest.comment.md.
 
-Needs: D2, R1.
+Needs: D3, R3.
 
 ## Decisions in force
 
