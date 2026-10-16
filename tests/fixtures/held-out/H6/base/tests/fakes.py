@@ -1,8 +1,8 @@
-class FakeLink:
+class RecordingPrinter:
     def __init__(self, reply="OK"):
         self.reply = reply
-        self.sent = []
+        self.received = []
 
-    def send(self, command):
-        self.sent.append(command)
+    def transmit(self, command):
+        self.received = self.received + [command]
         return self.reply

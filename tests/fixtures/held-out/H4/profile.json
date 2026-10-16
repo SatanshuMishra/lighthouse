@@ -1,13 +1,13 @@
 {
   "version": 1,
-  "sources": ["pyproject.toml", "scripts/run_tests.sh"],
-  "suite": {"command": "sh scripts/run_tests.sh", "junit": null, "timeout_minutes": null},
+  "sources": ["pyproject.toml", "scripts/check.sh"],
+  "suite": {"command": "sh scripts/check.sh", "junit": null, "timeout_minutes": null},
   "surfaces": [
     {
-      "name": "pricing library",
+      "name": "template library",
       "kind": "library",
-      "paths": ["tillkit/pricing.py", "tillkit/receipt.py"],
-      "driver": "the Python interpreter, importing tillkit from the repository root",
+      "paths": ["quillmark/parser.py", "quillmark/render.py"],
+      "driver": "the Python interpreter, importing quillmark from the repository root",
       "available": true,
       "sign_in": {"method": "none", "command": null},
       "credentials": [],

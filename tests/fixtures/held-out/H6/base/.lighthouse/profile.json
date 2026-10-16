@@ -4,20 +4,20 @@
   "suite": {"command": "python3 -m unittest discover -s tests", "junit": null, "timeout_minutes": null},
   "surfaces": [
     {
-      "name": "heating programme planner",
+      "name": "label layout preview",
       "kind": "command line",
-      "paths": ["hearthctl/schedule.py", "hearthctl/cli.py"],
-      "driver": "the shell, running python3 -m hearthctl plan from the repository root",
+      "paths": ["inkstrip/layout.py", "inkstrip/cli.py"],
+      "driver": "the shell, running python3 -m inkstrip preview from the repository root",
       "available": true,
       "sign_in": {"method": "none", "command": null},
       "credentials": [],
       "trials": 1
     },
     {
-      "name": "thermostat",
+      "name": "label printer",
       "kind": "device",
-      "paths": ["hearthctl/device.py"],
-      "driver": "the physical thermostat on the USB serial port HEARTH_PORT names, driven through python3 -m hearthctl",
+      "paths": ["inkstrip/printer.py"],
+      "driver": "the physical thermal label printer on the USB serial port INKSTRIP_PORT names, driven through python3 -m inkstrip",
       "available": false,
       "sign_in": {"method": "none", "command": null},
       "credentials": [],
@@ -26,5 +26,5 @@
   ],
   "credentials": {"file": null, "names": {}},
   "facts": {},
-  "off_limits": ["sending any command to a real thermostat"]
+  "off_limits": ["sending any command to a real label printer"]
 }

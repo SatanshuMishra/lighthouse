@@ -1,19 +1,24 @@
-# hearthctl
+# inkstrip
 
-hearthctl controls a home thermostat connected to this computer over USB serial, and plans its daily heating programme.
+inkstrip prints address and parcel labels on a thermal label printer connected to this computer over USB serial, and previews how a label will be laid out.
 
 ## Use
 
-    python3 -m hearthctl status
-    python3 -m hearthctl set 21.5
-    python3 -m hearthctl plan 06:30=20 22:00=16 08:00=18
+    python3 -m inkstrip preview "Mira Okafor" "12 Quay Street"
+    python3 -m inkstrip print "Mira Okafor" "12 Quay Street"
+    python3 -m inkstrip feed
+    python3 -m inkstrip status
 
-`status` prints the room temperature the thermostat reads and `set` changes its target; both need the thermostat plugged in. hearthctl talks to the serial port the `HEARTH_PORT` environment variable names, by default `/dev/cu.usbmodem-hearth`, and exits 3 when no thermostat is there. `plan` needs no thermostat: it prints the programme's slots in time order.
+Each argument is one row of the label. A row longer than 24 characters wraps onto the next line, and a label holds at most 4 lines.
 
-The thermostat answers one text command per line: `TEMP?`, `SET <celsius>` and `BOOST <seconds>`.
+`preview` needs no printer: it prints the label's lines inside a frame the size of the label. `print` prints the label onto the blank label under the print head, `feed` advances the strip by one label (28 mm, a 25 mm label and the 3 mm gap after it), and `status` prints what the printer reports. These three need the printer plugged in.
+
+inkstrip talks to the serial port the `INKSTRIP_PORT` environment variable names, by default `/dev/cu.usbserial-inkstrip`. It exits 3 when no printer is there and 2 when a label does not fit.
+
+The printer answers one text command per line: `STATUS?`, `TEXT <line>` to add a line to the label it is building, `PRINT` to print those lines onto the label under the head, and `FEED <mm>` to advance the strip.
 
 ## Tests
 
-The tests replace the serial link with a fake one, so they run without a thermostat. Run them from the repository root with:
+The tests replace the serial link with a fake one, so they run without a printer. Run them from the repository root with:
 
     python3 -m unittest discover -s tests

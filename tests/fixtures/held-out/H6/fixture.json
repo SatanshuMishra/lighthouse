@@ -1,20 +1,20 @@
 {
   "kind": "a new behaviour that runs only on a physical device",
-  "feature": "feature/boost",
+  "feature": "feature/label-sheets",
   "suite": "python3 -m unittest discover -s tests",
   "changes": ["change-1", "change-2"],
   "clean": {"change-2": "clean"},
   "pull_requests": [
     {
-      "title": "feat(boost): add a boost command that heats at full power for a while",
-      "body": "hearthctl boost tells the thermostat to heat at full power for 30 minutes and then return to its programme. The thermostat takes BOOST <seconds>. It needs the thermostat connected over USB."
+      "title": "feat(print): feed each printed label out to the tear bar",
+      "body": "inkstrip print left the printed label under the print head, so people ran inkstrip feed after every label to tear it off, and a forgotten feed printed the next label over the last one. print_label now advances the strip by one label after PRINT, so the printed label reaches the tear bar and the next blank label sits under the head. inkstrip feed still advances the strip by hand. It needs the label printer connected over USB."
     },
     {
-      "title": "feat(boost): let boost take --minutes",
-      "body": "hearthctl boost --minutes N boosts for N minutes instead of the default 30."
+      "title": "feat(sheet): print a file of labels in one run",
+      "body": "Shipping days meant printing dozens of address labels one inkstrip print at a time. inkstrip sheet FILE reads labels separated by blank lines, lays each out as print does, and prints them one after another on the label printer, feeding the strip on by one label after each so every address lands on its own label. Every label is laid out before anything is sent, so a label that does not fit stops the run before the first one prints. It needs the label printer connected over USB."
     }
   ],
-  "markers": ["boost"],
-  "surfaces": ["hearthctl"],
+  "markers": ["sheet", "label printer"],
+  "surfaces": ["inkstrip"],
   "expect": {"broken": "not-green", "clean": "not-green"}
 }

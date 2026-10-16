@@ -1,20 +1,20 @@
 {
   "kind": "locally served web page",
-  "feature": "feature/pantry-quick-picks",
-  "suite": "python3 -m unittest discover -s tests",
+  "feature": "feature/steepwell-dark-theme",
+  "suite": "python3 -m unittest discover -s tests -t .",
   "changes": ["change-1", "change-2"],
   "clean": {"change-2": "clean"},
   "pull_requests": [
     {
-      "title": "refactor(page): rename the add button's id to pantry-submit",
-      "body": "The add button's element id now matches the form's naming. list.js, which owns the button, looks it up under the new id."
+      "title": "feat(server): send security headers with every response",
+      "body": "serve.py now sends Content-Security-Policy, X-Content-Type-Options and Referrer-Policy on every response, error pages included. The policy keeps the page to its own origin, so it only loads scripts, styles and images from its own files and no other site can frame it. Steepwell already loads everything from public/, so the timer works exactly as before."
     },
     {
-      "title": "feat(page): add quick-pick buttons for common items",
-      "body": "A row of quick-pick buttons (Milk, Eggs, Bread, Rice) sits under the item field. Clicking one adds that item to the list in one click, exactly as typing it and pressing Add does, and the count updates."
+      "title": "feat(page): add a dark theme toggle that remembers the choice",
+      "body": "A Dark theme button in the header switches Steepwell between its light and dark palettes. The choice is saved in localStorage, so the page opens in the same theme next time, and the theme script runs in the page head so a saved dark theme applies before the first paint, with no flash of the light page."
     }
   ],
-  "markers": ["quick pick", "quick-pick", "pantry-add"],
-  "surfaces": ["site"],
+  "markers": ["content-security-policy", "csp", "inline script", "dark theme", "theme toggle"],
+  "surfaces": ["public", "serve.py"],
   "expect": {"broken": "failures", "clean": "green"}
 }

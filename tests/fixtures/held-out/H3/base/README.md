@@ -1,24 +1,25 @@
-# shelfapi
+# kilnroom
 
-shelfapi is the HTTP JSON API behind a small lending library's catalogue and loans desk. It uses only the Python standard library.
+kilnroom is the HTTP JSON API behind a shared pottery studio's firing queue. Members put the pieces they want fired in the queue, and the kiln-room display and the technicians' scripts read it. It uses only the Python standard library.
 
 ## Use
 
 Start the server, by default on port 8080:
 
-    python3 -m shelfapi --port 8080
+    python3 -m kilnroom --port 8080
 
-Endpoints, each answering GET with a JSON object:
+Endpoints, each answering with a JSON object:
 
-- `/books`: `{"books": [{"id", "title", "author", "added"}]}`, where `added` is the day the book joined the catalogue.
-- `/loans`: `{"loans": [{"id", "book", "member", "due"}]}`, where `due` is the day the book must come back.
+- `GET /pieces`: `{"pieces": [{"id", "maker", "title", "glaze"}]}`, the queue in the order pieces joined it.
+- `GET /pieces/{id}`: the piece with that id, or 404.
+- `POST /pieces` with `{"maker", "title", "glaze"}`: queues a new piece and answers 201 with it. `maker` and `title` are required; `glaze` defaults to `"none"`.
 
-Every day in a response is an ISO 8601 date such as `2024-03-05`. The loans desk and the members' app both read these fields.
+Any other method or path answers 404 with `{"error": "not found"}`, and a body that is not a JSON object answers 400.
 
-Any other path answers 404 with `{"error": "not found"}`.
+The queue lives in memory and starts with a few sample pieces, so every start of the server begins from the same queue.
 
 ## Tests
 
-The tests start the server on a free port and check each endpoint's status code and keys. Run them from the repository root with:
+The tests start the server on a free port and use each endpoint over HTTP. Run them from the repository root with:
 
-    python3 -m unittest discover -s tests
+    python3 -m unittest discover -s tests -t .

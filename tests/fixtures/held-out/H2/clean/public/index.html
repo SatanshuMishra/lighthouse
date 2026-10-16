@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Steepwell</title>
+<link rel="stylesheet" href="css/steepwell.css">
+<script src="js/theme.js"></script>
+</head>
+<body>
+<header class="masthead">
+<h1>Steepwell</h1>
+<button type="button" id="theme-toggle" class="theme-toggle" aria-pressed="false">Dark theme</button>
+</header>
+<main>
+<section class="steep-timer" aria-labelledby="steep-heading">
+<h2 id="steep-heading">Steeping timer</h2>
+<label for="tea-choice">Tea</label>
+<select id="tea-choice">
+<option value="120">Green, 2 minutes</option>
+<option value="240" selected>Black, 4 minutes</option>
+<option value="300">Oolong, 5 minutes</option>
+<option value="360">Herbal, 6 minutes</option>
+</select>
+<button type="button" id="steep-start">Start</button>
+<p id="steep-clock" aria-live="polite">4:00</p>
+</section>
+</main>
+<script type="module" src="js/timer.js"></script>
+</body>
+</html>
