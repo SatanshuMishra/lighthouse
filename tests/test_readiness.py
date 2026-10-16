@@ -98,12 +98,20 @@ class ReadinessTest(unittest.TestCase):
         work, home, env = setting(self, scratch.sample_profile())
 
         code, _, stderr = scratch.run_lighthouse(
-            ["answer", "--repo", work, "--set", "python_version=3.10", "--set", "port=8080"], env
+            [
+                "answer", "--repo", work,
+                "--set", "python_version=3.10",
+                "--set", "port=8080",
+                "--set", 'browsers=["chromium","firefox"]',
+            ],
+            env,
         )
 
         self.assertEqual(code, 0, stderr)
         with open(os.path.join(state_folder(home, work), "answers.json"), encoding="utf-8") as handle:
-            self.assertEqual(json.load(handle), {"python_version": "3.10", "port": 8080})
+            self.assertEqual(
+                json.load(handle), {"python_version": "3.10", "port": 8080, "browsers": ["chromium", "firefox"]}
+            )
 
 if __name__ == "__main__":
     unittest.main()
