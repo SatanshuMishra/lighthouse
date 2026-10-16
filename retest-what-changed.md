@@ -1,6 +1,6 @@
 # retest-what-changed: S4: lighthouse retests only what changed since the previous results
 Status: parked
-Updated: 2026-10-16T23:50:54.898Z
+Updated: 2026-10-16T23:51:00.599Z
 Next ids: c6 D5 R4 S1
 
 ## Goal
@@ -13,7 +13,7 @@ Build the handed-off spec docs/specs/retest-what-changed.md through the pipeline
 - [x] c2 Every confirmed blocker is fixed with a receipt test, or the pull request is a draft naming the blocker at the top because a diagnosis classed it blocked by a named constraint evidence: Round-1 blockers C1, C2, C3, S2, S3 were each diagnosed fixable by a fresh Opus agent and fixed with receipt tests that failed first; round 2 validator marked P1-P5 fixed and pipeline verdict printed green with no blocker
 - [x] c3 The thread is parked with the next step saying the owner starts Integration by saying the MSP pull request merged evidence: park_thread set Status parked with the next step saying the owner starts Integration by saying the MSP pull request https://github.com/SatanshuMishra/lighthouse/pull/7 merged
 
-- [ ] c4 lighthouse:test has run on feat/retest-what-changed against main and opened the FEATURE pull request, with every failure diagnosed and fixed or diagnosed blocked, and the live end-to-end surface reported unproven
+- [x] c4 lighthouse:test has run on feat/retest-what-changed against main and opened the FEATURE pull request, with every failure diagnosed and fixed or diagnosed blocked, and the live end-to-end surface reported unproven evidence: lighthouse verdict printed green with no failures, so no fix round ran; the four Claude Code skill paths are listed unproven because they need live claude -p sessions behind LIGHTHOUSE_E2E=1; FEATURE pull request https://github.com/SatanshuMishra/lighthouse/pull/8 is open from feat/retest-what-changed into main, ready for review and assigned to SatanshuMishra
 - [ ] c5 The thread is parked with the next step saying the owner starts Clean-up by saying the FEATURE pull request merged
 ## Where things stand
 
@@ -33,7 +33,6 @@ Needs: R3.
 
 ## Open risks
 
-- R3 The C1 fix changes lighthouse_tool/change.py, which no MSP Step owns and the spec lists as Reused as is; the pull request must name it under risk and the assumption is in review/retest.assumptions.txt. Bears on c1.
 
 ## Settled, do not reopen
 
