@@ -1,6 +1,6 @@
 # retest-what-changed: S4: lighthouse retests only what changed since the previous results
 Status: parked
-Updated: 2026-10-16T23:51:10.022Z
+Updated: 2026-10-16T23:51:12.325Z
 Next ids: c6 D5 R4 S1
 
 ## Goal
@@ -43,3 +43,4 @@ Needs: R3.
 - Run dir: ~/.mitosis/runs/lighthouse/retest-what-changed
 - Review ledger: ~/.mitosis/lighthouse/findings.jsonl
 - Review round files and worker assumptions: ~/.mitosis/lighthouse/retest-what-changed/review/
+- Integration results, findings, evidence and probe scripts: ~/.mitosis/lighthouse/retest-what-changed/lighthouse/
