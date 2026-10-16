@@ -1,20 +1,20 @@
 {
   "kind": "Claude Code plugin with model output",
-  "feature": "feature/leaf-pests",
+  "feature": "feature/firing-log",
   "suite": "python3 -m unittest discover -s tests",
   "changes": ["change-1", "change-2"],
-  "clean": {"change-2": "clean"},
+  "clean": {"change-1": "clean"},
   "pull_requests": [
     {
-      "title": "feat(skills): add leaf-pest-check for identifying pests",
-      "body": "New skill: when someone describes spots, holes, sticky residue, webbing or small insects on their plant's leaves, leaf-pest-check names the likely pest and how to treat it. Its reply opens with 'Leaf pest check:'."
+      "title": "feat(schedule): fall back to a cone 6 default for glazes not in the table",
+      "body": "Potters often ask about a commercial glaze or a friend's recipe that the studio table does not list, and firing-schedule could only say it had nothing. When a glaze is not in the table, schedule.py now answers with the studio's cone 6 default schedule under the glaze's name and prints a line saying the default was used. firing-schedule tells the potter it is the default and to test fire a tile before a full load."
     },
     {
-      "title": "feat(skills): let houseplant-care answer light and soil questions",
-      "body": "People asking where to put a plant or which soil to use got no skill at all. houseplant-care's description now also covers light and soil, so those questions reach it."
+      "title": "feat(skills): add firing-log to record each kiln firing",
+      "body": "New skill: when a potter says they have loaded, started or finished a firing of a glaze, firing-log records it. schedule.py gains --json, which prints the glaze's schedule as one JSON object, and the skill pipes that into the new log_firing.py, which appends the firing to the log at KILNMATE_LOG (or ~/.kilnmate/firings.jsonl) and prints the firing's number. The reply opens with 'Firing logged:'."
     }
   ],
-  "markers": ["leaf-pest-check", "leaf pest check", "houseplant-care", "pest"],
-  "surfaces": ["skills/houseplant-care", "skills/seed-sowing"],
+  "markers": ["firing-log", "log_firing", "json", "not logged"],
+  "surfaces": ["skills/firing-schedule", "skills/glaze-faults", "scripts/schedule.py"],
   "expect": {"broken": "failures", "clean": "green"}
 }
