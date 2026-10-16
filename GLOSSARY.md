@@ -55,3 +55,10 @@ A held-out fixture whose planted bug a skill author was shown, so it no longer c
 
 **Probe**:
 A script kept beside a held-out fixture's folders, never committed into its builds, that fails on the broken FEATURE and passes on the clean twin, proving the planted bug is real.
+
+**Previous results**:
+The results folder of an earlier lighthouse:test run on the same FEATURE branch, holding its findings and the core and FEATURE commits it tested.
+
+**Carried path**:
+A product path that passed in the previous results on a surface no new commit touched, whose result and evidence are copied forward instead of driven again.
+
