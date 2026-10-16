@@ -1,6 +1,6 @@
 # retest-what-changed: S4: lighthouse retests only what changed since the previous results
 Status: parked
-Updated: 2026-10-16T23:51:16.275Z
+Updated: 2026-10-16T23:51:18.163Z
 Next ids: c6 D5 R4 S1
 
 ## Goal
@@ -21,9 +21,9 @@ FEATURE pull request https://github.com/SatanshuMishra/lighthouse/pull/8 (feat/r
 
 ## Next step
 
-Invoke lighthouse:test with --repo /Users/satanshumishra/Documents/DevLabs/lighthouse --core main --feature feat/retest-what-changed --spec the charter's spec --results ~/.mitosis/lighthouse/retest-what-changed/lighthouse, without LIGHTHOUSE_E2E.
+The owner starts Clean-up by saying the FEATURE pull request https://github.com/SatanshuMishra/lighthouse/pull/8 merged; then resume this thread, read ~/.mitosis/lighthouse/retest-what-changed/CHARTER.md, Sync, and run Clean-up as the pipeline run skill's Clean-up section says.
 
-Needs: R3.
+Needs: D4.
 
 ## Decisions in force
 
