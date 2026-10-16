@@ -5,11 +5,14 @@ import unittest
 from tests import scratch
 
 
-def lighthouse_verdict(test, findings):
+def lighthouse_verdict(test, findings, plan=None):
     results = scratch.temporary_folder(test, "lh-results-")
     os.makedirs(os.path.join(results, "evidence"))
     with open(os.path.join(results, "findings.json"), "w", encoding="utf-8") as handle:
         handle.write(json.dumps(findings, indent=2) + "\n")
+    if plan is not None:
+        with open(os.path.join(results, "retest.json"), "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(plan, indent=2) + "\n")
     env = scratch.environment(scratch.make_home(test))
     code, stdout, stderr = scratch.run_lighthouse(["verdict", "--results", results], env)
     return code, stdout, stderr, results
@@ -202,6 +205,84 @@ class VerdictTest(unittest.TestCase):
         line, report = verdict_line(self, stdout, results)
         self.assertEqual(line["verdict"], "blocked")
         self.assertIn("start: port never opened", report)
+
+    def test_missing_retest_path_is_unproven(self):
+        plan = {"full": False, "changed": ["src/importer.py"], "retest": ["import reads the csv back"], "surfaces": ["cli"], "carried": [], "carried_paths": []}
+        findings = {
+            "version": 1,
+            "suite": {"result": "passed", "reason": None, "failures": [], "pre_existing": [], "flaky": [], "core": None, "feature": None},
+            "build": {"result": "ok", "reason": None},
+            "paths": [
+                {"name": "export writes a csv", "kind": "new", "surface": "cli", "expected": "a csv with a header row", "evidence": ["evidence/export.txt"], "status": "passed", "retry": None, "core": None, "trials": None},
+                {"name": "gallery lists photos", "kind": "neighbour", "surface": "web page", "expected": "the same list on both builds", "evidence": ["evidence/gallery.png"], "status": "passed", "retry": None, "core": "passed", "trials": None},
+            ],
+            "spend": {"tokens": 6000, "minutes": 2},
+        }
+
+        code, stdout, stderr, results = lighthouse_verdict(self, findings, plan)
+
+        self.assertEqual(code, 0, stderr)
+        line, _ = verdict_line(self, stdout, results)
+        self.assertEqual(line["verdict"], "unproven")
+        self.assertEqual(line["unproven"], ["import reads the csv back"])
+
+    def test_retest_path_with_only_copied_evidence_is_unproven(self):
+        plan = {"full": False, "changed": ["src/importer.py"], "retest": ["import reads the csv back"], "surfaces": ["cli"], "carried": [], "carried_paths": []}
+        findings = {
+            "version": 1,
+            "suite": {"result": "passed", "reason": None, "failures": [], "pre_existing": [], "flaky": [], "core": None, "feature": None},
+            "build": {"result": "ok", "reason": None},
+            "paths": [
+                {"name": "export writes a csv", "kind": "new", "surface": "cli", "expected": "a csv with a header row", "evidence": ["evidence/export.txt"], "status": "passed", "retry": None, "core": None, "trials": None},
+                {"name": "import reads the csv back", "kind": "new", "surface": "cli", "expected": "the same rows", "evidence": ["previous/evidence/import.txt"], "status": "passed", "retry": None, "core": None, "trials": None},
+            ],
+            "spend": {"tokens": 6000, "minutes": 2},
+        }
+
+        code, stdout, stderr, results = lighthouse_verdict(self, findings, plan)
+
+        self.assertEqual(code, 0, stderr)
+        line, _ = verdict_line(self, stdout, results)
+        self.assertEqual(line["verdict"], "unproven")
+        self.assertEqual(line["unproven"], ["import reads the csv back"])
+
+    def test_retest_path_driven_again_counts(self):
+        plan = {"full": False, "changed": ["src/importer.py"], "retest": ["import reads the csv back"], "surfaces": ["cli"], "carried": [], "carried_paths": []}
+        findings = {
+            "version": 1,
+            "suite": {"result": "passed", "reason": None, "failures": [], "pre_existing": [], "flaky": [], "core": None, "feature": None},
+            "build": {"result": "ok", "reason": None},
+            "paths": [
+                {"name": "export writes a csv", "kind": "new", "surface": "cli", "expected": "a csv with a header row", "evidence": ["evidence/export.txt"], "status": "passed", "retry": None, "core": None, "trials": None},
+                {"name": "import reads the csv back", "kind": "new", "surface": "cli", "expected": "the same rows", "evidence": ["evidence/import.txt"], "status": "passed", "retry": None, "core": None, "trials": None},
+            ],
+            "spend": {"tokens": 6000, "minutes": 2},
+        }
+
+        code, stdout, stderr, results = lighthouse_verdict(self, findings, plan)
+
+        self.assertEqual(code, 0, stderr)
+        line, _ = verdict_line(self, stdout, results)
+        self.assertEqual(line["verdict"], "green")
+
+    def test_no_plan_judges_as_before(self):
+        findings = {
+            "version": 1,
+            "suite": {"result": "passed", "reason": None, "failures": [], "pre_existing": [], "flaky": [], "core": None, "feature": None},
+            "build": {"result": "ok", "reason": None},
+            "paths": [
+                {"name": "export writes a csv", "kind": "new", "surface": "cli", "expected": "a csv with a header row", "evidence": ["evidence/export.txt"], "status": "passed", "retry": None, "core": None, "trials": None},
+                {"name": "import reads the csv back", "kind": "new", "surface": "cli", "expected": "the same rows", "evidence": ["evidence/import.txt"], "status": "passed", "retry": None, "core": None, "trials": None},
+            ],
+            "spend": {"tokens": 6000, "minutes": 2},
+        }
+
+        code, stdout, stderr, results = lighthouse_verdict(self, findings)
+
+        self.assertEqual(code, 0, stderr)
+        self.assertFalse(os.path.exists(os.path.join(results, "retest.json")))
+        line, _ = verdict_line(self, stdout, results)
+        self.assertEqual(line["verdict"], "green")
 
 
 if __name__ == "__main__":
