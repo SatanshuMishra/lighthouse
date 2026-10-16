@@ -1,6 +1,6 @@
 # retest-what-changed: S4: lighthouse retests only what changed since the previous results
-Status: active
-Updated: 2026-10-16T22:21:11.112Z
+Status: parked
+Updated: 2026-10-16T22:21:15.826Z
 Next ids: c4 D4 R4 S1
 
 ## Goal
@@ -19,7 +19,7 @@ Pull request https://github.com/SatanshuMishra/lighthouse/pull/7 (mitosis/retest
 
 ## Next step
 
-Open the MSP pull request from mitosis/retest (5f80f5f, pushed) into feat/retest-what-changed with create_pull_request using review/retest.title.txt and review/retest.body.md unchanged, assign it to the owner and post review/retest.comment.md.
+The owner starts Integration by saying the MSP pull request https://github.com/SatanshuMishra/lighthouse/pull/7 merged; then resume this thread, read ~/.mitosis/lighthouse/retest-what-changed/CHARTER.md, Sync, run pipeline integration-ready --repo /Users/satanshumishra/Documents/DevLabs/lighthouse --slug retest-what-changed and invoke lighthouse:test as the pipeline run skill's Integration section says.
 
 Needs: D3, R3.
 
