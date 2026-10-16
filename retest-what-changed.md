@@ -1,6 +1,6 @@
 # retest-what-changed: S4: lighthouse retests only what changed since the previous results
 Status: active
-Updated: 2026-10-16T22:19:40.652Z
+Updated: 2026-10-16T22:19:55.638Z
 Next ids: c4 D4 R4 S1
 
 ## Goal
@@ -15,7 +15,7 @@ Build the handed-off spec docs/specs/retest-what-changed.md through the pipeline
 
 ## Where things stand
 
-MSP retest lives on mitosis/retest (base feat/retest-what-changed at 2e00295) in worktree ~/.mitosis/runs/lighthouse/retest-what-changed/trees/retest, head 159c369. Round 1 (head dfa32cb) was loop; all three blocker classes were diagnosed fixable and every round-1 blocker and advisory (C1, C2, C3, S2, S3, C4, C5, S4) is fixed there with receipt tests that failed first. Round 2 at head 159c369: the full suite passes (128 tests on 3.14 and 3.9) code-reviewer found one LOW smell (C1, duplicated containment check in retest.py) and no new defect; security-reviewer found one LOW (S1, any existing results-folder file counts as fresh evidence). The validator is judging 5 carried blockers (P1-P5) and the two LOW advisories.
+MSP retest lives on mitosis/retest (base feat/retest-what-changed at 2e00295) in worktree ~/.mitosis/runs/lighthouse/retest-what-changed/trees/retest, head 5f80f5f. Review round 2 is green: P1-P5 fixed, advisory C1 fixed, S1 rejected at the bar. The glossary terms are committed on the branch and review/retest.comment.md holds the review notes. The SHIP=1 resume run is in progress (log ship.log in the run home).
 
 ## Next step
 
