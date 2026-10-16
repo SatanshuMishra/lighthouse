@@ -1,6 +1,6 @@
 # retest-what-changed: S4: lighthouse retests only what changed since the previous results
 Status: active
-Updated: 2026-10-16T22:20:26.234Z
+Updated: 2026-10-16T22:20:58.229Z
 Next ids: c4 D4 R4 S1
 
 ## Goal
@@ -9,8 +9,8 @@ Build the handed-off spec docs/specs/retest-what-changed.md through the pipeline
 
 ## Done when
 
-- [ ] c1 The MSP pull request is open into the FEATURE branch, ready for review and assigned to the owner, with the glossary terms Previous results and Carried path shipped in it
-- [ ] c2 Every confirmed blocker is fixed with a receipt test, or the pull request is a draft naming the blocker at the top because a diagnosis classed it blocked by a named constraint
+- [x] c1 The MSP pull request is open into the FEATURE branch, ready for review and assigned to the owner, with the glossary terms Previous results and Carried path shipped in it evidence: https://github.com/SatanshuMishra/lighthouse/pull/7 is open from mitosis/retest into feat/retest-what-changed, ready for review, assigned to SatanshuMishra, with commit 5f80f5f adding the Previous results and Carried path glossary terms and the review notes comment posted
+- [x] c2 Every confirmed blocker is fixed with a receipt test, or the pull request is a draft naming the blocker at the top because a diagnosis classed it blocked by a named constraint evidence: Round-1 blockers C1, C2, C3, S2, S3 were each diagnosed fixable by a fresh Opus agent and fixed with receipt tests that failed first; round 2 validator marked P1-P5 fixed and pipeline verdict printed green with no blocker
 - [ ] c3 The thread is parked with the next step saying the owner starts Integration by saying the MSP pull request merged
 
 ## Where things stand
