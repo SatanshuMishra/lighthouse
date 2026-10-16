@@ -1,6 +1,6 @@
 # retest-what-changed: S4: lighthouse retests only what changed since the previous results
 Status: active
-Updated: 2026-10-16T22:08:13.740Z
+Updated: 2026-10-16T22:13:05.595Z
 Next ids: c4 D3 R4 S1
 
 ## Goal
@@ -15,11 +15,11 @@ Build the handed-off spec docs/specs/retest-what-changed.md through the pipeline
 
 ## Where things stand
 
-MSP retest lives on mitosis/retest (base feat/retest-what-changed at 2e00295) in worktree ~/.mitosis/runs/lighthouse/retest-what-changed/trees/retest, head 159c369. Round 1 (head dfa32cb) was loop; all three blocker classes were diagnosed fixable and every round-1 blocker and advisory (C1, C2, C3, S2, S3, C4, C5, S4) is fixed there with receipt tests that failed first. Round 2 is starting.
+MSP retest lives on mitosis/retest (base feat/retest-what-changed at 2e00295) in worktree ~/.mitosis/runs/lighthouse/retest-what-changed/trees/retest, head 159c369. Round 1 (head dfa32cb) was loop; all three blocker classes were diagnosed fixable and every round-1 blocker and advisory (C1, C2, C3, S2, S3, C4, C5, S4) is fixed there with receipt tests that failed first. Round 2 at head 159c369: the full suite passes (128 tests on 3.14 and 3.9) and code-reviewer and security-reviewer are reviewing the fix commits from dfa32cb.
 
 ## Next step
 
-Run review round 2 on MSP retest at head 159c369 with previous_head dfa32cb: diff, full suite, code-reviewer and security-reviewer on the fix commits, then candidates, validator, record and verdict.
+When both round-2 reviewers return, collect their arrays into review/round-2/retest.findings.json, then run candidates, the validator, record and verdict.
 
 Needs: D2, R1.
 
