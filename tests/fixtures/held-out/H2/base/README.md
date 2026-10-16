@@ -1,17 +1,17 @@
-# Pantry list
+# Steepwell
 
-A single web page for jotting down what the pantry needs. Type an item and press Add, or Enter, and it joins the list; the count under the list keeps track. It is plain HTML and JavaScript with no build step.
+A single web page that times a cup of tea. Pick the tea, press Start, and the clock counts down to Ready; press Stop to cancel. It is plain HTML, CSS and JavaScript with no build step.
 
 ## Use
 
-Serve the page and open it in a browser:
+Start the page's own server from the repository root:
 
-    python3 -m http.server 8000 --directory site
+    python3 serve.py
 
-then visit http://localhost:8000/.
+then open http://127.0.0.1:8000/ in a browser. Pass `--port N` to use another port, or `--port 0` for any free one; the server prints the address it listens on.
 
 ## Tests
 
-The tests start a local server and check every file under site/ is served. Run them from the repository root with:
+The tests start the server on a free port and check that it serves every file under public/. Run them from the repository root with:
 
-    python3 -m unittest discover -s tests
+    python3 -m unittest discover -s tests -t .
