@@ -1,6 +1,6 @@
 # retest-what-changed: S4: lighthouse retests only what changed since the previous results
 Status: active
-Updated: 2026-10-16T21:11:23.868Z
+Updated: 2026-10-16T21:11:26.985Z
 Next ids: c4 D3 R3 S1
 
 ## Goal
@@ -19,7 +19,9 @@ Not started.
 
 ## Next step
 
-Wait for the mitosis build (~/.mitosis/lighthouse/retest-what-changed/build-1.log), then read its last JSON line and start review round 1 on MSP retest.
+Run the first build with ~/.mitosis/lighthouse/retest-what-changed/run.zsh, logging to build-1.log, then read its last JSON line and start review round 1 on MSP retest.
+
+Needs: D2, R1.
 
 ## Decisions in force
 
