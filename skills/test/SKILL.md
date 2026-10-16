@@ -20,8 +20,8 @@ Run the lighthouse command as `lighthouse` when it is on PATH, otherwise as `${C
 
 ## Steps
 
-1. Note the start time as UTC ISO-8601, the current directory as the start directory, and the untracked paths of the checkout at `--repo` from `git -C <repo> status --porcelain --untracked-files=all`. When `--results` is inside that checkout, stop and say the results folder must be outside it, before writing anything.
-2. Run `lighthouse worktrees --repo <repo> --core <core> --feature <feature> --results <results>`. It checks out both tips at `<results>/core` and `<results>/feature`.
+1. Note the start time as UTC ISO-8601, the current directory as the start directory, and the untracked paths of the checkout at `--repo` from `git -C <repo> status --porcelain --untracked-files=all`. When `--results` is inside that checkout, stop before writing anything, as Stopping early says, with the reason that the results folder must be outside the checkout.
+2. Run `lighthouse worktrees --repo <repo> --core <core> --feature <feature> --results <results>`. It checks out both tips at `<results>/core` and `<results>/feature`, and refuses with exit 2 a results folder inside the repository; on any refusal, stop as Stopping early says, with its reason.
 3. Run `lighthouse profile check --repo <results>/feature`.
    - When a problem has kind `missing`, invoke lighthouse:init `--unattended --repo <results>/feature`. On any other problem, invoke lighthouse:doctor `--unattended --repo <results>/feature`. Then run the check again.
    - When it still fails, record the suite as `{"result": "blocked", "reason": "profile: <problems>", "failures": [], "pre_existing": [], "flaky": [], "core": null, "feature": null}`, the build as `{"result": "blocked", "reason": "profile"}` and no paths, and go to step 8.
@@ -59,6 +59,10 @@ Run the lighthouse command as `lighthouse` when it is on PATH, otherwise as `${C
 11. Run `lighthouse release --repo <repo> --results <results>`. Then compare the checkout's untracked paths with those noted in step 1, and name every path that appeared during the run in the reply as a change to the checkout. Move, delete or edit nothing in the checkout: a new path may be the person's own work.
 12. When publish exited non-zero in step 3, say in one line that the profile was not published and why. Print the verdict line from `<results>/verdict.json`, with `pr` set to the pull request's URL or null, as the last line of the reply, one JSON object on one line:
     `{"verdict": "green", "failures": [], "unproven": [], "flaky": [], "tokens": 0, "minutes": 0, "pr": null}`
+
+## Stopping early
+
+Every stop before step 9 ends the same way: say the reason in one line, run `lighthouse verdict --blocked '<that reason>'`, and print its line, `{"verdict": "blocked", "failures": [], "unproven": [], "flaky": [], "tokens": 0, "minutes": 0, "pr": null}`, as the last line of the reply. It needs no results folder and writes no file, so the reply still ends in the verdict line a caller reads.
 
 ## Cost
 

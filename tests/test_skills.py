@@ -2,7 +2,7 @@ import os
 import re
 import unittest
 
-from tests import scratch
+from tests import e2e_harness, scratch
 
 SKILLS = ("init", "doctor", "test")
 
@@ -42,6 +42,20 @@ class SkillsTest(unittest.TestCase):
             self.assertIn("lighthouse " + subcommand, text)
         for key in ["verdict", "failures", "unproven", "flaky", "tokens", "minutes", "pr"]:
             self.assertIn('"{}":'.format(key), text)
+
+    def test_a_stop_before_the_verdict_still_ends_in_the_verdict_line(self):
+        text = scratch.skill_text("test")
+        self.assertIn("Every stop before step 9", text)
+        self.assertIn("lighthouse verdict --blocked", text)
+        reason = "the results folder must be outside the checkout"
+        env = scratch.environment(scratch.make_home(self))
+        code, stdout, stderr = scratch.run_lighthouse(["verdict", "--blocked", reason], env)
+        self.assertEqual(code, 0, stderr)
+        line = e2e_harness.last_json_line("{}\n{}".format(reason, stdout))
+        self.assertEqual(
+            line,
+            {"verdict": "blocked", "failures": [], "unproven": [], "flaky": [], "tokens": 0, "minutes": 0, "pr": None},
+        )
 
 
 if __name__ == "__main__":

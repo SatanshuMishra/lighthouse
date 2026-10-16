@@ -87,9 +87,11 @@ The last line lighthouse:test prints is one JSON object on one line, the contrac
 | `worktrees` | `--repo`, `--core`, `--feature`, `--results` |
 | `suite` | `--repo`, `--core`, `--feature`, `--results`, `--profile` |
 | `release` | `--repo`, `--results` |
-| `verdict` | `--results` |
+| `verdict` | `--results`, or `--blocked <reason>` to print a blocked verdict line for a run that stopped early, with no results folder |
 | `pr` | `--repo`, `--core`, `--feature`, `--results`, `--summary`, `--type`, `--scope`, `--why`, `--final` |
 | `spend` | `--since <ISO time>`, `--from <dir>`, `--transcripts <dir>` |
+
+After each setup, build and suite step, `lighthouse suite` kills the step's process group, so a server one build's step started cannot answer the other build's suite. A process that leaves that group, such as a daemon that calls `setsid`, is not stopped.
 
 ## What lighthouse never does
 
