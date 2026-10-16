@@ -6,15 +6,17 @@ import shlex
 import stat
 import subprocess
 import urllib.parse
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from lighthouse_tool import repo as repository
 from lighthouse_tool.repo import Parser, Refusal, require_root
 
 Outcome = Tuple[int, Optional[str], Optional[str]]
 Problem = Dict[str, Optional[str]]
+Secrets = Tuple[Tuple[str, str], ...]
 
 FILE_NAME = "credentials.env"
+FILLED_VARIABLE = "LIGHTHOUSE_FILLED"
 SHARED_MODE_BITS = stat.S_IRGRP | stat.S_IWGRP | stat.S_IROTH | stat.S_IWOTH
 REFUSING_KINDS = ("missing-file", "mode", "not-ignored", "production")
 QUOTES = ("'", '"')
@@ -245,8 +247,43 @@ def encodings(value: str) -> List[str]:
     ]
 
 
-def redacted(text: str, filled: Dict[str, str]) -> str:
-    forms = {form: name for name, value in filled.items() for form in encodings(value) if form}
+def is_within(folder: str, path: str) -> bool:
+    return os.path.realpath(path).startswith(os.path.realpath(folder) + os.sep)
+
+
+def is_regular_file(path: str) -> bool:
+    try:
+        return stat.S_ISREG(os.stat(path).st_mode)
+    except OSError:
+        return False
+
+
+def reachable_files(root: str, profiles: Iterable[Any]) -> List[str]:
+    top = repository.toplevel(root)
+    named = [project_file(profile) for profile in profiles if isinstance(profile, dict)]
+    inside = [os.path.join(top, name) for name in named if top and name and is_within(top, os.path.join(top, name))]
+    folder = repository.state_dir(root)
+    state_file = [os.path.join(folder, FILE_NAME)] if folder else []
+    return [path for path in dict.fromkeys([*inside, *state_file]) if is_regular_file(path)]
+
+
+def filled_names() -> List[str]:
+    return [name for name in os.environ.get(FILLED_VARIABLE, "").split(",") if name]
+
+
+def reachable_secrets(root: str, profiles: Iterable[Any]) -> Secrets:
+    readable = [profile for profile in profiles if isinstance(profile, dict)]
+    from_files = [
+        (name, value) for path in reachable_files(root, readable) for name, value in read_entries(path).items() if value
+    ]
+    declared = [name for profile in readable for name in credential_names(profile)]
+    names = dict.fromkeys([*filled_names(), *declared, *(name for name, _ in from_files)])
+    from_environment = [(name, os.environ[name]) for name in names if os.environ.get(name)]
+    return tuple(dict.fromkeys([*from_files, *from_environment]))
+
+
+def redacted(text: str, filled: Iterable[Tuple[str, str]]) -> str:
+    forms = {form: name for name, value in filled for form in encodings(value) if form}
     result = text
     for form in sorted(forms, key=len, reverse=True):
         result = result.replace(form, "[redacted:{}]".format(forms[form]))
@@ -254,7 +291,7 @@ def redacted(text: str, filled: Dict[str, str]) -> str:
 
 
 def passed_on(text: str, filled: Dict[str, str]) -> Optional[str]:
-    clean = redacted(text, filled)
+    clean = redacted(text, filled.items())
     trimmed = clean[:-1] if clean.endswith("\n") else clean
     return trimmed if clean else None
 
@@ -280,13 +317,13 @@ def with_credentials(arguments: List[str]) -> Outcome:
         completed = subprocess.run(
             command,
             cwd=options.cwd or root,
-            env={**os.environ, **filled},
+            env={**os.environ, **filled, FILLED_VARIABLE: ",".join(dict.fromkeys([*filled_names(), *filled]))},
             capture_output=True,
             text=True,
             errors="replace",
         )
     except OSError as error:
-        message = redacted("cannot run {}: {}".format(command[0], error.strerror or error), filled)
+        message = redacted("cannot run {}: {}".format(command[0], error.strerror or error), filled.items())
         return 2, json.dumps({"error": message}), "lighthouse with-credentials: {}".format(message)
     code = completed.returncode if completed.returncode >= 0 else 128 - completed.returncode
     return code, passed_on(completed.stdout, filled), passed_on(completed.stderr, filled)

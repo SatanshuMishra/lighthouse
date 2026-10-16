@@ -1,6 +1,8 @@
 import json
 import os
 import stat
+import subprocess
+import sys
 import unittest
 
 from tests import scratch
@@ -102,6 +104,58 @@ class CredentialsTest(unittest.TestCase):
         self.assertIn("[redacted:APP_PASSWORD]", stdout)
         self.assertIn("[redacted:APP_PASSWORD]", stderr)
         self.assert_value_confined([stdout, stderr], [home, work, outside], [path, child_file])
+
+    def test_tells_the_child_which_names_it_filled(self):
+        work, home, env = setting(self, profile_needing_user_and_password())
+        write_credentials(credentials_file(home, work), "APP_USER=tester\nAPP_PASSWORD={}\nAPP_EMPTY=\n".format(PLANTED), 0o600)
+
+        code, stdout, stderr = scratch.run_lighthouse(
+            ["with-credentials", "--repo", work, "--", "/bin/sh", "-c", 'echo "filled=$LIGHTHOUSE_FILLED"'], env
+        )
+
+        self.assertEqual(code, 0, stderr)
+        self.assertEqual(stdout.strip(), "filled=APP_USER,APP_PASSWORD")
+
+    def test_a_nested_call_keeps_the_names_the_outer_call_filled(self):
+        outer, home, env = setting(self, profile_needing_user_and_password())
+        inner, _ = scratch.make_repo(self)
+        inner_profile = {**profile_needing_user_and_password(), "credentials": {"file": ".env.test", "names": {}}}
+        scratch.write_profile(inner, inner_profile)
+        scratch.commit_files(inner, {".gitignore": ".env.test\n"}, "ignore the credentials file")
+        write_credentials(credentials_file(home, outer), "APP_USER=outer-user\n", 0o600)
+        write_credentials(os.path.join(inner, ".env.test"), "APP_PASSWORD={}\n".format(PLANTED), 0o600)
+        report = ["/bin/sh", "-c", 'echo "filled=$LIGHTHOUSE_FILLED"']
+        nested = [sys.executable, scratch.LIGHTHOUSE, "with-credentials", "--repo", inner, "--", *report]
+
+        code, stdout, stderr = scratch.run_lighthouse(["with-credentials", "--repo", outer, "--", *nested], env)
+
+        self.assertEqual(code, 0, stderr)
+        self.assertEqual(stdout.strip(), "filled=APP_USER,APP_PASSWORD")
+
+    def test_reads_only_regular_credentials_files_inside_the_repository(self):
+        work, _ = scratch.make_repo(self)
+        outside = os.path.join(scratch.temporary_folder(self, "lh-outside-"), "outside.env")
+        write_credentials(outside, "APP_PASSWORD={}\n".format(PLANTED), 0o600)
+        os.mkfifo(os.path.join(work, "pipe.env"))
+        named = [outside, os.path.relpath(outside, work), "pipe.env"]
+        probe = (
+            "import json, sys\n"
+            "from lighthouse_tool import credentials\n"
+            "profiles = [{'credentials': {'file': name}} for name in json.loads(sys.argv[2])]\n"
+            "print(json.dumps(credentials.reachable_files(sys.argv[1], profiles)))\n"
+        )
+        completed = subprocess.run(
+            [sys.executable, "-c", probe, work, json.dumps(named)],
+            cwd=scratch.ROOT,
+            env=scratch.environment(scratch.make_home(self)),
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        reachable = json.loads(completed.stdout)
+        self.assertNotIn(os.path.realpath(outside), [os.path.realpath(path) for path in reachable])
+        self.assertNotIn(os.path.join(os.path.realpath(work), "pipe.env"), reachable)
 
     def test_refuses_a_shared_file(self):
         work, home, env = setting(self, profile_needing_user_and_password())

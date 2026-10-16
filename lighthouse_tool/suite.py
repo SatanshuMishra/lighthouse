@@ -4,6 +4,7 @@ import os
 import signal
 import subprocess
 import tempfile
+import time
 import xml.etree.ElementTree as ElementTree
 from typing import Any, Dict, List, NamedTuple, Optional, Set, Tuple
 
@@ -17,6 +18,7 @@ PREPARATION_STEPS = ("setup", "build")
 UNRUNNABLE_EXITS = (126, 127)
 WHOLE_SUITE = "suite"
 OWNER_MARK = "lighthouse-owned"
+UNREAPED_POLL_SECONDS = 0.05
 
 
 class StepRun(NamedTuple):
@@ -174,16 +176,12 @@ def timeout_minutes(profile: Dict[str, Any]) -> Optional[float]:
     return minutes if usable else None
 
 
-def hidden_values(root: str, profile: Dict[str, Any]) -> Dict[str, str]:
-    path = credentials.credentials_path(root, profile)
-    entries = credentials.read_entries(path) if path else {}
-    names = [*entries, *credentials.credential_names(profile)]
-    from_environment = {name: os.environ[name] for name in names if os.environ.get(name)}
-    return {**{name: value for name, value in entries.items() if value}, **from_environment}
+def hidden_values(root: str, profile: Dict[str, Any]) -> credentials.Secrets:
+    return credentials.reachable_secrets(root, (repository.load_profile(root), profile))
 
 
 def run_step(
-    step: str, command: str, worktree: str, build: str, log_path: str, profile: Dict[str, Any], hidden: Dict[str, str]
+    step: str, command: str, worktree: str, build: str, log_path: str, profile: Dict[str, Any], hidden: credentials.Secrets
 ) -> StepRun:
     minutes = timeout_minutes(profile)
     append_log(log_path, "$ {}: {}\n".format(step, command), hidden)
@@ -201,18 +199,35 @@ def run_step(
         except OSError as error:
             return StepRun(None, "{} could not start: {}".format(step, error.strerror or error))
         try:
-            outcome = StepRun(process.wait(timeout=minutes * 60 if minutes else None), None)
+            exited_unreaped(process, minutes * 60 if minutes else None)
+            timed_out = False
         except subprocess.TimeoutExpired:
-            stop(process)
-            outcome = StepRun(None, "{} timed out after {} minutes".format(step, minutes))
+            timed_out = True
+        stop(process)
+        outcome = (
+            StepRun(None, "{} timed out after {} minutes".format(step, minutes))
+            if timed_out
+            else StepRun(process.returncode, None)
+        )
         output.seek(0)
         append_log(log_path, output.read().decode("utf-8", errors="replace"), hidden)
     return outcome
 
 
-def append_log(log_path: str, text: str, hidden: Dict[str, str]) -> None:
+def append_log(log_path: str, text: str, hidden: credentials.Secrets) -> None:
     with open(log_path, "a", encoding="utf-8") as log:
         log.write(credentials.redacted(text, hidden))
+
+
+def exited_unreaped(process: "subprocess.Popen[bytes]", seconds: Optional[float]) -> None:
+    if not hasattr(os, "waitid"):
+        process.wait(timeout=seconds)
+        return
+    deadline = None if seconds is None else time.monotonic() + seconds
+    while os.waitid(os.P_PID, process.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT) is None:
+        if deadline is not None and time.monotonic() > deadline:
+            raise subprocess.TimeoutExpired(process.args, seconds or 0)
+        time.sleep(UNREAPED_POLL_SECONDS)
 
 
 def stop(process: "subprocess.Popen[bytes]") -> None:
@@ -224,7 +239,7 @@ def stop(process: "subprocess.Popen[bytes]") -> None:
 
 
 def prepare(
-    profile: Dict[str, Any], hidden: Dict[str, str], worktree: str, build: str, log_path: str
+    profile: Dict[str, Any], hidden: credentials.Secrets, worktree: str, build: str, log_path: str
 ) -> Optional[str]:
     for step in PREPARATION_STEPS:
         command = step_command(profile, step)
@@ -238,7 +253,7 @@ def prepare(
     return None
 
 
-def run_suite(profile: Dict[str, Any], hidden: Dict[str, str], worktree: str, build: str, log_path: str) -> SuiteRun:
+def run_suite(profile: Dict[str, Any], hidden: credentials.Secrets, worktree: str, build: str, log_path: str) -> SuiteRun:
     junit = junit_report(profile)
     report = os.path.join(worktree, junit) if junit else None
     if report is not None:
@@ -349,7 +364,7 @@ def suite_result(
 
 
 def compare_builds(
-    profile: Dict[str, Any], hidden: Dict[str, str], folder: str, worktrees: Dict[str, Dict[str, str]]
+    profile: Dict[str, Any], hidden: credentials.Secrets, folder: str, worktrees: Dict[str, Dict[str, str]]
 ) -> Dict[str, Any]:
     logs = {build: os.path.join(folder, "suite-{}.log".format(build)) for build in BUILDS}
     for log_path in logs.values():

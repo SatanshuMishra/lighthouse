@@ -1,6 +1,8 @@
 import json
 import os
 import shutil
+import socket
+import sys
 import time
 import unittest
 
@@ -14,6 +16,55 @@ else
 fi
 touch .first-run-done
 """
+
+
+SERVE = """import http.server
+import sys
+import time
+
+
+class Handler(http.server.SimpleHTTPRequestHandler):
+    def log_message(self, *arguments):
+        pass
+
+
+server = http.server.HTTPServer(("127.0.0.1", int(sys.argv[1])), Handler)
+server.timeout = 0.5
+deadline = time.monotonic() + 30
+while time.monotonic() < deadline:
+    server.handle_request()
+"""
+
+FETCH = """import sys
+import time
+import urllib.error
+import urllib.request
+
+opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+url = "http://127.0.0.1:{}/feature.txt".format(sys.argv[1])
+deadline = time.monotonic() + 10
+while True:
+    try:
+        opener.open(url, timeout=2)
+        sys.exit(0)
+    except urllib.error.HTTPError:
+        sys.exit(1)
+    except OSError:
+        if time.monotonic() > deadline:
+            sys.exit(2)
+        time.sleep(0.2)
+"""
+
+
+def has_ended(pid):
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return True
+        time.sleep(0.1)
+    return False
 
 
 def junit(outcomes):
@@ -309,9 +360,41 @@ class SuiteTest(unittest.TestCase):
             self.assertIn("calling with", log)
             self.assertNotIn(planted, log)
 
+    def test_suite_logs_hide_values_filled_from_the_checkout_profiles_file(self):
+        planted = "ch3ckout-value"
+        checkout_profile = scratch.sample_profile(
+            suite={"command": 'echo "signing in with $APP_PASSWORD"', "junit": None, "timeout_minutes": None},
+            credentials={"file": ".env.test", "names": {"APP_PASSWORD": {"production": False}}},
+        )
+        feature_profile = {**checkout_profile, "credentials": {"file": None, "names": {}}}
+        work, _ = scratch.make_repo(self)
+        scratch.commit_files(
+            work,
+            {".gitignore": ".env.test\n", ".lighthouse/profile.json": json.dumps(checkout_profile, indent=2) + "\n"},
+            "add the project",
+        )
+        scratch.run_git(work, "push", "-q", "origin", "main")
+        scratch.run_git(work, "checkout", "-q", "-b", "feat/x")
+        scratch.commit_files(work, {".lighthouse/profile.json": json.dumps(feature_profile, indent=2) + "\n"}, "drop the file")
+        scratch.run_git(work, "push", "-q", "-u", "origin", "feat/x")
+        scratch.run_git(work, "checkout", "-q", "main")
+        entries_path = os.path.join(work, ".env.test")
+        with open(entries_path, "w", encoding="utf-8") as entries:
+            entries.write("APP_PASSWORD={}\n".format(planted))
+        os.chmod(entries_path, 0o600)
+        home = scratch.make_home(self)
+        results = os.path.join(home, "results")
+        suite = [sys.executable, scratch.LIGHTHOUSE, "suite", "--repo", work, "--core", "main", "--feature", "feat/x", "--results", results]
+        code, _, stderr = scratch.run_lighthouse(["with-credentials", "--repo", work, "--", *suite], scratch.environment(home))
+        self.assertEqual(code, 0, stderr)
+        for build in ("core", "feature"):
+            log = read(results, "suite-{}.log".format(build))
+            self.assertIn("signing in with", log)
+            self.assertNotIn(planted, log)
+
     def test_a_step_that_leaves_a_process_running_still_finishes(self):
         profile = scratch.sample_profile(
-            setup={"command": "sleep 20 & echo service started"},
+            setup={"command": "sleep 20 & echo $! > background.pid; echo service started"},
             suite={"command": "true", "junit": None, "timeout_minutes": None},
         )
         work = project_with(self, {}, profile)
@@ -319,8 +402,29 @@ class SuiteTest(unittest.TestCase):
         result = suite_of(self, work)
         self.assertLess(time.monotonic() - started, 15)
         self.assertEqual(result["result"], "passed")
-        feature_log = result["feature"]["log"]
-        self.assertIn("service started", read(os.path.dirname(feature_log), os.path.basename(feature_log)))
+        results = os.path.dirname(result["feature"]["log"])
+        self.assertIn("service started", read(results, "suite-feature.log"))
+        for build in ("core", "feature"):
+            background = int(read(os.path.join(results, build), "background.pid"))
+            self.assertTrue(has_ended(background), "the {} step's background process is still running".format(build))
+
+    def test_a_server_core_leaves_running_never_answers_features_suite(self):
+        listener = socket.socket()
+        listener.bind(("127.0.0.1", 0))
+        port = listener.getsockname()[1]
+        listener.close()
+        profile = scratch.sample_profile(
+            suite={
+                "command": "python3 serve.py {0} & python3 fetch.py {0}".format(port),
+                "junit": None,
+                "timeout_minutes": None,
+            }
+        )
+        work = project_with(self, {"serve.py": SERVE, "fetch.py": FETCH}, profile)
+        result = suite_of(self, work)
+        self.assertNotEqual(result["core"]["exit"], 0)
+        self.assertEqual(result["feature"]["exit"], 0)
+        self.assertEqual(result["pre_existing"], [])
 
 
 if __name__ == "__main__":
