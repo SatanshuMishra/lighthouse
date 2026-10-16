@@ -1,4 +1,3 @@
-import argparse
 import fnmatch
 import json
 import os
@@ -10,6 +9,7 @@ import tempfile
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from lighthouse_tool import repo as repository
+from lighthouse_tool.repo import Parser, Refusal, checked_git, require_root
 
 Outcome = Tuple[int, Optional[str], Optional[str]]
 Problem = Dict[str, str]
@@ -55,7 +55,17 @@ WORKFLOW_SUFFIXES = (".yml", ".yaml")
 
 SEGMENT_SEPARATORS = frozenset(["&&", "||", ";", ";;", "|", "|&", "&"])
 GROUPING_TOKENS = frozenset(["(", ")", "((", "))"])
-SHELL_BUILTINS = frozenset(["cd", "export", "set", "source", ".", "test", "[", "true", "false", "echo", "printf", "exit"])
+SHELL_BUILTINS = frozenset(
+    [
+        ":", ".", "[", "alias", "bg", "break", "cd", "command", "continue", "declare", "echo", "eval", "exec", "exit",
+        "export", "false", "fc", "fg", "getopts", "hash", "jobs", "kill", "local", "newgrp", "printf", "pwd", "read",
+        "readonly", "return", "set", "shift", "source", "test", "times", "trap", "true", "type", "typeset", "ulimit",
+        "umask", "unalias", "unset", "wait",
+    ]
+)
+LEADING_KEYWORDS = frozenset(["{", "!", "if", "then", "else", "elif", "while", "until", "do", "time"])
+PROGRAMLESS_KEYWORDS = frozenset(["}", "fi", "done", "esac", "for", "case", "select", "function"])
+LITERAL_DIRECTORY = re.compile(r"^[A-Za-z0-9_./-]+$")
 ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 GLOB_MARKERS = ("*", "?", "[", "...")
 SCRIPT_SUFFIXES = (".sh", ".py", ".js", ".mjs", ".ts", ".rb", ".pl")
@@ -81,15 +91,6 @@ INTERPRETERS: Dict[str, InterpreterOptions] = {
     "ruby": RUBY_OPTIONS,
     "perl": PERL_OPTIONS,
 }
-
-
-class Refusal(Exception):
-    pass
-
-
-class Parser(argparse.ArgumentParser):
-    def error(self, message: str) -> None:
-        raise Refusal(message)
 
 
 def check_parser() -> Parser:
@@ -121,13 +122,6 @@ def run(argv: List[str]) -> Outcome:
         return handlers[action](argv[2:])
     except Refusal as refusal:
         return 2, json.dumps({"error": str(refusal)}), "lighthouse profile {}: {}".format(action, refusal)
-
-
-def require_root(repo: str) -> str:
-    root = repository.toplevel(repo)
-    if root is None:
-        raise Refusal("{} is not a git repository".format(repo))
-    return root
 
 
 def check_command(args: List[str]) -> Outcome:
@@ -274,6 +268,7 @@ def recorded_paths(profile: Dict[str, Any]) -> List[str]:
 
 def recorded_commands(profile: Dict[str, Any]) -> List[str]:
     commands = [
+        section(profile, "setup").get("command"),
         section(profile, "suite").get("command"),
         section(profile, "build").get("command"),
         section(profile, "start").get("command"),
@@ -339,35 +334,57 @@ def command_fault(root: str, command: str) -> Optional[str]:
         tokens = tokens_of(command)
     except ValueError as error:
         return "it cannot be parsed: {}".format(error)
-    words = [
-        segment[next((index for index, word in enumerate(segment) if not ASSIGNMENT.match(word)), len(segment)):]
-        for segment in segments_of(tokens)
-    ]
-    programs = [segment for segment in words if segment]
+    programs = [words for words in (program_words(segment) for segment in segments_of(tokens)) if words]
     if not programs:
         return "it names no program"
-    faults = [segment_fault(root, segment[0], segment[1:]) for segment in programs]
-    return next((fault for fault in faults if fault), None)
+    folders: Optional[List[str]] = [root]
+    for segment in programs:
+        fault = segment_fault(folders, segment[0], segment[1:]) if folders is not None else None
+        if fault:
+            return fault
+        if segment[0] == "cd" and folders is not None:
+            folders = folders_after_cd(root, folders, segment[1:])
+    return None
 
 
-def segment_fault(root: str, program: str, arguments: List[str]) -> Optional[str]:
-    if not program_resolves(root, program):
+def program_words(segment: List[str]) -> List[str]:
+    start = 0
+    while start < len(segment) and (ASSIGNMENT.match(segment[start]) or segment[start] in LEADING_KEYWORDS):
+        start += 1
+    words = segment[start:]
+    return [] if words and words[0] in PROGRAMLESS_KEYWORDS else words
+
+
+def folders_after_cd(root: str, folders: List[str], arguments: List[str]) -> Optional[List[str]]:
+    if len(arguments) != 1 or not LITERAL_DIRECTORY.match(arguments[0]):
+        return None
+    target = arguments[0]
+    entered = [os.path.normpath(os.path.join(folder, target)) for folder in folders]
+    return unique([*folders, *[folder for folder in entered if is_within(root, folder)]])
+
+
+def is_within(root: str, folder: str) -> bool:
+    return os.path.commonpath([root, folder]) == root
+
+
+def exists_in_any(folders: List[str], path: str) -> bool:
+    return any(os.path.exists(os.path.join(folder, path)) for folder in folders)
+
+
+def segment_fault(folders: List[str], program: str, arguments: List[str]) -> Optional[str]:
+    if not program_resolves(folders, program):
         return "program {} is not a shell builtin, not on PATH and not an existing path".format(program)
     options = INTERPRETERS.get(posixpath.basename(program))
     script = script_argument(arguments, options) if options else None
-    if script is not None and looks_like_script(script) and not os.path.exists(os.path.join(root, script)):
+    if script is not None and looks_like_script(script) and not exists_in_any(folders, script):
         return "script {} does not exist in the repository".format(script)
     return None
 
 
-def program_resolves(root: str, program: str) -> bool:
+def program_resolves(folders: List[str], program: str) -> bool:
     if "/" in program:
-        return os.path.exists(os.path.join(root, program))
-    return (
-        program in SHELL_BUILTINS
-        or shutil.which(program) is not None
-        or os.path.exists(os.path.join(root, program))
-    )
+        return exists_in_any(folders, program)
+    return program in SHELL_BUILTINS or shutil.which(program) is not None or exists_in_any(folders, program)
 
 
 def script_argument(arguments: List[str], options: InterpreterOptions) -> Optional[str]:
@@ -436,18 +453,6 @@ def unrecorded_problems(root: str, profile: Dict[str, Any]) -> List[Problem]:
     ]
 
 
-def read_answers(repo: str) -> Dict[str, Any]:
-    folder = repository.state_dir(repo)
-    if folder is None:
-        return {}
-    try:
-        with open(os.path.join(folder, "answers.json"), encoding="utf-8") as answers_file:
-            answers = json.load(answers_file)
-    except (OSError, ValueError):
-        return {}
-    return dict(answers) if isinstance(answers, dict) else {}
-
-
 def fold_answers(profile: Dict[str, Any], answers: Dict[str, Any]) -> Dict[str, Any]:
     facts = profile.get("facts")
     if not isinstance(facts, dict):
@@ -465,18 +470,11 @@ def publish_command(args: List[str]) -> Outcome:
     profile = repository.load_profile(root, os.path.abspath(options.profile) if options.profile else None)
     if not isinstance(profile, dict):
         raise Refusal("there is no readable profile at {}".format(options.profile or os.path.join(root, PROFILE_PATH)))
-    folded = fold_answers(profile, read_answers(root))
+    folded = fold_answers(profile, repository.read_answers(root))
     commit = repository.resolve_branch(root, options.feature)
     if commit is None:
         raise Refusal("branch {} does not exist locally or on origin".format(options.feature))
     return 0, json.dumps(publish(root, options.feature, commit, folded)), None
-
-
-def checked_git(folder: str, args: List[str]) -> str:
-    code, stdout, stderr = repository.git(folder, args)
-    if code != 0:
-        raise Refusal("git {} failed: {}".format(args[0], stderr.strip()))
-    return stdout
 
 
 def publish(root: str, feature: str, commit: str, profile: Dict[str, Any]) -> Dict[str, Any]:
@@ -493,8 +491,16 @@ def publish(root: str, feature: str, commit: str, profile: Dict[str, Any]) -> Di
 
 def commit_profile(root: str, worktree: str, feature: str, commit: str, profile: Dict[str, Any]) -> Dict[str, Any]:
     target = os.path.join(worktree, PROFILE_PATH)
+    linked = [path for path in (os.path.dirname(target), target) if os.path.islink(path)]
+    if linked:
+        raise Refusal(
+            "{} on {} is a symbolic link, so lighthouse will not write through it".format(
+                os.path.relpath(linked[0], worktree), feature
+            )
+        )
     os.makedirs(os.path.dirname(target), exist_ok=True)
-    with open(target, "w", encoding="utf-8") as profile_file:
+    descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o644)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as profile_file:
         profile_file.write(json.dumps(profile, indent=2) + "\n")
     if not checked_git(worktree, ["status", "--porcelain", "--", PROFILE_PATH]).strip():
         return {"committed": False}

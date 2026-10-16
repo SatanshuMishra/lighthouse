@@ -157,6 +157,40 @@ class ProfileCheckTest(unittest.TestCase):
         self.assertEqual(code, 0, stderr)
         self.assertEqual(report, {"ok": True, "problems": []})
 
+    def test_reports_a_vanished_setup_script(self):
+        work, _ = scratch.make_repo(self)
+        scratch.write_profile(work, scratch.sample_profile(setup={"command": "sh scripts/install_deps.sh"}))
+
+        code, report, _ = profile_check(self, work)
+
+        self.assertEqual(code, 1)
+        self.assertEqual(problem_kinds(report), ["command"])
+        self.assertIn("scripts/install_deps.sh", details_of(report, "command")[0])
+
+    def test_resolves_paths_after_cd(self):
+        work, _ = scratch.make_repo(self)
+        scratch.commit_files(work, {"web/run.sh": "exit 0\n", "tools/check.py": "\n"}, "add the scripts")
+        os.chmod(os.path.join(work, "web", "run.sh"), 0o755)
+        suite = {"command": "cd web && ./run.sh", "junit": None, "timeout_minutes": None}
+        build = {"command": "cd tools && python3 check.py"}
+        scratch.write_profile(work, scratch.sample_profile(suite=suite, build=build))
+
+        code, report, stderr = profile_check(self, work)
+
+        self.assertEqual(code, 0, stderr)
+        self.assertEqual(report, {"ok": True, "problems": []})
+
+    def test_accepts_shell_builtins_and_keywords(self):
+        work, _ = scratch.make_repo(self)
+        suite = {"command": "unset CI && exec python3 -m unittest", "junit": None, "timeout_minutes": None}
+        build = {"command": "{ : ; eval true; } && if test -d src; then umask 022; fi"}
+        scratch.write_profile(work, scratch.sample_profile(suite=suite, build=build))
+
+        code, report, stderr = profile_check(self, work)
+
+        self.assertEqual(code, 0, stderr)
+        self.assertEqual(report, {"ok": True, "problems": []})
+
 
 class ProfilePublishTest(unittest.TestCase):
     def test_publish_commits_to_the_feature_branch(self):
@@ -216,6 +250,33 @@ class ProfilePublishTest(unittest.TestCase):
         self.assertEqual(scratch.run_git(work, "rev-parse", "refs/heads/feat/x").strip(), feature_before)
         self.assertEqual(checkout_state(work), checkout_before)
 
+
+    def test_publish_refuses_a_linked_profile_path(self):
+        work, _ = scratch.make_repo(self)
+        outside = scratch.temporary_folder(self, "lh-outside-")
+        victim = os.path.join(outside, "victim.txt")
+        with open(victim, "w", encoding="utf-8") as handle:
+            handle.write("keep\n")
+        scratch.run_git(work, "checkout", "-q", "-b", "feat/x")
+        os.makedirs(os.path.join(work, ".lighthouse"))
+        os.symlink(victim, os.path.join(work, PROFILE_PATH))
+        scratch.run_git(work, "add", "-A")
+        scratch.run_git(work, "commit", "-q", "-m", "link the profile")
+        scratch.run_git(work, "push", "-q", "origin", "feat/x")
+        scratch.run_git(work, "checkout", "-q", "main")
+        profile_file = os.path.join(outside, "profile.json")
+        with open(profile_file, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(scratch.sample_profile()))
+
+        code, stdout, stderr = scratch.run_lighthouse(
+            ["profile", "publish", "--repo", work, "--feature", "feat/x", "--profile", profile_file],
+            scratch.environment(scratch.make_home(self)),
+        )
+
+        self.assertEqual(code, 2, stderr)
+        self.assertIn("symbolic link", json.loads(stdout)["error"])
+        with open(victim, encoding="utf-8") as handle:
+            self.assertEqual(handle.read(), "keep\n")
 
 if __name__ == "__main__":
     unittest.main()
