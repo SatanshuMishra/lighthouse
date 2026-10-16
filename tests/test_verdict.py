@@ -30,6 +30,23 @@ def verdict_line(test, stdout, results):
 
 
 class VerdictTest(unittest.TestCase):
+    def test_blocked_line_needs_no_results_folder(self):
+        env = scratch.environment(scratch.make_home(self))
+        code, stdout, stderr = scratch.run_lighthouse(["verdict", "--blocked", "the results folder is inside the checkout"], env)
+        self.assertEqual(code, 0, stderr)
+        self.assertEqual(
+            json.loads(stdout.strip().splitlines()[-1]),
+            {"verdict": "blocked", "failures": [], "unproven": [], "flaky": [], "tokens": 0, "minutes": 0, "pr": None},
+        )
+        self.assertIn("the results folder is inside the checkout", stderr)
+
+    def test_takes_a_results_folder_or_a_blocked_reason(self):
+        env = scratch.environment(scratch.make_home(self))
+        results = scratch.temporary_folder(self, "lh-results-")
+        for arguments in ([], ["--results", results, "--blocked", "why"], ["--blocked", " "]):
+            code, _, _ = scratch.run_lighthouse(["verdict", *arguments], env)
+            self.assertEqual(code, 2, arguments)
+
     def test_green(self):
         findings = {
             "version": 1,

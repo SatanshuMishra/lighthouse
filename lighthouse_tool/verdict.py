@@ -26,13 +26,24 @@ class Malformed(Refusal):
 
 def parser() -> Parser:
     arguments = Parser(prog="lighthouse verdict", add_help=False)
-    arguments.add_argument("--results", required=True)
+    source = arguments.add_mutually_exclusive_group(required=True)
+    source.add_argument("--results")
+    source.add_argument("--blocked")
     return arguments
+
+
+def blocked_line(reason: str) -> Tuple[int, Optional[str], Optional[str]]:
+    if not reason.strip():
+        raise Refusal("--blocked needs the reason the run stopped")
+    line = {"verdict": "blocked", "failures": [], "unproven": [], "flaky": [], "tokens": 0, "minutes": 0, "pr": None}
+    return 0, json.dumps(line), "lighthouse verdict: blocked: {}".format(reason.strip())
 
 
 def run(argv: List[str]) -> Tuple[int, Optional[str], Optional[str]]:
     try:
         options = parser().parse_args(argv[1:])
+        if options.blocked is not None:
+            return blocked_line(options.blocked)
         results = os.path.realpath(options.results)
         findings = read_findings(results)
         judged = judge(findings)
