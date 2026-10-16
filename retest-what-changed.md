@@ -1,7 +1,7 @@
 # retest-what-changed: S4: lighthouse retests only what changed since the previous results
 Status: active
-Updated: 2026-10-16T21:08:32.264Z
-Next ids: c4 D1 R1 S1
+Updated: 2026-10-16T21:08:38.474Z
+Next ids: c4 D2 R1 S1
 
 ## Goal
 
@@ -22,6 +22,8 @@ Not started.
 Record the interphase hand-off boundary, then cut the FEATURE branch with pipeline feature-branch --type feat and write the run home ~/.mitosis/lighthouse/retest-what-changed/.
 
 ## Decisions in force
+
+- D1 Interphase hand-off: build S4 from the handed-off retest-what-changed spec: Build the spec as one MSP on a feat FEATURE branch with the installed mitosis 0.5.0 and lighthouse 0.1.0; fill later gaps from I1-I4 as recorded assumptions.
 
 ## Open risks
 
