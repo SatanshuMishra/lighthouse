@@ -4,5 +4,5 @@ class FakeLink:
         self.sent = []
 
     def send(self, command):
-        self.sent.append(command)
+        self.sent = self.sent + [command]
         return self.reply
