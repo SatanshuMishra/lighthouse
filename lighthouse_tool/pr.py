@@ -116,19 +116,11 @@ def title(change_type: str, scope: str, summary: str) -> str:
     return composed
 
 
-def bullets(lines: List[str], empty: str) -> List[str]:
-    return ["- " + line for line in lines] if lines else [empty]
-
-
-def section(heading: str, lines: List[str]) -> List[str]:
-    return ["## " + heading, ""] + lines + [""]
-
-
 def what_changed(changes: Dict[str, Any]) -> List[str]:
     pull_requests = changes["pull_requests"]
     if pull_requests:
-        return bullets(["{} (#{})".format(entry["title"], entry["number"]) for entry in pull_requests], "None.")
-    return bullets([commit["subject"] for commit in changes["commits"]], "None.")
+        return verdicts.bullets(["{} (#{})".format(entry["title"], entry["number"]) for entry in pull_requests], "None.")
+    return verdicts.bullets([commit["subject"] for commit in changes["commits"]], "None.")
 
 
 def risk(line: Dict[str, Any]) -> List[str]:
@@ -137,7 +129,7 @@ def risk(line: Dict[str, Any]) -> List[str]:
         + ["Unproven: {}".format(name) for name in line["unproven"]]
         + ["Flaky: {}".format(name) for name in line["flaky"]]
     )
-    return ["Verdict: {}".format(line["verdict"]), ""] + bullets(items, "None found.")
+    return ["Verdict: {}".format(line["verdict"]), ""] + verdicts.bullets(items, "None found.")
 
 
 def suite_line(suite: Dict[str, Any]) -> str:
@@ -168,21 +160,21 @@ def verification(findings: Dict[str, Any]) -> List[str]:
     spend = findings["spend"]
     return (
         [suite_line(findings["suite"]), ""]
-        + bullets([path_line(path) for path in paths], "No product paths.")
+        + verdicts.bullets([path_line(path) for path in paths], "No product paths.")
         + ["", rechecked(paths), "", "lighthouse spent {} tokens over {} minutes.".format(spend["tokens"], spend["minutes"])]
     )
 
 
 def links(changes: Dict[str, Any]) -> List[str]:
-    return bullets([entry["url"] for entry in changes["pull_requests"] if entry.get("url")], "None.")
+    return verdicts.bullets([entry["url"] for entry in changes["pull_requests"] if entry.get("url")], "None.")
 
 
 def body(options: argparse.Namespace, changes: Dict[str, Any], findings: Dict[str, Any], line: Dict[str, Any]) -> str:
     lines = (
-        section("What changed", what_changed(changes))
-        + section("Why", [options.why or "Carries {} into {}.".format(options.feature, options.core)])
-        + section("Risk", risk(line))
-        + section("Verification", verification(findings))
-        + section("Links", links(changes))
+        verdicts.section("What changed", what_changed(changes))
+        + verdicts.section("Why", [options.why or "Carries {} into {}.".format(options.feature, options.core)])
+        + verdicts.section("Risk", risk(line))
+        + verdicts.section("Verification", verification(findings))
+        + verdicts.section("Links", links(changes))
     )
     return "\n".join(lines).rstrip("\n") + "\n"

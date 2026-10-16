@@ -6,6 +6,7 @@ import subprocess
 import xml.etree.ElementTree as ElementTree
 from typing import Any, Dict, List, NamedTuple, Optional, Set, Tuple
 
+from lighthouse_tool import credentials
 from lighthouse_tool import repo as repository
 
 Outcome = Tuple[int, Optional[str], Optional[str]]
@@ -13,6 +14,8 @@ BUILDS = ("core", "feature")
 PREPARATION_STEPS = ("setup", "build")
 UNRUNNABLE_EXITS = (126, 127)
 WHOLE_SUITE = "suite"
+OWNER_MARK = "lighthouse-owned"
+STOPPED_OUTPUT_SECONDS = 5
 
 
 class Refusal(Exception):
@@ -121,17 +124,40 @@ def listed_worktrees(root: str) -> List[str]:
 
 
 def place_worktree(root: str, path: str, commit: str, listed: List[str]) -> Dict[str, str]:
-    if path in listed and os.path.isdir(path):
+    registered = path in listed
+    if registered and os.path.isdir(path):
+        if not is_owned(path):
+            raise Refusal("{} is a worktree lighthouse did not create; choose another --results folder".format(path))
         checked_git(path, ["checkout", "--detach", "--force", commit])
     else:
-        checked_git(root, ["worktree", "add", "--detach", path, commit])
+        replacing_a_vanished_one = ["--force"] if registered else []
+        checked_git(root, ["worktree", "add", *replacing_a_vanished_one, "--detach", path, commit])
+        mark_owned(path)
     return {"path": path, "commit": commit}
+
+
+def administrative_folder(path: str) -> Optional[str]:
+    code, stdout, _ = repository.git(path, ["rev-parse", "--absolute-git-dir"])
+    return stdout.strip() if code == 0 else None
+
+
+def is_owned(path: str) -> bool:
+    folder = administrative_folder(path)
+    return folder is not None and os.path.isfile(os.path.join(folder, OWNER_MARK))
+
+
+def mark_owned(path: str) -> None:
+    folder = administrative_folder(path)
+    if folder is None:
+        raise Refusal("cannot find the git folder of the new worktree {}".format(path))
+    open(os.path.join(folder, OWNER_MARK), "w", encoding="utf-8").close()
 
 
 def release_worktrees(root: str, results: str) -> Dict[str, List[str]]:
     folder = os.path.realpath(results)
     listed = listed_worktrees(root)
-    targets = [path for path in (os.path.join(folder, build) for build in BUILDS) if path in listed]
+    candidates = [os.path.join(folder, build) for build in BUILDS]
+    targets = [path for path in candidates if path in listed and os.path.isdir(path) and is_owned(path)]
     for path in targets:
         checked_git(root, ["worktree", "remove", "--force", path])
     checked_git(root, ["worktree", "prune"])
@@ -170,35 +196,52 @@ def timeout_minutes(profile: Dict[str, Any]) -> Optional[float]:
     return minutes if usable else None
 
 
-def run_step(step: str, command: str, worktree: str, build: str, log_path: str, minutes: Optional[float]) -> StepRun:
+def credential_values(profile: Dict[str, Any]) -> Dict[str, str]:
+    section = profile.get("credentials")
+    names = section.get("names") if isinstance(section, dict) else None
+    return {name: os.environ[name] for name in (names if isinstance(names, dict) else {}) if os.environ.get(name)}
+
+
+def run_step(step: str, command: str, worktree: str, build: str, log_path: str, profile: Dict[str, Any]) -> StepRun:
+    minutes = timeout_minutes(profile)
+    append_log(log_path, "$ {}: {}\n".format(step, command), profile)
+    try:
+        process = subprocess.Popen(
+            ["/bin/sh", "-c", command],
+            cwd=worktree,
+            env={**os.environ, "LIGHTHOUSE_BUILD": build},
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+    except OSError as error:
+        return StepRun(None, "{} could not start: {}".format(step, error.strerror or error))
+    try:
+        output, _ = process.communicate(timeout=minutes * 60 if minutes else None)
+        outcome = StepRun(process.returncode, None)
+    except subprocess.TimeoutExpired:
+        output = stop(process)
+        outcome = StepRun(None, "{} timed out after {} minutes".format(step, minutes))
+    append_log(log_path, output.decode("utf-8", errors="replace"), profile)
+    return outcome
+
+
+def append_log(log_path: str, text: str, profile: Dict[str, Any]) -> None:
     with open(log_path, "a", encoding="utf-8") as log:
-        log.write("$ {}: {}\n".format(step, command))
-        log.flush()
-        try:
-            process = subprocess.Popen(
-                ["/bin/sh", "-c", command],
-                cwd=worktree,
-                env={**os.environ, "LIGHTHOUSE_BUILD": build},
-                stdin=subprocess.DEVNULL,
-                stdout=log,
-                stderr=subprocess.STDOUT,
-                start_new_session=True,
-            )
-        except OSError as error:
-            return StepRun(None, "{} could not start: {}".format(step, error.strerror or error))
-        try:
-            return StepRun(process.wait(timeout=minutes * 60 if minutes else None), None)
-        except subprocess.TimeoutExpired:
-            stop(process)
-            return StepRun(None, "{} timed out after {} minutes".format(step, minutes))
+        log.write(credentials.redacted(text, credential_values(profile)))
 
 
-def stop(process: "subprocess.Popen[Any]") -> None:
+def stop(process: "subprocess.Popen[bytes]") -> bytes:
     try:
         os.killpg(process.pid, signal.SIGKILL)
     except (ProcessLookupError, PermissionError):
         process.kill()
-    process.wait()
+    try:
+        output, _ = process.communicate(timeout=STOPPED_OUTPUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        return b""
+    return output
 
 
 def prepare(profile: Dict[str, Any], worktree: str, build: str, log_path: str) -> Optional[str]:
@@ -206,7 +249,7 @@ def prepare(profile: Dict[str, Any], worktree: str, build: str, log_path: str) -
         command = step_command(profile, step)
         if command is None:
             continue
-        outcome = run_step(step, command, worktree, build, log_path, timeout_minutes(profile))
+        outcome = run_step(step, command, worktree, build, log_path, profile)
         if outcome.problem is not None:
             return outcome.problem
         if outcome.exit != 0:
@@ -219,7 +262,7 @@ def run_suite(profile: Dict[str, Any], worktree: str, build: str, log_path: str)
     report = os.path.join(worktree, junit) if junit else None
     if report is not None:
         discard(report)
-    outcome = run_step("suite", step_command(profile, "suite") or "", worktree, build, log_path, timeout_minutes(profile))
+    outcome = run_step("suite", step_command(profile, "suite") or "", worktree, build, log_path, profile)
     if outcome.problem is not None:
         return SuiteRun(None, outcome.problem, None)
     if outcome.exit in UNRUNNABLE_EXITS:
@@ -229,7 +272,12 @@ def run_suite(profile: Dict[str, Any], worktree: str, build: str, log_path: str)
     tests = read_report(report)
     if tests is None:
         return SuiteRun(outcome.exit, "the JUnit report {} is missing or unreadable after the suite ran".format(junit), None)
-    return SuiteRun(outcome.exit, None, tests)
+    return SuiteRun(outcome.exit, None, with_exit_status(tests, outcome.exit))
+
+
+def with_exit_status(tests: Dict[str, bool], exit_status: Optional[int]) -> Dict[str, bool]:
+    unexplained_exit = exit_status != 0 and not any(tests.values())
+    return {**tests, WHOLE_SUITE: True} if unexplained_exit else tests
 
 
 def discard(path: str) -> None:

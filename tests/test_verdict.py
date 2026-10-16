@@ -75,6 +75,29 @@ class VerdictTest(unittest.TestCase):
         self.assertEqual(line["failures"], ["report totals match"])
         self.assertIn("evidence/totals-core.txt", report)
 
+    def test_a_neighbour_failing_every_trial_on_both_builds_is_pre_existing(self):
+        findings = {
+            "version": 1,
+            "suite": {"result": "passed", "reason": None, "failures": [], "pre_existing": [], "flaky": [], "core": None, "feature": None},
+            "build": {"result": "ok", "reason": None},
+            "paths": [
+                {"name": "export writes a csv", "kind": "new", "surface": "cli", "expected": "a csv with a header row", "evidence": [], "status": "passed", "retry": None, "core": None, "trials": None},
+                {"name": "model names the file", "kind": "neighbour", "surface": "skill", "expected": "a file name", "evidence": [], "status": "failed", "retry": None, "core": "failed", "trials": {"count": 3, "feature_passed": 0, "core_passed": 0}},
+                {"name": "model sums the rows", "kind": "neighbour", "surface": "skill", "expected": "the total", "evidence": [], "status": "failed", "retry": None, "core": None, "trials": {"count": 3, "feature_passed": 0, "core_passed": None}},
+            ],
+            "spend": {"tokens": 5000, "minutes": 2},
+        }
+
+        code, stdout, stderr, results = lighthouse_verdict(self, findings)
+
+        self.assertEqual(code, 0, stderr)
+        line, report = verdict_line(self, stdout, results)
+        self.assertEqual(line["verdict"], "green")
+        self.assertEqual(line["flaky"], [])
+        self.assertEqual(line["unproven"], ["model sums the rows"])
+        pre_existing = report.split("## Pre-existing\n", 1)[1].split("\n## ", 1)[0]
+        self.assertIn("model names the file", pre_existing)
+
     def test_flaky_is_not_a_failure(self):
         findings = {
             "version": 1,

@@ -220,14 +220,24 @@ def classify(path: Dict[str, Any]) -> str:
     return UNPROVEN
 
 
+def failing(passed: int, count: int) -> bool:
+    return passed <= 1 and passed < count
+
+
 def classify_trials(trials: Dict[str, Any], neighbour: bool) -> str:
     count = trials["count"]
     feature_passed = trials["feature_passed"]
-    core_clean = not neighbour or trials["core_passed"] == count
-    if feature_passed <= 1 and feature_passed < count and core_clean:
-        return CONFIRMED_FAILURE
+    core_passed = trials["core_passed"]
     if feature_passed == count:
         return PASSED
+    if not failing(feature_passed, count):
+        return FLAKY
+    if not neighbour or core_passed == count:
+        return CONFIRMED_FAILURE
+    if core_passed is None:
+        return UNPROVEN
+    if failing(core_passed, count):
+        return PRE_EXISTING
     return FLAKY
 
 
@@ -274,8 +284,8 @@ def write_text(path: str, text: str) -> None:
         raise Refusal("cannot write {}: {}".format(path, error.strerror or error))
 
 
-def bullets(lines: List[str]) -> List[str]:
-    return ["- " + line for line in lines] if lines else ["None."]
+def bullets(lines: List[str], empty: str = "None.") -> List[str]:
+    return ["- " + line for line in lines] if lines else [empty]
 
 
 def path_line(path: Dict[str, Any], outcome: str) -> str:
