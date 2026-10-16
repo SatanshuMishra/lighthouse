@@ -1,0 +1,13 @@
+{
+  "name": "lighthouse",
+  "version": "0.1.0",
+  "description": "Tests a FEATURE branch of any kind of software as a person uses it, then opens its pull request.",
+  "author": {
+    "name": "Satanshu Mishra",
+    "url": "https://github.com/SatanshuMishra"
+  },
+  "homepage": "https://github.com/SatanshuMishra/lighthouse",
+  "repository": "https://github.com/SatanshuMishra/lighthouse",
+  "license": "Apache-2.0",
+  "keywords": ["testing", "integration", "regression"]
+}

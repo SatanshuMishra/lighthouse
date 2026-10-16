@@ -1,0 +1,16 @@
+{
+  "name": "lighthouse",
+  "owner": {
+    "name": "Satanshu Mishra"
+  },
+  "metadata": {
+    "description": "The lighthouse plugin: integration and product testing of a FEATURE branch."
+  },
+  "plugins": [
+    {
+      "name": "lighthouse",
+      "source": "./",
+      "description": "Tests a FEATURE branch of any kind of software as a person uses it, then opens its pull request."
+    }
+  ]
+}
