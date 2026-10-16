@@ -1,5 +1,7 @@
 import json
 import os
+import shutil
+import time
 import unittest
 
 from tests import scratch
@@ -228,6 +230,97 @@ class SuiteTest(unittest.TestCase):
         self.assertEqual(result["flaky"], ["tests.T.test_d"])
         self.assertNotIn("tests.T.test_d", result["failures"])
         self.assertEqual(result["result"], "passed")
+
+    def test_a_failing_exit_with_no_failed_test_is_a_failure(self):
+        profile = scratch.sample_profile(
+            suite={
+                "command": "cp reports/clean.xml report.xml && test \"$LIGHTHOUSE_BUILD\" = core",
+                "junit": "report.xml",
+                "timeout_minutes": None,
+            }
+        )
+        work = project_with(self, {"reports/clean.xml": junit({"test_a": "passed"})}, profile)
+        result = suite_of(self, work)
+        self.assertEqual(result["result"], "failures")
+        self.assertEqual(result["failures"], ["suite"])
+
+    def test_refuses_a_worktree_it_did_not_create(self):
+        work = project_with(self, {}, scratch.sample_profile())
+        results = results_folder(self)
+        user_worktree = os.path.join(results, "feature")
+        scratch.run_git(work, "worktree", "add", "-q", user_worktree, "feat/x")
+        with open(os.path.join(user_worktree, "feature.txt"), "w", encoding="utf-8") as handle:
+            handle.write("unsaved work\n")
+        for subcommand in ("worktrees", "suite"):
+            code, _, stderr = lighthouse(self, subcommand, work, results)
+            self.assertEqual(code, 2)
+            self.assertIn("did not create", stderr)
+        code, stdout, stderr = lighthouse(self, "release", work, results)
+        self.assertEqual(code, 0, stderr)
+        self.assertNotIn(os.path.realpath(user_worktree), json.loads(stdout)["removed"])
+        self.assertEqual(read(user_worktree, "feature.txt"), "unsaved work\n")
+        self.assertFalse(is_detached(user_worktree))
+
+    def test_recovers_after_the_results_folder_is_deleted(self):
+        work = project_with(self, {}, scratch.sample_profile())
+        results = results_folder(self)
+        code, _, stderr = lighthouse(self, "worktrees", work, results)
+        self.assertEqual(code, 0, stderr)
+        shutil.rmtree(results)
+        code, _, stderr = lighthouse(self, "worktrees", work, results)
+        self.assertEqual(code, 0, stderr)
+        self.assertTrue(is_detached(os.path.join(os.path.realpath(results), "feature")))
+
+    def test_suite_logs_hide_credential_values(self):
+        planted = "s3cret-value"
+        profile = scratch.sample_profile(
+            suite={"command": 'echo "signing in with $APP_PASSWORD"', "junit": None, "timeout_minutes": None},
+            credentials={"file": None, "names": {"APP_PASSWORD": {"production": False}}},
+        )
+        work = project_with(self, {}, profile)
+        results = results_folder(self)
+        env = {**scratch.environment(scratch.make_home(self)), "APP_PASSWORD": planted}
+        code, _, stderr = scratch.run_lighthouse(
+            ["suite", "--repo", work, "--core", "main", "--feature", "feat/x", "--results", results], env
+        )
+        self.assertEqual(code, 0, stderr)
+        for build in ("core", "feature"):
+            log = read(results, "suite-{}.log".format(build))
+            self.assertIn("signing in with", log)
+            self.assertNotIn(planted, log)
+
+    def test_suite_logs_hide_filled_credentials_the_profile_does_not_name(self):
+        planted = "t0ken-value"
+        profile = scratch.sample_profile(
+            suite={"command": 'echo "calling with $API_TOKEN"', "junit": None, "timeout_minutes": None},
+            credentials={"file": ".env.test", "names": {"APP_PASSWORD": {"production": False}}},
+        )
+        work = project_with(self, {}, profile)
+        with open(os.path.join(work, ".env.test"), "w", encoding="utf-8") as entries:
+            entries.write("API_TOKEN={}\n".format(planted))
+        results = results_folder(self)
+        env = {**scratch.environment(scratch.make_home(self)), "API_TOKEN": planted}
+        code, _, stderr = scratch.run_lighthouse(
+            ["suite", "--repo", work, "--core", "main", "--feature", "feat/x", "--results", results], env
+        )
+        self.assertEqual(code, 0, stderr)
+        for build in ("core", "feature"):
+            log = read(results, "suite-{}.log".format(build))
+            self.assertIn("calling with", log)
+            self.assertNotIn(planted, log)
+
+    def test_a_step_that_leaves_a_process_running_still_finishes(self):
+        profile = scratch.sample_profile(
+            setup={"command": "sleep 20 & echo service started"},
+            suite={"command": "true", "junit": None, "timeout_minutes": None},
+        )
+        work = project_with(self, {}, profile)
+        started = time.monotonic()
+        result = suite_of(self, work)
+        self.assertLess(time.monotonic() - started, 15)
+        self.assertEqual(result["result"], "passed")
+        feature_log = result["feature"]["log"]
+        self.assertIn("service started", read(os.path.dirname(feature_log), os.path.basename(feature_log)))
 
 
 if __name__ == "__main__":

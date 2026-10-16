@@ -1,9 +1,9 @@
-import argparse
 import datetime
 import json
 import os
 import re
 from typing import Any, Dict, Iterator, List, NamedTuple, Optional, Tuple
+from lighthouse_tool.repo import Parser, Refusal
 
 USAGE_FIELDS = (
     ("input", "input_tokens"),
@@ -13,15 +13,6 @@ USAGE_FIELDS = (
 )
 
 FRACTION = re.compile(r"\.(\d+)")
-
-
-class Refusal(Exception):
-    pass
-
-
-class Parser(argparse.ArgumentParser):
-    def error(self, message: str) -> None:
-        raise Refusal(message)
 
 
 class Message(NamedTuple):

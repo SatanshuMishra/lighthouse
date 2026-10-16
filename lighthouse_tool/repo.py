@@ -1,9 +1,21 @@
+import argparse
 import json
 import os
 import subprocess
-from typing import Any, List, Optional, Tuple
+import tempfile
+from typing import Any, Dict, List, Optional, Tuple
 
 GIT_ENVIRONMENT_OVERRIDES = {"GIT_TERMINAL_PROMPT": "0"}
+ANSWERS_FILE = "answers.json"
+
+
+class Refusal(Exception):
+    pass
+
+
+class Parser(argparse.ArgumentParser):
+    def error(self, message: str) -> None:
+        raise Refusal(message)
 
 
 def git(repo: str, args: List[str]) -> Tuple[int, str, str]:
@@ -17,10 +29,24 @@ def git(repo: str, args: List[str]) -> Tuple[int, str, str]:
     return completed.returncode, completed.stdout, completed.stderr
 
 
+def checked_git(where: str, args: List[str]) -> str:
+    code, stdout, stderr = git(where, args)
+    if code != 0:
+        raise Refusal("git {} failed: {}".format(args[0], stderr.strip()))
+    return stdout
+
+
 def toplevel(repo: str) -> Optional[str]:
     code, stdout, _ = git(repo, ["rev-parse", "--show-toplevel"])
     path = stdout.strip()
     return os.path.realpath(path) if code == 0 and path else None
+
+
+def require_root(repo: str) -> str:
+    root = toplevel(repo)
+    if root is None:
+        raise Refusal("{} is not a git repository".format(repo))
+    return root
 
 
 def repository_folder(repo: str) -> Optional[str]:
@@ -44,6 +70,31 @@ def ensure_state_dir(repo: str) -> Optional[str]:
     os.makedirs(path, mode=0o700, exist_ok=True)
     os.chmod(path, 0o700)
     return path
+
+
+def read_answers(repo: str) -> Dict[str, Any]:
+    folder = state_dir(repo)
+    if folder is None:
+        return {}
+    try:
+        with open(os.path.join(folder, ANSWERS_FILE), encoding="utf-8") as answers_file:
+            answers = json.load(answers_file)
+    except (OSError, ValueError):
+        return {}
+    return dict(answers) if isinstance(answers, dict) else {}
+
+
+def write_answers(folder: str, answers: Dict[str, Any]) -> None:
+    descriptor, staging = tempfile.mkstemp(prefix=".answers-", suffix=".json", dir=folder)
+    try:
+        os.fchmod(descriptor, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as answers_file:
+            answers_file.write(json.dumps(answers, indent=2) + "\n")
+        os.replace(staging, os.path.join(folder, ANSWERS_FILE))
+    except OSError:
+        if os.path.exists(staging):
+            os.remove(staging)
+        raise
 
 
 def commit_of(repo: str, ref: str) -> Optional[str]:

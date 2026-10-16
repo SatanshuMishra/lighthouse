@@ -1,11 +1,15 @@
-import argparse
+import base64
 import json
 import os
+import re
+import shlex
 import stat
 import subprocess
+import urllib.parse
 from typing import Any, Dict, List, Optional, Tuple
 
 from lighthouse_tool import repo as repository
+from lighthouse_tool.repo import Parser, Refusal, require_root
 
 Outcome = Tuple[int, Optional[str], Optional[str]]
 Problem = Dict[str, Optional[str]]
@@ -14,15 +18,9 @@ FILE_NAME = "credentials.env"
 SHARED_MODE_BITS = stat.S_IRGRP | stat.S_IWGRP | stat.S_IROTH | stat.S_IWOTH
 REFUSING_KINDS = ("missing-file", "mode", "not-ignored", "production")
 QUOTES = ("'", '"')
-
-
-class Refusal(Exception):
-    pass
-
-
-class Parser(argparse.ArgumentParser):
-    def error(self, message: str) -> None:
-        raise Refusal(message)
+EXPORT_PREFIX = re.compile(r"^export\s+")
+VARIABLE_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+PERCENT_ESCAPE = re.compile(r"%[0-9A-F]{2}")
 
 
 def credentials_parser() -> Parser:
@@ -60,9 +58,7 @@ def credentials(arguments: List[str]) -> Outcome:
 
 
 def located(repo: str, profile_path: Optional[str]) -> Tuple[str, Dict[str, Any]]:
-    root = repository.toplevel(repo)
-    if root is None:
-        raise Refusal("{} is not a git repository".format(repo))
+    root = require_root(repo)
     profile = repository.load_profile(root, profile_path)
     if not isinstance(profile, dict):
         raise Refusal("no readable profile; run lighthouse:init to write .lighthouse/profile.json")
@@ -97,6 +93,11 @@ def production_names(profile: Dict[str, Any]) -> List[str]:
 
 
 def needed_names(profile: Dict[str, Any]) -> List[str]:
+    live = set(production_names(profile))
+    return [name for name in credential_names(profile) if name not in live]
+
+
+def credential_names(profile: Dict[str, Any]) -> List[str]:
     names = credentials_section(profile).get("names")
     declared = list(names) if isinstance(names, dict) else []
     surfaces = profile.get("surfaces")
@@ -121,7 +122,8 @@ def parsed_line(line: str) -> Optional[Tuple[str, str]]:
     if not text or text.startswith("#") or "=" not in text:
         return None
     name, value = text.split("=", 1)
-    return name.strip(), unquoted(value.strip())
+    variable = EXPORT_PREFIX.sub("", name.strip())
+    return (variable, unquoted(value.strip())) if VARIABLE_NAME.match(variable) else None
 
 
 def read_entries(path: str) -> Dict[str, str]:
@@ -228,11 +230,26 @@ def split_command(arguments: List[str]) -> Tuple[List[str], List[str]]:
     return arguments[:boundary], arguments[boundary + 1 :]
 
 
+def encodings(value: str) -> List[str]:
+    raw = value.encode("utf-8")
+    percent = [urllib.parse.quote(value, safe=""), urllib.parse.quote_plus(value)]
+    return [
+        value,
+        json.dumps(value)[1:-1],
+        json.dumps(value, ensure_ascii=False)[1:-1],
+        *percent,
+        *[PERCENT_ESCAPE.sub(lambda escape: escape.group(0).lower(), form) for form in percent],
+        base64.b64encode(raw).decode("ascii").rstrip("="),
+        base64.urlsafe_b64encode(raw).decode("ascii").rstrip("="),
+        shlex.quote(value),
+    ]
+
+
 def redacted(text: str, filled: Dict[str, str]) -> str:
-    ordered = sorted(filled.items(), key=lambda item: len(item[1]), reverse=True)
+    forms = {form: name for name, value in filled.items() for form in encodings(value) if form}
     result = text
-    for name, value in ordered:
-        result = result.replace(value, "[redacted:{}]".format(name))
+    for form in sorted(forms, key=len, reverse=True):
+        result = result.replace(form, "[redacted:{}]".format(forms[form]))
     return result
 
 
