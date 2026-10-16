@@ -1,6 +1,6 @@
 # retest-what-changed: S4: lighthouse retests only what changed since the previous results
 Status: active
-Updated: 2026-10-16T22:15:34.365Z
+Updated: 2026-10-16T22:16:37.481Z
 Next ids: c4 D3 R4 S1
 
 ## Goal
@@ -15,11 +15,11 @@ Build the handed-off spec docs/specs/retest-what-changed.md through the pipeline
 
 ## Where things stand
 
-MSP retest lives on mitosis/retest (base feat/retest-what-changed at 2e00295) in worktree ~/.mitosis/runs/lighthouse/retest-what-changed/trees/retest, head 159c369. Round 1 (head dfa32cb) was loop; all three blocker classes were diagnosed fixable and every round-1 blocker and advisory (C1, C2, C3, S2, S3, C4, C5, S4) is fixed there with receipt tests that failed first. Round 2 at head 159c369: the full suite passes (128 tests on 3.14 and 3.9) code-reviewer found one LOW smell (C1, duplicated containment check in retest.py) and no new defect; security-reviewer is still reviewing the fix commits from dfa32cb.
+MSP retest lives on mitosis/retest (base feat/retest-what-changed at 2e00295) in worktree ~/.mitosis/runs/lighthouse/retest-what-changed/trees/retest, head 159c369. Round 1 (head dfa32cb) was loop; all three blocker classes were diagnosed fixable and every round-1 blocker and advisory (C1, C2, C3, S2, S3, C4, C5, S4) is fixed there with receipt tests that failed first. Round 2 at head 159c369: the full suite passes (128 tests on 3.14 and 3.9) code-reviewer found one LOW smell (C1, duplicated containment check in retest.py) and no new defect; security-reviewer found one LOW (S1, any existing results-folder file counts as fresh evidence). The validator is judging 5 carried blockers (P1-P5) and the two LOW advisories.
 
 ## Next step
 
-When both round-2 reviewers return, collect their arrays into review/round-2/retest.findings.json, then run candidates, the validator, record and verdict.
+When the round-2 validator returns, save its array as review/round-2/retest.verdicts.json, run pipeline record and verdict, and fix any advisory it confirms before ship.
 
 Needs: D2, R1.
 
