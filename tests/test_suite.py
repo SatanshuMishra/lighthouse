@@ -1,6 +1,7 @@
 import json
 import os
 import shutil
+import time
 import unittest
 
 from tests import scratch
@@ -287,6 +288,39 @@ class SuiteTest(unittest.TestCase):
             log = read(results, "suite-{}.log".format(build))
             self.assertIn("signing in with", log)
             self.assertNotIn(planted, log)
+
+    def test_suite_logs_hide_filled_credentials_the_profile_does_not_name(self):
+        planted = "t0ken-value"
+        profile = scratch.sample_profile(
+            suite={"command": 'echo "calling with $API_TOKEN"', "junit": None, "timeout_minutes": None},
+            credentials={"file": ".env.test", "names": {"APP_PASSWORD": {"production": False}}},
+        )
+        work = project_with(self, {}, profile)
+        with open(os.path.join(work, ".env.test"), "w", encoding="utf-8") as entries:
+            entries.write("API_TOKEN={}\n".format(planted))
+        results = results_folder(self)
+        env = {**scratch.environment(scratch.make_home(self)), "API_TOKEN": planted}
+        code, _, stderr = scratch.run_lighthouse(
+            ["suite", "--repo", work, "--core", "main", "--feature", "feat/x", "--results", results], env
+        )
+        self.assertEqual(code, 0, stderr)
+        for build in ("core", "feature"):
+            log = read(results, "suite-{}.log".format(build))
+            self.assertIn("calling with", log)
+            self.assertNotIn(planted, log)
+
+    def test_a_step_that_leaves_a_process_running_still_finishes(self):
+        profile = scratch.sample_profile(
+            setup={"command": "sleep 20 & echo service started"},
+            suite={"command": "true", "junit": None, "timeout_minutes": None},
+        )
+        work = project_with(self, {}, profile)
+        started = time.monotonic()
+        result = suite_of(self, work)
+        self.assertLess(time.monotonic() - started, 15)
+        self.assertEqual(result["result"], "passed")
+        feature_log = result["feature"]["log"]
+        self.assertIn("service started", read(os.path.dirname(feature_log), os.path.basename(feature_log)))
 
 
 if __name__ == "__main__":
