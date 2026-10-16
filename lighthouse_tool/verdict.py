@@ -1,7 +1,7 @@
-import argparse
 import json
 import os
 from typing import Any, Dict, List, Optional, Tuple
+from lighthouse_tool.repo import Parser, Refusal
 
 FINDINGS = "findings.json"
 VERDICT = "verdict.json"
@@ -18,19 +18,10 @@ FLAKY = "flaky"
 UNPROVEN = "unproven"
 
 
-class Refusal(Exception):
-    pass
-
-
 class Malformed(Refusal):
     def __init__(self, key: str, problem: str) -> None:
         super().__init__("{} in {}: {}".format(key, FINDINGS, problem))
         self.key = key
-
-
-class Parser(argparse.ArgumentParser):
-    def error(self, message: str) -> None:
-        raise Refusal(message)
 
 
 def parser() -> Parser:

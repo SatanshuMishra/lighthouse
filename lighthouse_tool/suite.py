@@ -8,6 +8,7 @@ from typing import Any, Dict, List, NamedTuple, Optional, Set, Tuple
 
 from lighthouse_tool import credentials
 from lighthouse_tool import repo as repository
+from lighthouse_tool.repo import Parser, Refusal, checked_git, require_root
 
 Outcome = Tuple[int, Optional[str], Optional[str]]
 BUILDS = ("core", "feature")
@@ -16,15 +17,6 @@ UNRUNNABLE_EXITS = (126, 127)
 WHOLE_SUITE = "suite"
 OWNER_MARK = "lighthouse-owned"
 STOPPED_OUTPUT_SECONDS = 5
-
-
-class Refusal(Exception):
-    pass
-
-
-class Parser(argparse.ArgumentParser):
-    def error(self, message: str) -> None:
-        raise Refusal(message)
 
 
 class StepRun(NamedTuple):
@@ -69,30 +61,16 @@ def run(argv: List[str]) -> Outcome:
     return 0, json.dumps(result), None
 
 
-def repository_root(repo: str) -> str:
-    root = repository.toplevel(repo)
-    if root is None:
-        raise Refusal("{} is not a git repository".format(repo))
-    return root
-
-
-def checked_git(where: str, args: List[str]) -> str:
-    code, stdout, stderr = repository.git(where, args)
-    if code != 0:
-        raise Refusal("git {} failed: {}".format(" ".join(args[:2]), stderr.strip()))
-    return stdout
-
-
 def worktrees_command(options: argparse.Namespace) -> Dict[str, Any]:
-    return make_worktrees(repository_root(options.repo), options.core, options.feature, options.results)
+    return make_worktrees(require_root(options.repo), options.core, options.feature, options.results)
 
 
 def release_command(options: argparse.Namespace) -> Dict[str, Any]:
-    return release_worktrees(repository_root(options.repo), options.results)
+    return release_worktrees(require_root(options.repo), options.results)
 
 
 def suite_command(options: argparse.Namespace) -> Dict[str, Any]:
-    root = repository_root(options.repo)
+    root = require_root(options.repo)
     worktrees = make_worktrees(root, options.core, options.feature, options.results)
     profile = chosen_profile(root, worktrees["feature"]["path"], options.profile)
     folder = os.path.realpath(options.results)

@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from lighthouse_tool import change
 from lighthouse_tool import repo as repository
+from lighthouse_tool.repo import Parser, Refusal
 from lighthouse_tool import verdict as verdicts
 
 VERDICTS = ("green", "failures", "blocked", "unproven")
@@ -14,15 +15,6 @@ TYPE_FORM = re.compile(r"[a-z]+\Z")
 SCOPE_FORM = re.compile(r"[a-z0-9-]+\Z")
 SCOPE_OUTSIDER = re.compile(r"[^a-z0-9-]")
 SUMMARY_FORM = re.compile(r"[a-z][^\r\n]*\Z")
-
-
-class Refusal(Exception):
-    pass
-
-
-class Parser(argparse.ArgumentParser):
-    def error(self, message: str) -> None:
-        raise Refusal(message)
 
 
 def parser() -> Parser:
@@ -44,13 +36,13 @@ def run(argv: List[str]) -> Tuple[int, Optional[str], Optional[str]]:
         options = parser().parse_args(argv[1:])
         results = os.path.realpath(options.results)
         line = read_verdict(results)
-        findings = read_findings(results)
+        findings = verdicts.read_findings(results)
         if line["verdict"] != "green" and not options.final:
             return 1, None, "lighthouse pr: the verdict is {}, so the pull request waits; pass --final to open it anyway".format(
                 line["verdict"]
             )
         pull_request_title = title(options.change_type, scope_of(options.repo, options.scope), options.summary)
-        changes = change_set(options.repo, options.core, options.feature)
+        changes = change.change_set(options.repo, options.core, options.feature)
     except Refusal as refusal:
         return 2, json.dumps({"error": str(refusal)}), "lighthouse pr: {}".format(refusal)
     return 0, json.dumps(
@@ -78,20 +70,6 @@ def read_verdict(results: str) -> Dict[str, Any]:
         if not isinstance(line.get(key), list):
             raise Refusal("{} in {} must be a list".format(key, path))
     return line
-
-
-def read_findings(results: str) -> Dict[str, Any]:
-    try:
-        return verdicts.read_findings(results)
-    except verdicts.Refusal as refusal:
-        raise Refusal(str(refusal))
-
-
-def change_set(repo: str, core: str, feature: str) -> Dict[str, Any]:
-    try:
-        return change.change_set(repo, core, feature)
-    except change.Refusal as refusal:
-        raise Refusal(str(refusal))
 
 
 def scope_of(repo: str, scope: Optional[str]) -> str:
