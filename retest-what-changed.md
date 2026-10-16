@@ -1,6 +1,6 @@
 # retest-what-changed: S4: lighthouse retests only what changed since the previous results
 Status: active
-Updated: 2026-10-16T22:00:38.886Z
+Updated: 2026-10-16T22:00:43.341Z
 Next ids: c4 D3 R4 S1
 
 ## Goal
@@ -15,7 +15,7 @@ Build the handed-off spec docs/specs/retest-what-changed.md through the pipeline
 
 ## Where things stand
 
-MSP retest is committed on mitosis/retest (head dfa32cb, base feat/retest-what-changed at 2e00295) in worktree ~/.mitosis/runs/lighthouse/retest-what-changed/trees/retest; the full suite passes there on 3.14 and 3.9. Round 1 outcome is loop (review/round-1/retest.md). Confirmed blockers in three classes: rename hides changed file (C1), skipped retest judged green (C2, S2, S3), retest name mismatch (C3). Advisories C4, C5, S4. C3 was diagnosed fixable and is fixed on mitosis/retest with receipt test test_test_skill_keeps_every_planned_retest_name (red before, green after). Diagnoses of the other two classes are running.
+MSP retest is committed on mitosis/retest (head dfa32cb, base feat/retest-what-changed at 2e00295) in worktree ~/.mitosis/runs/lighthouse/retest-what-changed/trees/retest; the full suite passes there on 3.14 and 3.9. Round 1 outcome is loop (review/round-1/retest.md). Confirmed blockers in three classes: rename hides changed file (C1), skipped retest judged green (C2, S2, S3), retest name mismatch (C3). Advisories C4, C5, S4. C3 and C1 were diagnosed fixable and are fixed on mitosis/retest, each with receipt tests red before and green after (C3: test_test_skill_keeps_every_planned_retest_name; C1: test_file_moved_out_of_surface_touches_it, test_ignored_submodule_change_touches_its_surface). The diagnosis of skipped retest judged green (C2, S2, S3) is running.
 
 ## Next step
 
