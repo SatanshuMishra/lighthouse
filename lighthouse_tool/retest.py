@@ -45,8 +45,9 @@ def retest_command(options: argparse.Namespace) -> Dict[str, Any]:
     tips = {"core": suite.resolved(root, options.core), "feature": suite.resolved(root, options.feature)}
     plan = planned(root, findings, commits, tips, surfaces)
     carried = [path for path in findings["paths"] if path["name"] in plan["carried"]]
+    sources = carried_sources(previous, carried)
     os.makedirs(results, exist_ok=True)
-    copy_evidence(previous, results, carried)
+    copy_evidence(results, sources)
     write_record(results, {**plan, "previous": previous, "carried_paths": [carried_entry(path) for path in carried]})
     return plan
 
@@ -118,17 +119,32 @@ def covers(normal: str, changed: List[str]) -> bool:
 
 
 def carried_entry(path: Dict[str, Any]) -> Dict[str, Any]:
-    return {**path, "evidence": [CARRIED_FOLDER + "/" + item for item in path["evidence"]]}
+    return {**path, "evidence": [CARRIED_FOLDER + "/" + posixpath.normpath(item) for item in path["evidence"]]}
 
 
-def copy_evidence(previous: str, results: str, carried: List[Dict[str, Any]]) -> None:
-    for item in [item for path in carried for item in path["evidence"]]:
-        source = os.path.join(previous, item)
-        if not os.path.isfile(source):
-            continue
+def carried_sources(previous: str, carried: List[Dict[str, Any]]) -> Dict[str, str]:
+    items = [item for path in carried for item in path["evidence"]]
+    return {posixpath.normpath(item): evidence_source(previous, item) for item in items}
+
+
+def evidence_source(previous: str, item: str) -> str:
+    normal = posixpath.normpath(item)
+    if os.path.isabs(item) or normal == ".." or normal.startswith("../"):
+        raise Refusal("carried evidence {} must be a relative path inside the previous folder".format(item))
+    source = os.path.realpath(os.path.join(previous, normal))
+    if os.path.commonpath([previous, source]) != previous or not os.path.isfile(source):
+        raise Refusal("carried evidence {} is not a file in the previous folder {}".format(item, previous))
+    return source
+
+
+def copy_evidence(results: str, sources: Dict[str, str]) -> None:
+    for item, source in sources.items():
         destination = os.path.join(results, CARRIED_FOLDER, item)
-        os.makedirs(os.path.dirname(destination), exist_ok=True)
-        shutil.copyfile(source, destination)
+        try:
+            os.makedirs(os.path.dirname(destination), exist_ok=True)
+            shutil.copyfile(source, destination)
+        except (OSError, shutil.Error) as error:
+            raise Refusal("cannot copy carried evidence {}: {}".format(item, error))
 
 
 def write_record(results: str, record: Dict[str, Any]) -> None:

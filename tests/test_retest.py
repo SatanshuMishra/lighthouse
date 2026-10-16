@@ -297,5 +297,30 @@ class RetestTest(unittest.TestCase):
         self.assertEqual(plan["surfaces"], ["A"])
         self.assertEqual(plan["carried"], ["open b"])
 
+    def test_refuses_a_carried_path_whose_evidence_is_missing(self):
+        work = project(self)
+        paths = [path_entry("open a", "A", "passed"), path_entry("open b", "B", "passed")]
+        previous = previous_folder(self, work, paths)
+        os.remove(os.path.join(previous, "evidence", "open b.txt"))
+        commit_on(work, "feat/x", {"a/x.txt": "changed\n"}, "touch surface A")
+        results = results_folder(self)
+        code, stdout, _ = retest(self, work, previous, results, profile_file(self))
+        self.assertEqual(code, 2)
+        self.assertIn("evidence/open b.txt", json.loads(stdout)["error"])
+        self.assertFalse(os.path.exists(results))
+
+    def test_refuses_absolute_carried_evidence(self):
+        work = project(self)
+        paths = [path_entry("open a", "A", "passed"), path_entry("open b", "B", "passed")]
+        previous = previous_folder(self, work, paths)
+        absolute = os.path.realpath(os.path.join(previous, "evidence", "open b.txt"))
+        write_json(previous, "findings.json", findings([paths[0], {**paths[1], "evidence": [absolute]}]))
+        commit_on(work, "feat/x", {"a/x.txt": "changed\n"}, "touch surface A")
+        results = results_folder(self)
+        code, stdout, _ = retest(self, work, previous, results, profile_file(self))
+        self.assertEqual(code, 2)
+        self.assertIn("relative", json.loads(stdout)["error"])
+        self.assertFalse(os.path.exists(results))
+
 if __name__ == "__main__":
     unittest.main()
