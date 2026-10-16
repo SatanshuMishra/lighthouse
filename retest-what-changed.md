@@ -1,6 +1,6 @@
 # retest-what-changed: S4: lighthouse retests only what changed since the previous results
 Status: parked
-Updated: 2026-10-16T23:51:08.703Z
+Updated: 2026-10-16T23:51:10.022Z
 Next ids: c6 D5 R4 S1
 
 ## Goal
@@ -14,9 +14,10 @@ Build the handed-off spec docs/specs/retest-what-changed.md through the pipeline
 - [x] c3 The thread is parked with the next step saying the owner starts Integration by saying the MSP pull request merged evidence: park_thread set Status parked with the next step saying the owner starts Integration by saying the MSP pull request https://github.com/SatanshuMishra/lighthouse/pull/7 merged
 - [x] c4 lighthouse:test has run on feat/retest-what-changed against main and opened the FEATURE pull request, with every failure diagnosed and fixed or diagnosed blocked, and the live end-to-end surface reported unproven evidence: lighthouse verdict printed green with no failures, so no fix round ran; the four Claude Code skill paths are listed unproven because they need live claude -p sessions behind LIGHTHOUSE_E2E=1; FEATURE pull request https://github.com/SatanshuMishra/lighthouse/pull/8 is open from feat/retest-what-changed into main, ready for review and assigned to SatanshuMishra
 - [ ] c5 The thread is parked with the next step saying the owner starts Clean-up by saying the FEATURE pull request merged
+
 ## Where things stand
 
-Integration is under way: PR #7 merged into feat/retest-what-changed at 2edefe6 and pipeline integration-ready reports ready.
+FEATURE pull request https://github.com/SatanshuMishra/lighthouse/pull/8 (feat/retest-what-changed into main) waits for the owner's review and merge.
 
 ## Next step
 
