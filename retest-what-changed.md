@@ -1,6 +1,6 @@
 # retest-what-changed: S4: lighthouse retests only what changed since the previous results
 Status: active
-Updated: 2026-10-16T22:19:55.638Z
+Updated: 2026-10-16T22:20:26.234Z
 Next ids: c4 D4 R4 S1
 
 ## Goal
@@ -19,7 +19,7 @@ MSP retest lives on mitosis/retest (base feat/retest-what-changed at 2e00295) in
 
 ## Next step
 
-Run SHIP=1 ~/.mitosis/lighthouse/retest-what-changed/run.zsh --resume, then open the MSP pull request with create_pull_request using mitosis's title and body, assign it to the owner and post review/retest.comment.md.
+Open the MSP pull request from mitosis/retest (5f80f5f, pushed) into feat/retest-what-changed with create_pull_request using review/retest.title.txt and review/retest.body.md unchanged, assign it to the owner and post review/retest.comment.md.
 
 Needs: D3, R3.
 
