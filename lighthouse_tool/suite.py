@@ -18,6 +18,7 @@ PREPARATION_STEPS = ("setup", "build")
 UNRUNNABLE_EXITS = (126, 127)
 WHOLE_SUITE = "suite"
 OWNER_MARK = "lighthouse-owned"
+COMMITS = "commits.json"
 UNREAPED_POLL_SECONDS = 0.05
 
 
@@ -101,7 +102,14 @@ def make_worktrees(root: str, core: str, feature: str, results: str) -> Dict[str
     os.makedirs(results, exist_ok=True)
     folder = os.path.realpath(results)
     listed = listed_worktrees(root)
-    return {build: place_worktree(root, os.path.join(folder, build), commits[build], listed) for build in BUILDS}
+    placed = {build: place_worktree(root, os.path.join(folder, build), commits[build], listed) for build in BUILDS}
+    write_commits(folder, commits)
+    return placed
+
+
+def write_commits(folder: str, commits: Dict[str, str]) -> None:
+    with open(os.path.join(folder, COMMITS), "w", encoding="utf-8") as handle:
+        handle.write(json.dumps(commits) + "\n")
 
 
 def listed_worktrees(root: str) -> List[str]:
