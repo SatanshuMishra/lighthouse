@@ -1,6 +1,6 @@
 # retest-what-changed: S4: lighthouse retests only what changed since the previous results
 Status: active
-Updated: 2026-10-16T22:01:51.073Z
+Updated: 2026-10-16T22:08:13.740Z
 Next ids: c4 D3 R4 S1
 
 ## Goal
@@ -15,11 +15,11 @@ Build the handed-off spec docs/specs/retest-what-changed.md through the pipeline
 
 ## Where things stand
 
-MSP retest is committed on mitosis/retest (head dfa32cb, base feat/retest-what-changed at 2e00295) in worktree ~/.mitosis/runs/lighthouse/retest-what-changed/trees/retest; the full suite passes there on 3.14 and 3.9. Round 1 outcome is loop (review/round-1/retest.md). Confirmed blockers in three classes: rename hides changed file (C1), skipped retest judged green (C2, S2, S3), retest name mismatch (C3). Advisories C4, C5, S4. C3 and C1 were diagnosed fixable and are fixed on mitosis/retest, each with receipt tests red before and green after (C3: test_test_skill_keeps_every_planned_retest_name; C1: test_file_moved_out_of_surface_touches_it, test_ignored_submodule_change_touches_its_surface). Advisories C4 and S4 are fixed (retest refuses missing or out-of-folder carried evidence, with tests). The diagnosis of skipped retest judged green (C2, S2, S3) is running; advisory C5 waits on that fix because both touch verdict.py.
+MSP retest lives on mitosis/retest (base feat/retest-what-changed at 2e00295) in worktree ~/.mitosis/runs/lighthouse/retest-what-changed/trees/retest, head 159c369. Round 1 (head dfa32cb) was loop; all three blocker classes were diagnosed fixable and every round-1 blocker and advisory (C1, C2, C3, S2, S3, C4, C5, S4) is fixed there with receipt tests that failed first. Round 2 is starting.
 
 ## Next step
 
-When the three diagnoses return, fix each class classed fixable on mitosis/retest in the worktree with a receipt test that fails first and one class-wide change, fix advisories C4, C5 and S4, commit naming the ids, and start review round 2.
+Run review round 2 on MSP retest at head 159c369 with previous_head dfa32cb: diff, full suite, code-reviewer and security-reviewer on the fix commits, then candidates, validator, record and verdict.
 
 Needs: D2, R1.
 
