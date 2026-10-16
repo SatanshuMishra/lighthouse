@@ -1,6 +1,6 @@
 # retest-what-changed: S4: lighthouse retests only what changed since the previous results
 Status: active
-Updated: 2026-10-16T21:12:14.668Z
+Updated: 2026-10-16T21:12:16.179Z
 Next ids: c4 D3 R3 S1
 
 ## Goal
