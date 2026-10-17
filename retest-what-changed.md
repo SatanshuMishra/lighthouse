@@ -1,6 +1,6 @@
 # retest-what-changed: S4: lighthouse retests only what changed since the previous results
-Status: parked
-Updated: 2026-10-17T00:41:00.179Z
+Status: done
+Updated: 2026-10-17T00:41:00.286Z
 Next ids: c6 D5 R4 S2
 
 ## Goal
