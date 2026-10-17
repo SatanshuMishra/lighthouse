@@ -131,6 +131,13 @@ def listed_worktrees(work):
     return [os.path.realpath(line[len("worktree "):]) for line in porcelain.splitlines() if line.startswith("worktree ")]
 
 
+def tips_of(work):
+    return {
+        "core": scratch.run_git(work, "rev-parse", "main").strip(),
+        "feature": scratch.run_git(work, "rev-parse", "feat/x").strip(),
+    }
+
+
 class SuiteTest(unittest.TestCase):
     def test_counts_a_new_failure(self):
         work = junit_project(
@@ -435,6 +442,22 @@ class SuiteTest(unittest.TestCase):
         self.assertNotEqual(result["core"]["exit"], 0)
         self.assertEqual(result["feature"]["exit"], 0)
         self.assertEqual(result["pre_existing"], [])
+
+    def test_worktrees_record_their_commits(self):
+        work = project_with(self, {}, scratch.sample_profile())
+        results = results_folder(self)
+        code, _, stderr = lighthouse(self, "worktrees", work, results)
+        self.assertEqual(code, 0, stderr)
+        self.assertEqual(json.loads(read(results, "commits.json")), tips_of(work))
+        self.assertTrue(read(results, "commits.json").endswith("}\n"))
+
+    def test_suite_records_its_commits(self):
+        profile = scratch.sample_profile(suite={"command": "true", "junit": None, "timeout_minutes": None})
+        work = project_with(self, {}, profile)
+        results = results_folder(self)
+        code, _, stderr = lighthouse(self, "suite", work, results)
+        self.assertEqual(code, 0, stderr)
+        self.assertEqual(json.loads(read(results, "commits.json")), tips_of(work))
 
 
 if __name__ == "__main__":

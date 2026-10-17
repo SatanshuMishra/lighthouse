@@ -4,6 +4,8 @@ from typing import Any, Dict, List, Optional, Tuple
 from lighthouse_tool.repo import Parser, Refusal
 
 FINDINGS = "findings.json"
+RETEST = "retest.json"
+CARRIED_FOLDER = "previous"
 VERDICT = "verdict.json"
 REPORT = "report.md"
 PATH_KINDS = ("new", "neighbour")
@@ -19,8 +21,8 @@ UNPROVEN = "unproven"
 
 
 class Malformed(Refusal):
-    def __init__(self, key: str, problem: str) -> None:
-        super().__init__("{} in {}: {}".format(key, FINDINGS, problem))
+    def __init__(self, key: str, problem: str, source: str = FINDINGS) -> None:
+        super().__init__("{} in {}: {}".format(key, source, problem))
         self.key = key
 
 
@@ -46,10 +48,11 @@ def run(argv: List[str]) -> Tuple[int, Optional[str], Optional[str]]:
             return blocked_line(options.blocked)
         results = os.path.realpath(options.results)
         findings = read_findings(results)
+        skipped = skipped_retests(read_plan(results), findings, results)
         judged = judge(findings)
-        line = verdict_line(findings, judged)
+        line = verdict_line(findings, judged, skipped)
         write_text(os.path.join(results, VERDICT), json.dumps(line) + "\n")
-        write_text(os.path.join(results, REPORT), report(findings, judged, line))
+        write_text(os.path.join(results, REPORT), report(findings, judged, line, skipped))
     except Malformed as malformed:
         return (
             2,
@@ -75,6 +78,56 @@ def read_findings(results: str) -> Dict[str, Any]:
     except ValueError:
         raise Malformed(FINDINGS, "is not JSON")
     return checked_findings(findings, results)
+
+
+def read_plan(results: str) -> Optional[List[str]]:
+    path = os.path.join(results, RETEST)
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path, encoding="utf-8") as handle:
+            text = handle.read()
+    except OSError as error:
+        raise Malformed(RETEST, "cannot be read: {}".format(error.strerror or error), RETEST)
+    try:
+        plan = json.loads(text)
+    except ValueError:
+        raise Malformed(RETEST, "is not JSON", RETEST)
+    return checked_plan(plan)
+
+
+def checked_plan(plan: Any) -> List[str]:
+    names = plan.get("retest") if isinstance(plan, dict) else None
+    if not (isinstance(names, list) and all(isinstance(name, str) for name in names)):
+        raise Malformed(RETEST, "must be a JSON object with a retest list of path names", RETEST)
+    return [name for index, name in enumerate(names) if name not in names[:index]]
+
+
+def lies_in(folder: os.stat_result, located: str) -> bool:
+    parent = os.path.dirname(located)
+    return parent != located and (os.path.samestat(folder, os.stat(parent)) or lies_in(folder, parent))
+
+
+def is_fresh(item: str, results: str, carried: Optional[os.stat_result]) -> bool:
+    located = os.path.realpath(os.path.join(results, item))
+    return os.path.isfile(located) and not (carried is not None and lies_in(carried, located))
+
+
+def carried_folder(results: str) -> Optional[os.stat_result]:
+    folder = os.path.join(results, CARRIED_FOLDER)
+    return os.stat(folder) if os.path.isdir(folder) else None
+
+
+def driven_again(path: Dict[str, Any], results: str, carried: Optional[os.stat_result]) -> bool:
+    return any(is_fresh(item, results, carried) for item in path["evidence"])
+
+
+def skipped_retests(plan: Optional[List[str]], findings: Dict[str, Any], results: str) -> List[str]:
+    if plan is None:
+        return []
+    carried = carried_folder(results)
+    driven = {path["name"] for path in findings["paths"] if driven_again(path, results, carried)}
+    return [name for name in plan if name not in driven]
 
 
 def is_number(value: Any) -> bool:
@@ -265,12 +318,25 @@ def verdict_of(findings: Dict[str, Any], judged: Tuple[Tuple[Dict[str, Any], str
     return "green"
 
 
-def verdict_line(findings: Dict[str, Any], judged: Tuple[Tuple[Dict[str, Any], str], ...]) -> Dict[str, Any]:
+def held_to_plan(verdict: str, skipped: List[str]) -> str:
+    return UNPROVEN if skipped and verdict == "green" else verdict
+
+
+def unproven_names(judged: Tuple[Tuple[Dict[str, Any], str], ...], skipped: List[str]) -> List[str]:
+    judged_unproven = named(judged, UNPROVEN)
+    return judged_unproven + [name for name in skipped if name not in judged_unproven]
+
+
+def verdict_line(
+    findings: Dict[str, Any],
+    judged: Tuple[Tuple[Dict[str, Any], str], ...],
+    skipped: List[str],
+) -> Dict[str, Any]:
     suite = findings["suite"]
     return {
-        "verdict": verdict_of(findings, judged),
+        "verdict": held_to_plan(verdict_of(findings, judged), skipped),
         "failures": suite_ids(suite, "failures") + named(judged, CONFIRMED_FAILURE),
-        "unproven": named(judged, UNPROVEN),
+        "unproven": unproven_names(judged, skipped),
         "flaky": suite_ids(suite, "flaky") + named(judged, FLAKY),
         "tokens": findings["spend"]["tokens"],
         "minutes": findings["spend"]["minutes"],
@@ -322,6 +388,10 @@ def lines_classified(judged: Tuple[Tuple[Dict[str, Any], str], ...], classificat
     return [path_line(path, outcome) for path, outcome in judged if outcome == classification]
 
 
+def skipped_lines(skipped: List[str]) -> List[str]:
+    return ["{}: planned for retest but not driven again".format(name) for name in skipped]
+
+
 def section(title: str, lines: List[str]) -> List[str]:
     return ["## " + title, ""] + lines + [""]
 
@@ -330,6 +400,7 @@ def report(
     findings: Dict[str, Any],
     judged: Tuple[Tuple[Dict[str, Any], str], ...],
     line: Dict[str, Any],
+    skipped: List[str],
 ) -> str:
     suite = findings["suite"]
     build = findings["build"]
@@ -355,7 +426,7 @@ def report(
         + section("Suite", suite_lines)
         + section("New behaviour", bullets(lines_of_kind(judged, "new")))
         + section("Neighbours", bullets(lines_of_kind(judged, "neighbour")))
-        + section("Unproven", bullets(lines_classified(judged, UNPROVEN)))
+        + section("Unproven", bullets(lines_classified(judged, UNPROVEN) + skipped_lines(skipped)))
         + section("Flaky", bullets(suite_ids(suite, "flaky") + lines_classified(judged, FLAKY)))
         + section("Pre-existing", bullets(suite_ids(suite, "pre_existing") + lines_classified(judged, PRE_EXISTING)))
         + section(

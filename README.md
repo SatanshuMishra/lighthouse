@@ -17,7 +17,7 @@ It needs Python 3.9 or later and git on macOS or Linux, and uses gh when present
 |---|---|---|
 | `lighthouse:init` | `--repo <path>`, `--unattended` | Reads the codebase and writes `.lighthouse/profile.json`, marking every fact it cannot confirm unconfirmed and every outward-facing action not confirmed safe off-limits. |
 | `lighthouse:doctor` | `--repo <path>`, `--unattended` | Runs the profile and credentials checks and repairs the profile, changing only `.lighthouse/profile.json`; runs init when the profile is missing. |
-| `lighthouse:test` | `--repo <path>`, `--core <branch>`, `--feature <branch>`, `--results <dir>`, `--spec <path>` when a spec exists, `--final` | Tests the FEATURE branch against the core branch and ends with the verdict line. |
+| `lighthouse:test` | `--repo <path>`, `--core <branch>`, `--feature <branch>`, `--results <dir>`, `--previous <dir>` when an earlier run's results folder exists, `--spec <path>` when a spec exists, `--final` | Tests the FEATURE branch against the core branch and ends with the verdict line. |
 
 Only init and doctor, when a person invokes them directly, ask anything, and only questions about facts, never a credential value. lighthouse:test never asks and runs them with `--unattended`.
 
@@ -86,12 +86,15 @@ The last line lighthouse:test prints is one JSON object on one line, the contrac
 | `with-credentials` | `--repo`, `--profile`, `--cwd <dir>`, `-- <command>` |
 | `worktrees` | `--repo`, `--core`, `--feature`, `--results` |
 | `suite` | `--repo`, `--core`, `--feature`, `--results`, `--profile` |
+| `retest` | `--previous <dir>`, `--results <dir>`, `--repo`, `--core`, `--feature`, `--profile` |
 | `release` | `--repo`, `--results` |
 | `verdict` | `--results`, or `--blocked <reason>` to print a blocked verdict line for a run that stopped early, with no results folder |
 | `pr` | `--repo`, `--core`, `--feature`, `--results`, `--summary`, `--type`, `--scope`, `--why`, `--final` |
 | `spend` | `--since <ISO time>`, `--from <dir>`, `--transcripts <dir>` |
 
 After each setup, build and suite step, `lighthouse suite` kills the step's process group, so a server one build's step started cannot answer the other build's suite. A process that leaves that group, such as a daemon that calls `setsid`, is not stopped.
+
+`lighthouse worktrees` and `lighthouse suite` write `commits.json` in the results folder, holding the full core and FEATURE commits they checked out. `lighthouse retest` reads an earlier results folder's `findings.json` and `commits.json` and the profile, and prints a plan: `full`, `changed` (the files changed since the previous FEATURE commit), `retest` (the paths that failed or were unproven), `surfaces` (the profile surfaces holding a changed file) and `carried` (the passed paths on untouched surfaces). It writes the same plan, with `carried_paths` holding each carried path's entry, to `<results>/retest.json`, and copies each carried path's evidence under `<results>/previous/`. `full` is true, every previous path retests and nothing carries, when the previous FEATURE commit is not an ancestor of the FEATURE tip, the core branch moved, or the previous suite or build was blocked or it holds no paths. It refuses with exit 2, writing nothing, when `--previous` and `--results` name the same folder or the previous folder lacks a valid `findings.json` or `commits.json`, or a carried path's evidence is not a file inside the previous folder. When `<results>/retest.json` exists, `lighthouse verdict` lists as unproven every planned retest path the findings leave out, or whose evidence names no existing file in the results folder outside `previous/`.
 
 ## What lighthouse never does
 
