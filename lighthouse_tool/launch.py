@@ -59,9 +59,17 @@ def results_outside_repository(arguments: List[str]) -> Optional[str]:
     if located.results is None:
         return None
     root = toplevel(located.repo) if located.repo is not None else None
-    if root is not None and suite.is_inside(root, located.results):
+    guarded = root if root is not None else enclosing_checkout(located.results)
+    if guarded is not None and suite.is_inside(guarded, located.results):
         return None
     return os.path.realpath(located.results)
+
+
+def enclosing_checkout(path: str) -> Optional[str]:
+    folder = os.path.realpath(path)
+    while not os.path.isdir(folder) and os.path.dirname(folder) != folder:
+        folder = os.path.dirname(folder)
+    return toplevel(folder)
 
 
 def run(argv: List[str]) -> Outcome:
