@@ -21,7 +21,9 @@ Run the lighthouse command as `lighthouse` when it is on PATH, otherwise as `${C
 3. Write the profile as version 1 JSON with an indent of 2, holding:
    - `version`: 1.
    - `sources`: every file read in step 2.
-   - `suite`: `command`, the command the project's CI or README uses to run its tests, run from the repository root; `junit`, the repository-relative JUnit XML path when the project already writes one, otherwise null; `timeout_minutes`, a number when CI states one, otherwise null.
+   - `suite`: `command`, the command the project's CI or README uses to run its tests, run from the repository root; `junit`, the repository-relative JUnit XML path when the project already writes one, otherwise null; `timeout_minutes`, a number when CI states one, otherwise null; and always both `rerun` and `isolated`:
+     - `suite.rerun`: the command run instead of the whole suite to rerun only the failing tests, from the repository root, writing the same JUnit report as `suite.command`. lighthouse replaces `{tests}` with the failing test ids (classname.name) and `{names_regex}` with a regular expression matching their names, shell-quoting each value itself, so leave each placeholder unquoted. For unittest, `python3 -m unittest {tests}` through the same runner and report options as `suite.command`; for pytest, `suite.command` plus `--lf`; for jest and vitest, `suite.command` plus `-t {names_regex}`; for go test, `suite.command` plus `-run {names_regex}`; null for any runner without a way to select failures.
+     - `suite.isolated`: true only when the suite uses no fixed ports, shared databases or shared folders, so core's and FEATURE's suites may run at the same time; otherwise false.
    - `setup`: `command` that installs dependencies in a fresh checkout, when the project needs one.
    - `build`: `command`, when the product builds.
    - `start`: `command` and `ready`, a URL, log line or command that shows the product is up, when the product runs.

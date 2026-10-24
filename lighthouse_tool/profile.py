@@ -17,6 +17,7 @@ Problem = Dict[str, str]
 PROFILE_PATH = ".lighthouse/profile.json"
 SCHEMA_PATH = os.path.join(os.path.dirname(os.path.realpath(__file__)), "profile_schema.json")
 PUBLISH_MESSAGE = "chore(lighthouse): record the test profile"
+UPGRADED_SUITE_KEYS = ("rerun", "isolated")
 
 SOURCE_NAMES = (
     "package.json",
@@ -127,15 +128,28 @@ def run(argv: List[str]) -> Outcome:
 def check_command(args: List[str]) -> Outcome:
     options = check_parser().parse_args(args)
     root = require_root(options.repo)
-    problems = check_profile(root, os.path.abspath(options.profile) if options.profile else None)
+    profile_path = os.path.abspath(options.profile) if options.profile else None
+    problems = check_profile(root, profile_path)
+    upgrades = check_upgrades(root, profile_path)
     if not problems:
-        return 0, json.dumps({"ok": True, "problems": []}), None
+        return 0, json.dumps({"ok": True, "problems": [], "upgrades": upgrades}), None
     reasons = ["lighthouse profile check: {}: {}".format(item["kind"], item["detail"]) for item in problems]
-    return 1, json.dumps({"ok": False, "problems": problems}), "\n".join(reasons)
+    return 1, json.dumps({"ok": False, "problems": problems, "upgrades": upgrades}), "\n".join(reasons)
 
 
 def problem(kind: str, detail: str) -> Problem:
     return {"kind": kind, "detail": detail}
+
+
+def upgrade(field: str) -> Problem:
+    return {"field": field, "detail": "{} is not set, and lighthouse:doctor writes it".format(field)}
+
+
+def check_upgrades(repo: str, path: Optional[str] = None) -> List[Problem]:
+    suite = section(repository.load_profile(repo, path), "suite")
+    if not suite:
+        return []
+    return [upgrade("suite." + key) for key in UPGRADED_SUITE_KEYS if key not in suite]
 
 
 def load_schema() -> Dict[str, Any]:

@@ -16,13 +16,16 @@ Run the lighthouse command as `lighthouse` when it is on PATH, otherwise as `${C
 
 ## Steps
 
-1. Run `lighthouse profile check --repo <repo>` and read the problems in its JSON.
+1. Run `lighthouse profile check --repo <repo>` and read the problems and upgrades in its JSON.
 2. When a problem has kind `missing`, invoke lighthouse:init with the same `--repo` and `--unattended` flags, and stop.
 3. Fix every other problem in `.lighthouse/profile.json` alone, reading the codebase to find what is true now:
    - `command`: replace a command that no longer resolves with the command the project now uses, from its CI, README, manifests or scripts.
    - `path`: replace a path that no longer exists with the code that now holds that surface; remove the surface when its behaviour is gone.
    - `unrecorded`: read the source file, add it to `sources`, and record whatever it changes, such as a new suite, setup, build or start command, or a new surface.
    - `malformed`, `version` or `schema`: rewrite the profile as version 1 with every required key, keeping every entry that is still true.
+   - upgrades: write each field it names. Always write both `suite.rerun` and `suite.isolated`, reading the suite's runner and its test setup:
+     - `suite.rerun`: the command run instead of the whole suite to rerun only the failing tests, from the repository root, writing the same JUnit report as `suite.command`. lighthouse replaces `{tests}` with the failing test ids (classname.name) and `{names_regex}` with a regular expression matching their names, shell-quoting each value itself, so leave each placeholder unquoted. For unittest, `python3 -m unittest {tests}` through the same runner and report options as `suite.command`; for pytest, `suite.command` plus `--lf`; for jest and vitest, `suite.command` plus `-t {names_regex}`; for go test, `suite.command` plus `-run {names_regex}`; null for any runner without a way to select failures.
+     - `suite.isolated`: true only when the suite uses no fixed ports, shared databases or shared folders, so core's and FEATURE's suites may run at the same time; otherwise false.
 4. Run `lighthouse profile check --repo <repo>` again. When it still fails, stop and report every remaining problem, so a caller treats the profile as blocked.
 5. Run `lighthouse credentials check --repo <repo>`. Report each missing or empty name as a readiness item, naming the file it belongs in and never a value.
 6. For each surface whose `sign_in` records a command, run it through `lighthouse with-credentials --repo <repo> -- /bin/sh -c '<the surface's sign_in command>'`, since the command is a shell command. Pass no `--profile`: lighthouse then reads the profile at the root of the repository `--repo` is in, the one doctor just checked. Report a sign-in that fails as a readiness item for that surface. Never print, ask for or accept a credential value.

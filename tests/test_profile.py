@@ -53,6 +53,7 @@ class ProfileCheckTest(unittest.TestCase):
             work,
             scratch.sample_profile(
                 sources=["pyproject.toml", ".github/workflows/ci.yml"],
+                suite={**scratch.sample_profile()["suite"], "rerun": "python3 -m unittest {tests}", "isolated": True},
                 surfaces=[surface],
                 credentials={"file": None, "names": {"APP_USER": {"production": False}}},
                 facts={"start_port": {"value": None, "confirmed": False, "recheck": "read src/app.py"}},
@@ -64,7 +65,7 @@ class ProfileCheckTest(unittest.TestCase):
         code, report, stderr = profile_check(self, work)
 
         self.assertEqual(code, 0, stderr)
-        self.assertEqual(report, {"ok": True, "problems": []})
+        self.assertEqual(report, {"ok": True, "problems": [], "upgrades": []})
 
     def test_reports_a_missing_profile(self):
         work, _ = scratch.make_repo(self)
@@ -149,13 +150,13 @@ class ProfileCheckTest(unittest.TestCase):
         work, _ = scratch.make_repo(self)
         scratch.commit_files(work, {"docs/index_test.py": "\n"}, "add the docs folder")
         command = "cd docs && python3 -m unittest discover -p '*_test.py' && echo ./... src/**/*.ts"
-        suite = {"command": command, "junit": None, "timeout_minutes": None}
+        suite = {"command": command, "junit": None, "timeout_minutes": None, "rerun": None, "isolated": False}
         scratch.write_profile(work, scratch.sample_profile(suite=suite))
 
         code, report, stderr = profile_check(self, work)
 
         self.assertEqual(code, 0, stderr)
-        self.assertEqual(report, {"ok": True, "problems": []})
+        self.assertEqual(report, {"ok": True, "problems": [], "upgrades": []})
 
     def test_reports_a_vanished_setup_script(self):
         work, _ = scratch.make_repo(self)
@@ -171,25 +172,31 @@ class ProfileCheckTest(unittest.TestCase):
         work, _ = scratch.make_repo(self)
         scratch.commit_files(work, {"web/run.sh": "exit 0\n", "tools/check.py": "\n"}, "add the scripts")
         os.chmod(os.path.join(work, "web", "run.sh"), 0o755)
-        suite = {"command": "cd web && ./run.sh", "junit": None, "timeout_minutes": None}
+        suite = {"command": "cd web && ./run.sh", "junit": None, "timeout_minutes": None, "rerun": None, "isolated": False}
         build = {"command": "cd tools && python3 check.py"}
         scratch.write_profile(work, scratch.sample_profile(suite=suite, build=build))
 
         code, report, stderr = profile_check(self, work)
 
         self.assertEqual(code, 0, stderr)
-        self.assertEqual(report, {"ok": True, "problems": []})
+        self.assertEqual(report, {"ok": True, "problems": [], "upgrades": []})
 
     def test_accepts_shell_builtins_and_keywords(self):
         work, _ = scratch.make_repo(self)
-        suite = {"command": "unset CI && exec python3 -m unittest", "junit": None, "timeout_minutes": None}
+        suite = {
+            "command": "unset CI && exec python3 -m unittest",
+            "junit": None,
+            "timeout_minutes": None,
+            "rerun": None,
+            "isolated": False,
+        }
         build = {"command": "{ : ; eval true; } && if test -d src; then umask 022; fi"}
         scratch.write_profile(work, scratch.sample_profile(suite=suite, build=build))
 
         code, report, stderr = profile_check(self, work)
 
         self.assertEqual(code, 0, stderr)
-        self.assertEqual(report, {"ok": True, "problems": []})
+        self.assertEqual(report, {"ok": True, "problems": [], "upgrades": []})
 
 
     def test_profile_accepts_rerun(self):
@@ -225,6 +232,16 @@ class ProfileCheckTest(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertEqual(problem_kinds(report), ["schema"])
         self.assertIn("suite.isolated", details_of(report, "schema")[0])
+
+    def test_profile_lists_missing_suite_fields_as_upgrades(self):
+        work, _ = scratch.make_repo(self)
+        scratch.write_profile(work, scratch.sample_profile())
+
+        code, report, stderr = profile_check(self, work)
+
+        self.assertEqual(code, 0, stderr)
+        self.assertEqual(report["problems"], [])
+        self.assertEqual([item["field"] for item in report["upgrades"]], ["suite.rerun", "suite.isolated"])
 
 
 class ProfilePublishTest(unittest.TestCase):
