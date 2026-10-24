@@ -192,6 +192,11 @@ class SkillsTest(unittest.TestCase):
         self.assertIn("With --child, run the Steps below", launching)
         self.assertNotIn("LIGHTHOUSE_CHILD", text)
 
+    def test_a_blocked_launch_line_is_printed_with_its_reason_and_never_ledgered_twice(self):
+        launching = section(scratch.skill_text("test"), "## Launch", "## Steps")
+        self.assertIn("When that line's verdict is blocked, say in one line the reason lighthouse launch printed", launching)
+        self.assertIn("lighthouse launch has already appended the run to the ledger, so never run Stopping early for it", launching)
+
     def test_every_wait_instruction_sets_the_bash_timeout_to_its_ceiling(self):
         for path in (scratch.skill_path("test"), os.path.join(scratch.ROOT, "agents", "driver.md")):
             holds = [line for line in scratch.read_text(path).splitlines() if "lighthouse wait --until" in line]
