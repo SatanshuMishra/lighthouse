@@ -1,6 +1,6 @@
 # lighthouse-faster-cheaper: Make lighthouse:test runs faster and cheaper without lowering test quality, and improve its metrics
 Status: active
-Updated: 2026-10-24T15:45:02.026Z
+Updated: 2026-10-24T18:58:20.609Z
 Next ids: c4 D7 R5 S1
 
 ## Goal
@@ -19,7 +19,7 @@ Stage 3. faster-command is green at round 4 (head 08a8ed2, reviewed green), with
 
 ## Next step
 
-Report the hard failure to the owner and wait for their choice: run the live baseline and held-out pass from the main session in the background and commit the baseline to faster-held-out, then review it from round 1 and ship; or another way they name.
+The owner has the blocker explained and is asked whether the main session should run the live baseline and held-out pass in the background (about $75 and 3 hours, going by pass 1), commit the baseline to faster-held-out, review it from round 1 and ship; wait for their answer. A proposed session card (mitosis-long-steps) covers letting mitosis Steps run measurements over 10 minutes.
 
 Needs: D2, D3, D6, R2.
 
