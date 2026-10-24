@@ -27,6 +27,7 @@ CORE_STORE = "core-suites"
 STORED_SUITE_FIELDS = ("command", "junit", "rerun", "timeout_minutes")
 UNREAPED_POLL_SECONDS = 0.05
 RERUN_PLACEHOLDER = re.compile(r"\{(tests|names_regex|names)\}")
+SHELL_PIECE = re.compile(r"""\\.|'[^']*'?|"(?:\\.|[^"\\])*"?|[^\\'"]+""", re.S)
 Timed = TypeVar("Timed")
 
 
@@ -495,6 +496,15 @@ def confirmed_failures(first: SuiteRun, second: SuiteRun) -> SuiteRun:
     return SuiteRun(first.exit if any(tests.values()) else 0, None, tests)
 
 
+def quoted_placeholders(template: str) -> List[str]:
+    return [
+        placeholder.group(0)
+        for piece in SHELL_PIECE.finditer(template)
+        if piece.group(0)[0] in "'\""
+        for placeholder in RERUN_PLACEHOLDER.finditer(piece.group(0))
+    ]
+
+
 def filled_rerun(template: str, failing: List[str], names: Dict[str, str]) -> str:
     chosen = [names[test_id] for test_id in failing]
     values = {
@@ -512,7 +522,9 @@ def run_failed_tests(
     junit = junit_report(profile)
     names = first.names or {}
     failing = sorted(failed_ids(first))
-    if template is None or junit is None or not failing or any(test_id not in names for test_id in failing):
+    if template is None or quoted_placeholders(template) or junit is None or not failing:
+        return None
+    if any(test_id not in names for test_id in failing):
         return None
     report = os.path.join(worktree, junit)
     discard(report)

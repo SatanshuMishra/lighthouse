@@ -3,6 +3,7 @@ import os
 import statistics
 from typing import Any, Dict, List, Optional, Tuple
 
+from lighthouse_tool.records import is_number, json_object
 from lighthouse_tool.repo import Parser, Refusal, require_root, state_dir
 from lighthouse_tool.spend import KINDS
 
@@ -20,9 +21,9 @@ def run(argv: List[str]) -> Tuple[int, Optional[str], Optional[str]]:
     try:
         options = parser().parse_args(argv[1:])
         folder = state_dir(require_root(options.repo))
+        lines = read_ledger(os.path.join(folder, LEDGER)) if folder is not None else []
     except Refusal as refusal:
         return 2, json.dumps({"error": str(refusal)}), "lighthouse runs: {}".format(refusal)
-    lines = read_ledger(os.path.join(folder, LEDGER)) if folder is not None else []
     summary = summarised(merged(lines))
     return 0, json.dumps(summary), "lighthouse runs: {} runs".format(summary["runs"])
 
@@ -31,18 +32,20 @@ def read_ledger(path: str) -> List[Dict[str, Any]]:
     try:
         with open(path, encoding="utf-8") as handle:
             text_lines = handle.read().splitlines()
-    except OSError:
+    except FileNotFoundError:
         return []
-    parsed = [parsed_line(text) for text in text_lines]
-    return [line for line in parsed if line is not None]
-
-
-def parsed_line(text: str) -> Optional[Dict[str, Any]]:
-    try:
-        line = json.loads(text)
-    except ValueError:
-        return None
-    return line if isinstance(line, dict) else None
+    except OSError as error:
+        raise Refusal("cannot read {}: {}".format(path, error.strerror or error))
+    numbered = [(number, text) for number, text in enumerate(text_lines, start=1) if text.strip()]
+    parsed = [(number, json_object(text)) for number, text in numbered]
+    unreadable = [number for number, line in parsed if line is None]
+    if unreadable:
+        raise Refusal(
+            "{} line {} is not a JSON object; repair or remove that line, then run lighthouse runs again".format(
+                path, unreadable[0]
+            )
+        )
+    return [line for _, line in parsed if line is not None]
 
 
 def run_key(index: int, line: Dict[str, Any]) -> str:
@@ -56,10 +59,6 @@ def merged(lines: List[Dict[str, Any]]) -> List[List[Dict[str, Any]]]:
         key = run_key(index, line)
         groups[key] = [*groups.get(key, []), line]
     return list(groups.values())
-
-
-def is_number(value: Any) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
 def reported_cost(cost: Any) -> Optional[float]:

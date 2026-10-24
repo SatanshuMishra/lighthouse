@@ -1,8 +1,8 @@
-import datetime
 import json
 import os
 from typing import Any, Dict, List, Optional, Tuple
 
+from lighthouse_tool.records import utc_now
 from lighthouse_tool.repo import Parser, Refusal
 
 MARKS = "marks.jsonl"
@@ -19,10 +19,6 @@ def parser() -> Parser:
     arguments.add_argument("--folder")
     arguments.add_argument("edge", choices=EDGES)
     return arguments
-
-
-def utc_now() -> str:
-    return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 def mark_line(options: Any, time: str) -> Dict[str, Any]:

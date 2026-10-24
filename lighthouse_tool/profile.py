@@ -9,6 +9,8 @@ import tempfile
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from lighthouse_tool import repo as repository
+from lighthouse_tool import suite
+from lighthouse_tool.records import is_number
 from lighthouse_tool.repo import Parser, Refusal, checked_git, require_root
 
 Outcome = Tuple[int, Optional[str], Optional[str]]
@@ -179,16 +181,22 @@ def check_profile(repo: str, path: Optional[str] = None) -> List[Problem]:
         *schema_problems(profile, schema["profile"], ""),
         *path_problems(root, profile),
         *command_problems(root, profile),
+        *rerun_problems(profile),
         *unrecorded_problems(root, profile),
     ]
 
 
+def rerun_problems(profile: Dict[str, Any]) -> List[Problem]:
+    rerun = section(profile, "suite").get("rerun")
+    quoted = suite.quoted_placeholders(rerun) if isinstance(rerun, str) else []
+    if not quoted:
+        return []
+    detail = "suite.rerun puts {} inside quotes; leave each placeholder an unquoted word, because lighthouse quotes every value itself"
+    return [problem("rerun", detail.format(", ".join(quoted)))]
+
+
 def is_integer(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
-
-
-def is_number(value: Any) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
 TYPE_TESTS: Dict[str, Callable[[Any], bool]] = {

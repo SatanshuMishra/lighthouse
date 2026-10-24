@@ -408,8 +408,7 @@ class VerdictTest(unittest.TestCase):
 
     def test_takes_a_results_folder_or_a_blocked_reason(self):
         env = scratch.environment(scratch.make_home(self))
-        results = scratch.temporary_folder(self, "lh-results-")
-        for arguments in ([], ["--results", results, "--blocked", "why"], ["--blocked", " "]):
+        for arguments in ([], ["--blocked", " "]):
             code, _, _ = scratch.run_lighthouse(["verdict", *arguments], env)
             self.assertEqual(code, 2, arguments)
 

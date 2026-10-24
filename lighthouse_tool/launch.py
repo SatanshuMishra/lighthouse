@@ -9,13 +9,16 @@ import time
 from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
 from lighthouse_tool import suite, verdict
-from lighthouse_tool.repo import Parser, Refusal, repository_folder, require_root
+from lighthouse_tool.records import is_number, utc_now
+from lighthouse_tool.repo import Parser, Refusal, repository_folder, require_root, toplevel
 
 Outcome = Tuple[int, Optional[str], Optional[str]]
 PLUGIN_ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 WORK = "work"
 CHILD = "child.json"
 LAUNCH = "launch.json"
+EARLIER_RUN_FILES = (LAUNCH, CHILD)
+STAGING_SUFFIX = ".partial"
 CAFFEINATE = "caffeinate"
 SYSTEMD_INHIBIT = "systemd-inhibit"
 NO_KEEP_AWAKE = "none"
@@ -41,12 +44,63 @@ def parser() -> Parser:
     return arguments
 
 
-def run(argv: List[str]) -> Outcome:
+def located_parser() -> Parser:
+    arguments = Parser(prog="lighthouse launch", add_help=False)
+    arguments.add_argument("--repo")
+    arguments.add_argument("--results")
+    return arguments
+
+
+def results_outside_repository(arguments: List[str]) -> Optional[str]:
     try:
+        located, _ = located_parser().parse_known_args(arguments)
+    except Refusal:
+        return None
+    if located.results is None:
+        return None
+    root = toplevel(located.repo) if located.repo is not None else None
+    if root is not None and suite.is_inside(root, located.results):
+        return None
+    return os.path.realpath(located.results)
+
+
+def run(argv: List[str]) -> Outcome:
+    results = results_outside_repository(argv[1:])
+    try:
+        if results is not None:
+            clear_earlier_run(results)
         options = parser().parse_args(argv[1:])
         return launch(options)
-    except Refusal as refusal:
-        return 2, json.dumps({"error": str(refusal)}), "lighthouse launch: {}".format(refusal)
+    except (Refusal, OSError) as problem:
+        reason = refusal_reason(problem)
+        if results is not None:
+            leave_blocked_line(results, reason)
+        return 2, json.dumps({"error": reason}), "lighthouse launch: {}".format(reason)
+
+
+def refusal_reason(problem: Exception) -> str:
+    if isinstance(problem, OSError):
+        return "cannot use {}: {}".format(problem.filename or "the results folder", problem.strerror or problem)
+    return str(problem)
+
+
+def clear_earlier_run(results: str) -> None:
+    for name in EARLIER_RUN_FILES:
+        path = os.path.join(results, name)
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            pass
+        except OSError as error:
+            raise Refusal("cannot clear {} from an earlier run: {}".format(path, error.strerror or error))
+
+
+def leave_blocked_line(results: str, reason: str) -> None:
+    try:
+        os.makedirs(results, exist_ok=True)
+        write_text(os.path.join(results, LAUNCH), blocked_text(reason) + "\n")
+    except (OSError, Refusal):
+        return
 
 
 def launch(options: argparse.Namespace) -> Outcome:
@@ -169,10 +223,6 @@ def parsed_output(stdout: str) -> Optional[Dict[str, Any]]:
     return output if isinstance(output, dict) else None
 
 
-def is_number(value: Any) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool)
-
-
 def model_costs(output: Optional[Dict[str, Any]]) -> Dict[str, float]:
     usage = output.get("modelUsage") if output is not None else None
     if not isinstance(usage, dict):
@@ -250,7 +300,7 @@ def launch_record(
     return {
         "run": results,
         "kind": "launch",
-        "time": verdict.utc_now(),
+        "time": utc_now(),
         "repo": repository_folder(root),
         "cost": record["cost"],
         "minutes": record["minutes"],
@@ -266,8 +316,10 @@ def write_json(path: str, value: Dict[str, Any]) -> None:
 
 
 def write_text(path: str, text: str) -> None:
+    staging = path + STAGING_SUFFIX
     try:
-        with open(path, "w", encoding="utf-8") as handle:
+        with open(staging, "w", encoding="utf-8") as handle:
             handle.write(text)
+        os.replace(staging, path)
     except OSError as error:
         raise Refusal("cannot write {}: {}".format(path, error.strerror or error))
