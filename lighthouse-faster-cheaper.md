@@ -1,6 +1,6 @@
 # lighthouse-faster-cheaper: Make lighthouse:test runs faster and cheaper without lowering test quality, and improve its metrics
 Status: parked
-Updated: 2026-10-24T19:27:41.613Z
+Updated: 2026-10-24T19:27:43.865Z
 Next ids: c4 D9 R5 S1
 
 ## Goal
@@ -19,7 +19,7 @@ Integration. SatanshuMishra/lighthouse#9 and #10 are merged into feat/lighthouse
 
 ## Next step
 
-The owner merges SatanshuMishra/lighthouse#9 and then #10; the owner starts Integration by saying the MSP pull requests merged, and Integration then has lighthouse test the FEATURE branch and open the FEATURE pull request.
+Read lighthouse:test run 1's verdict line; on green report the FEATURE pull request it opened, otherwise record its failures as integration findings and fix, verdict or rerun as Integration says.
 
 Needs: D7.
 
