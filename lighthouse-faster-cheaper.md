@@ -1,6 +1,6 @@
 # lighthouse-faster-cheaper: Make lighthouse:test runs faster and cheaper without lowering test quality, and improve its metrics
 Status: active
-Updated: 2026-10-24T06:20:30.813Z
+Updated: 2026-10-24T06:20:43.948Z
 Next ids: c4 D1 R1 S1
 
 ## Goal
@@ -19,7 +19,7 @@ Not started.
 
 ## Next step
 
-Set up receipts in a scratch folder, then invoke interphase:feature with the request followed by Interview me first.
+Draft receipts answers in /var/folders/tz/b798spt96sjfyy924nf0cw4c0000gn/T/tmp.DJPmb5YLy8 (receipts init --agent output in agent.json there), then invoke interphase:feature with Interview me first; save answers as <home>/receipts-answers.json once the slug exists.
 
 ## Decisions in force
 
