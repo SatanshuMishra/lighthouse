@@ -17,9 +17,17 @@ It needs Python 3.9 or later and git on macOS or Linux, and uses gh when present
 |---|---|---|
 | `lighthouse:init` | `--repo <path>`, `--unattended` | Reads the codebase and writes `.lighthouse/profile.json`, marking every fact it cannot confirm unconfirmed and every outward-facing action not confirmed safe off-limits. |
 | `lighthouse:doctor` | `--repo <path>`, `--unattended` | Runs the profile and credentials checks and repairs the profile, changing only `.lighthouse/profile.json`; runs init when the profile is missing. |
-| `lighthouse:test` | `--repo <path>`, `--core <branch>`, `--feature <branch>`, `--results <dir>`, `--previous <dir>` when an earlier run's results folder exists, `--spec <path>` when a spec exists, `--final` | Tests the FEATURE branch against the core branch and ends with the verdict line. |
+| `lighthouse:test` | `--repo <path>`, `--core <branch>`, `--feature <branch>`, `--results <dir>`, `--previous <dir>` when an earlier run's results folder exists, `--spec <path>` when a spec exists, `--final` | Starts `lighthouse launch` in the background, holds with `lighthouse wait` until the child session writes its verdict line, and ends with that line. The child session, started with `--child`, tests the FEATURE branch against the core branch in bypassPermissions mode. |
 
-Only init and doctor, when a person invokes them directly, ask anything, and only questions about facts, never a credential value. lighthouse:test never asks and runs them with `--unattended`.
+Only init and doctor, when a person invokes them directly, ask anything, and only questions about facts, never a credential value. lighthouse:test never asks and runs them with `--unattended`; when `lighthouse profile check` lists upgrades, it runs doctor once for them and carries on whatever doctor does.
+
+lighthouse:test does its work in a child `claude -p` session, so the calling session's history is never re-read. The child never asks anything, never narrows scope to save time, holds for a condition only with `lighthouse wait`, never with a blind sleep, and records an environment problem it cannot fix, such as a throttled VM or a sleeping host, with its paths unproven and that reason.
+
+## Agents
+
+| Agent | What it does |
+|---|---|
+| `lighthouse:driver` | Drives one surface's product paths with the surface's recorded driver for the lighthouse:test child session, saves evidence where it is told, marks each path with `lighthouse mark`, holds only with `lighthouse wait`, and reports each path's outcome. It runs on Sonnet with a one-hour prompt cache (`experimental.cacheTtl: 1h`), so a long hold for a build or a VM does not rewrite its context. The child dispatches every driver through it and judges what it reports. |
 
 ## The profile
 
@@ -29,12 +37,14 @@ Only init and doctor, when a person invokes them directly, ask anything, and onl
 |---|---|
 | `version` | 1 |
 | `sources` | the repository-relative manifest, CI and test-configuration files it was built from |
-| `suite` | `command`, run from the repository root; `junit`, a JUnit XML path or null; `timeout_minutes`, a number or null |
+| `suite` | `command`, run from the repository root; `junit`, a JUnit XML path or null; `timeout_minutes`, a number or null; `rerun`, a command run instead of the whole suite to rerun only the failed tests, or null; `isolated`, true when core's and FEATURE's suites can run at the same time |
 | `surfaces` | each way the product is used: `name`, `kind`, `paths`, `driver`, `available`, `sign_in` (`method` none, command, token or form, and `command`), `credentials` (names only) and `trials` (1, or 3 when model-backed or random) |
 | `credentials` | `file`, the project's own gitignored credentials file or null; `names`, each mapped to `{"production": true or false}` |
 | `facts` | each name mapped to `value`, `confirmed` and `recheck` |
 | `off_limits` | plain-language actions lighthouse must never take |
 | `setup`, `build`, `start`, `test_data` | optional: install, build and start commands, `start.ready`, and how test data is made |
+
+`suite.rerun` takes the placeholders `{tests}` (the failing test ids as `classname.name`), `{names}` (their name attributes) and `{names_regex}` (`^(<names joined by |>)$`, each escaped), every substitution shell-quoted. It is used only when a JUnit report exists; the whole suite reruns when it is unset or null, no report exists, or the rerun cannot start, writes no readable report or lacks a test that failed the first time. `suite.isolated` defaults to false; set it true only when the suite uses no fixed ports, shared databases or shared folders, and `lighthouse suite` then prepares and runs both builds' suites concurrently. `lighthouse profile check` lists a valid profile lacking either key under `upgrades`, with exit 0.
 
 ## Credentials
 
@@ -59,15 +69,25 @@ The profile a `with-credentials` call reads decides which names are production a
 
 A failure that passes on retry, or a case that passes some but not every trial, is flaky, never a failure. Anything not reached is unproven, never passed.
 
+Every product path driven in a run records its `check` in `findings.json` as `{"kind": ..., "why": ..., "tests": [...]}`: the lightest kind that still observes the expected outcome on the surface the intent names.
+
+| Kind | When |
+|---|---|
+| `suite` | named tests in the project's suite assert the outcome and passed on FEATURE, and on core too for a neighbour; `tests` names them, and it needs a JUnit report |
+| `direct` | an HTTP or command-line call whose response holds the outcome |
+| `drive` | the surface's recorded driver, when the outcome is what a person sees or which component a model chose; a new-behaviour path whose intent names something seen on screen uses it |
+
+`why` names the assertion or observation that shows the outcome. `lighthouse verdict` refuses a driven path with no check, another kind, an empty `why` or a suite check naming no test, judges a suite check unproven unless every named test passed as `<results>/suite.json` records it, accepts a carried path without a check, and shows each path's check in `report.md`.
+
 ## The verdict line
 
 The last line lighthouse:test prints is one JSON object on one line, the contract with any caller:
 
 ```json
-{"verdict": "green", "failures": [], "unproven": [], "flaky": [], "tokens": 0, "minutes": 0, "pr": "https://github.com/owner/repo/pull/1"}
+{"verdict": "green", "failures": [], "unproven": [], "flaky": [], "tokens": 0, "minutes": 0, "dollars": 0.0, "pr": "https://github.com/owner/repo/pull/1"}
 ```
 
-`pr` is the pull request's URL, or null when none was opened.
+`pr` is the pull request's URL, or null when none was opened. `dollars` is the run's API-equivalent cost, or null when the findings carry none; a blocked line from `lighthouse verdict --blocked` has no `dollars`.
 
 ## The command
 
@@ -88,9 +108,21 @@ The last line lighthouse:test prints is one JSON object on one line, the contrac
 | `suite` | `--repo`, `--core`, `--feature`, `--results`, `--profile` |
 | `retest` | `--previous <dir>`, `--results <dir>`, `--repo`, `--core`, `--feature`, `--profile` |
 | `release` | `--repo`, `--results` |
-| `verdict` | `--results`, or `--blocked <reason>` to print a blocked verdict line for a run that stopped early, with no results folder |
+| `verdict` | `--results`, or `--blocked <reason>` to print a blocked verdict line for a run that stopped early, with no results folder; `--repo` to append the run to the ledger, also with `--blocked` |
 | `pr` | `--repo`, `--core`, `--feature`, `--results`, `--summary`, `--type`, `--scope`, `--why`, `--final` |
-| `spend` | `--since <ISO time>`, `--from <dir>`, `--transcripts <dir>` |
+| `spend` | `--since <ISO time>`, `--from <dir>`, `--transcripts <dir>`, `--results <dir>`, `--repo` |
+| `mark` | `--results <dir>`, `--step <name>`, `--build core` or `feature`, `--path <name>`, `--folder <dir>`, then `start` or `end` |
+| `runs` | `--repo` |
+| `wait` | `--until '<check>'`, `--every <seconds>`, `--within <seconds>` |
+| `launch` | `--repo`, `--core`, `--feature`, `--results`, `--previous`, `--spec`, `--final` |
+
+`lighthouse spend --results <dir>` counts every transcript, subagents included, whose working folder lies inside the results folder, and reports tokens by kind (`input`, `cache_write_5m`, `cache_write_1h`, `cache_read`, `output`) per model and in total, with `tokens` the sum of all kinds, dollars from the price table the command ships (null for a model it lacks, named under `unpriced`), expired cache rewrites, minutes waiting on a person, a tool and the model, and the minutes and tokens of each marked step and path, with what falls outside any mark reported as `shared`. With `--repo` it also writes `<results>/spend.json`. `lighthouse mark` appends a timed start or end line to `<results>/marks.jsonl`; a mark's `--folder` attributes to its path every transcript started inside that folder, such as a plugin path's `claude -p` trials.
+
+`lighthouse verdict --repo` appends one line per run to the ledger, `runs.jsonl` in the state folder, holding the run id, the time, the core and FEATURE commits, the verdict, the spend record, the suite's phase minutes per build and each path's name, kind, status and check, so the record survives deleting the results folder. `lighthouse runs --repo <path>` merges the ledger's lines by run id and prints one summary: the number of runs, total and median minutes and dollars, tokens by kind, minutes per step, waiting on a person and expired cache rewrites.
+
+`lighthouse wait --until '<check>'` reruns a shell check every `--every` seconds (default 5) and prints ready true as soon as it passes, or ready false after `--within` seconds (default and maximum 540); the caller calls it again, so the total wait is never capped. `lighthouse launch` takes lighthouse:test's flags, refuses a results folder inside the checkout, and starts `claude -p '/lighthouse:test --child <the same flags>'` on Opus with this plugin, in bypassPermissions mode, with AskUserQuestion disallowed and from `<results>/work`, keeping the machine from idle sleep while it runs. It writes `<results>/child.json` with the child's session id, cost per model, minutes, keep-awake method and priority, appends a launch line to the ledger, writes the line it prints to `<results>/launch.json`, and prints the child's verdict line, or a blocked line naming why when the child printed none.
+
+`lighthouse suite` reuses core's stored suite result from the state folder when core's commit, the setup and build commands, the suite object and the timeout match an earlier run, marking core `reused`, so a retest on an unmoved core never runs core's suite again; FEATURE's suite always runs. It records each build's preparation, suite and rerun minutes, and each build's passing and failing test ids when a JUnit report exists, in `<results>/suite.json`.
 
 After each setup, build and suite step, `lighthouse suite` kills the step's process group, so a server one build's step started cannot answer the other build's suite. A process that leaves that group, such as a daemon that calls `setsid`, is not stopped.
 
