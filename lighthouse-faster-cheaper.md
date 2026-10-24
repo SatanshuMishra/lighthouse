@@ -1,6 +1,6 @@
 # lighthouse-faster-cheaper: Make lighthouse:test runs faster and cheaper without lowering test quality, and improve its metrics
 Status: active
-Updated: 2026-10-24T07:46:28.957Z
+Updated: 2026-10-24T07:46:59.761Z
 Next ids: c4 D5 R3 S1
 
 ## Goal
@@ -15,9 +15,7 @@ Cut lighthouse:test wall time and token spend on live pipeline runs while keepin
 
 ## Where things stand
 
-interphase:feature interview: intent I1-I4 and the shape (four pull requests) are approved and recorded. Run-3's 23.5 hours held 314 silent minutes, 194 of them waiting on an owner AskUserQuestion answer. Probes on Claude Code 2.1.308: a context: fork skill gets a fresh context but no Agent tool; a plugin agent with experimental.cacheTtl 1h and model sonnet writes 1h cache on sonnet, while 30 of 30 sampled ordinary subagents wrote 5m only; a subagent has no Agent tool, so drivers can only be dispatched from a top-level session; claude -p --output-format json reports costUSD per model and the 1h/5m cache split. Round 1 (Q1-Q19) answered "Yes to all", with Q18 widened: out-of-scope elements may change when the audit's issues need it, other plugins in a parallel session. Recorded: decisions, three seams, criteria 5.1-5.18, 13 Steps in MSPs metrics, suite, tokens, checks. Found: all 3 AskUserQuestion calls in lighthouse runs came from lighthouse:test's main thread (557 minutes, one offered to narrow macOS scope); the VM throttle was the pipeline session's own taskpolicy -b and a keep-vms-background.zsh script, not vmlab; install/build was 18 minutes over 25 runs, so build reuse stays out. Round 2 (vmlab, never ask, keep awake, priority, held-out measuring) is asked; launcher, driver-agent and held-out criteria wait on it.
-
-Round 2 answered and recorded (Q23: inherit priority as industry standard, record it). check_record --complete passes: criteria 5.1-5.22, 17 Steps. Glossary gained Child session, Driver agent, Check, Mark, Ledger, Expired rewrite. The read-back was approved; the run is autonomous from here. Parallel session pipeline-lh-spend (local_c8953839-fc6f-4338-a7c3-a2d73dd68f86) is changing the pipeline plugin to read <results>/spend.json and report dollars.
+Stage 2: the first mitosis build is running in the background, writing build-1.log, on branches mitosis/faster-command, mitosis/faster-skills and mitosis/faster-held-out stacked on feat/lighthouse-faster-cheaper (which holds the receipts config commit 480f500). Uncommitted in the checkout and shipping with the first pull request: GLOSSARY.md (six new terms), docs/adr/0006 and 0007. Parallel session pipeline-lh-spend (local_c8953839-fc6f-4338-a7c3-a2d73dd68f86) is changing the pipeline plugin to read <results>/spend.json and report dollars.
 
 ## Next step
 
