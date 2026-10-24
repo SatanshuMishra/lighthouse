@@ -211,6 +211,18 @@ class ProfileCheckTest(unittest.TestCase):
         self.assertEqual(report["problems"], [])
 
 
+    def test_profile_rejects_a_rerun_placeholder_inside_quotes(self):
+        work, _ = scratch.make_repo(self)
+        for rerun in ('go test -run "{names_regex}"', "pytest '{tests}'"):
+            with self.subTest(rerun=rerun):
+                suite = {**scratch.sample_profile()["suite"], "rerun": rerun}
+                scratch.write_profile(work, scratch.sample_profile(suite=suite))
+
+                code, report, _ = profile_check(self, work)
+
+                self.assertEqual(code, 1)
+                self.assertEqual(problem_kinds(report), ["rerun"])
+
     def test_profile_accepts_isolated(self):
         work, _ = scratch.make_repo(self)
         suite = {**scratch.sample_profile()["suite"], "isolated": True}

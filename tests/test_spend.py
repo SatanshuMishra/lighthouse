@@ -66,6 +66,15 @@ def path_named(spend, name):
     return next(path for path in spend["paths"] if path["name"] == name)
 
 
+def write_marks(results, folder, start, end):
+    lines = [
+        {"step": "drive", "build": "feature", "path": "pick skill", "folder": folder, "edge": edge, "time": time}
+        for edge, time in (("start", start), ("end", end))
+    ]
+    with open(os.path.join(results, "marks.jsonl"), "w", encoding="utf-8") as handle:
+        handle.write("".join(json.dumps(line) + "\n" for line in lines))
+
+
 class SpendTest(unittest.TestCase):
     def test_sums_tokens_once_per_message(self):
         transcripts = scratch.temporary_folder(self, "lh-transcripts-")
@@ -381,6 +390,35 @@ class SpendTest(unittest.TestCase):
             ],
         )
         write_session(home, trial, "trial.jsonl", [assistant("msg_trial", "2026-10-16T10:02:00Z", {"output_tokens": 300}, cwd=trial)])
+        write_marks(results, trials, "2026-10-16T10:00:00.400Z", "2026-10-16T10:05:00.400Z")
+        spend = spend_of(self, ["--results", results], home)
+        self.assertEqual(path_named(spend, "pick skill")["output"], 300)
+
+    def test_a_folder_marked_after_cd_belongs_to_its_path(self):
+        home = scratch.make_home(self)
+        results = scratch.temporary_folder(self, "lh-results-")
+        work = os.path.join(results, "work")
+        trials = os.path.join(work, "trials")
+        folder = os.path.join(trials, "pick-skill")
+        trial = os.path.join(folder, "feature", "1")
+        decoy = os.path.join(work, "other", "1")
+        marked = "cd {} && lighthouse mark --results {} --step drive --build feature --path 'pick skill' --folder pick-skill ".format(
+            trials, results
+        )
+        write_session(
+            home,
+            work,
+            "child.jsonl",
+            [
+                assistant("msg_start", "2026-10-16T10:00:00Z", {"cache_read_input_tokens": 10}, cwd=work, content=bash("toolu_start", marked + "start")),
+                tool_result("toolu_start", "2026-10-16T10:00:01Z", cwd=work),
+                assistant("msg_end", "2026-10-16T10:05:00Z", {"cache_read_input_tokens": 10}, cwd=work, content=bash("toolu_end", marked + "end")),
+                tool_result("toolu_end", "2026-10-16T10:05:01Z", cwd=work),
+            ],
+        )
+        write_session(home, trial, "trial.jsonl", [assistant("msg_trial", "2026-10-16T10:02:00Z", {"output_tokens": 300}, cwd=trial)])
+        write_session(home, decoy, "decoy.jsonl", [assistant("msg_decoy", "2026-10-16T10:03:00Z", {"output_tokens": 50}, cwd=decoy)])
+        write_marks(results, folder, "2026-10-16T10:00:00.400Z", "2026-10-16T10:05:00.400Z")
         spend = spend_of(self, ["--results", results], home)
         self.assertEqual(path_named(spend, "pick skill")["output"], 300)
 

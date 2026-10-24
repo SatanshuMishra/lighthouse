@@ -36,6 +36,16 @@ class RunsTest(unittest.TestCase):
         self.assertEqual(summary["dollars"]["total"], 4.0)
         self.assertEqual(summary["dollars"]["median"], 2.0)
 
+    def test_runs_refuses_a_ledger_line_that_does_not_parse(self):
+        home = scratch.make_home(self)
+        write_ledger(home, [{"run": "/results/one", "kind": "verdict", "verdict": "green"}])
+        with open(os.path.join(home, ".lighthouse", "work", "runs.jsonl"), "a", encoding="utf-8") as handle:
+            handle.write('{"run": "/results/two", "kind": "verd\n')
+        repo, _ = scratch.make_repo(self)
+        code, stdout, _ = scratch.run_lighthouse(["runs", "--repo", repo], scratch.environment(home))
+        self.assertEqual(code, 2)
+        self.assertIn("runs.jsonl line 2", json.loads(stdout.strip().splitlines()[-1])["error"])
+
     def test_runs_on_an_empty_ledger(self):
         summary = runs_of(self, scratch.make_home(self))
         self.assertEqual(summary["runs"], 0)
