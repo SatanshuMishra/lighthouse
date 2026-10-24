@@ -1,6 +1,6 @@
 # lighthouse-faster-cheaper: Make lighthouse:test runs faster and cheaper without lowering test quality, and improve its metrics
 Status: active
-Updated: 2026-10-24T12:29:59.236Z
+Updated: 2026-10-24T12:30:01.496Z
 Next ids: c4 D5 R3 S1
 
 ## Goal
@@ -31,7 +31,7 @@ Needs: D2, D3, R1, R2.
 
 ## Open risks
 
-- R1 The held-out set starts each session fresh, so the launcher's extra child start-up may cancel the savings there and criterion 5.21's below-baseline totals could fail on small fixtures even though real pipeline runs save. Bears on c2.
+- R1 The held-out set starts each session fresh, so the launcher's extra child start-up cancels the savings there: held-out pass 1 measured it, and criterion 5.21 fails until the fix pass removes the fixed overhead. Bears on c2.
 - R2 A held-out pass is 24 live sessions; the baseline Step and the final comparison each spend real money and hours, and run-to-run variation can move a single total either way. Bears on c2.
 
 ## Settled, do not reopen
