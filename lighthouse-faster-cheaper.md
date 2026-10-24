@@ -1,6 +1,6 @@
 # lighthouse-faster-cheaper: Make lighthouse:test runs faster and cheaper without lowering test quality, and improve its metrics
 Status: active
-Updated: 2026-10-24T06:22:47.628Z
+Updated: 2026-10-24T06:23:42.122Z
 Next ids: c4 D1 R1 S1
 
 ## Goal
@@ -15,11 +15,11 @@ Cut lighthouse:test wall time and token spend on live pipeline runs while keepin
 
 ## Where things stand
 
-interphase:feature is grounding (Phase 3), slug lighthouse-faster-cheaper; receipts answers are drafted.
+interphase:feature interview: the intent round (goal, why, success, shape) is asked and awaits the owner's answer. Docs say skills can run with context: fork, plugins can ship agents with a model and experimental.cacheTtl 1h, subagents can nest three deep, and claude -p loads installed plugins; none of this is run-verified yet.
 
 ## Next step
 
-Finish grounding, then ask the intent round; copy the receipts answers to ~/.mitosis/lighthouse/lighthouse-faster-cheaper/receipts-answers.json before the first frontier round.
+Record the owner's intent answers as I1-I3 in docs/specs/lighthouse-faster-cheaper.decisions.md, then ask the first frontier round.
 
 ## Decisions in force
 
