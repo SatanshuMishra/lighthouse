@@ -19,6 +19,8 @@ PATH_KINDS = ("new", "neighbour")
 PATH_STATUSES = ("passed", "failed", "unproven")
 RUN_OUTCOMES = ("passed", "failed", None)
 BUILD_RESULTS = ("ok", "blocked")
+CHECK_KINDS = ("suite", "direct", "drive")
+SUITE_CHECK = "suite"
 
 PASSED = "passed"
 CONFIRMED_FAILURE = "confirmed failure"
@@ -60,8 +62,11 @@ def run(argv: List[str]) -> Tuple[int, Optional[str], Optional[str]]:
             return outcome
         results = os.path.realpath(options.results)
         findings = read_findings(results)
-        skipped = skipped_retests(read_plan(results), findings, results)
-        judged = judge(findings)
+        plan = read_plan(results)
+        carried = [] if plan is None else plan["carried_paths"]
+        check_checks(findings, carried)
+        skipped = skipped_retests(None if plan is None else plan["retest"], findings, results)
+        judged = judge(findings, carried, recorded_test_ids(results))
         line = verdict_line(findings, judged, skipped)
         write_text(os.path.join(results, VERDICT), json.dumps(line) + "\n")
         write_text(os.path.join(results, REPORT), report(findings, judged, line, skipped))
@@ -94,7 +99,7 @@ def read_findings(results: str) -> Dict[str, Any]:
     return checked_findings(findings, results)
 
 
-def read_plan(results: str) -> Optional[List[str]]:
+def read_plan(results: str) -> Optional[Dict[str, Any]]:
     path = os.path.join(results, RETEST)
     if not os.path.exists(path):
         return None
@@ -110,11 +115,17 @@ def read_plan(results: str) -> Optional[List[str]]:
     return checked_plan(plan)
 
 
-def checked_plan(plan: Any) -> List[str]:
+def checked_plan(plan: Any) -> Dict[str, Any]:
     names = plan.get("retest") if isinstance(plan, dict) else None
     if not (isinstance(names, list) and all(isinstance(name, str) for name in names)):
         raise Malformed(RETEST, "must be a JSON object with a retest list of path names", RETEST)
-    return [name for index, name in enumerate(names) if name not in names[:index]]
+    carried = plan.get("carried_paths", [])
+    if not (isinstance(carried, list) and all(isinstance(path, dict) for path in carried)):
+        raise Malformed("carried_paths", "must be a list of path objects", RETEST)
+    return {
+        "retest": [name for index, name in enumerate(names) if name not in names[:index]],
+        "carried_paths": carried,
+    }
 
 
 def lies_in(folder: os.stat_result, located: str) -> bool:
@@ -264,6 +275,32 @@ def check_trials(trials: Any, where: str) -> None:
     )
 
 
+def check_checks(findings: Dict[str, Any], carried: List[Dict[str, Any]]) -> None:
+    for index, path in enumerate(findings["paths"]):
+        if path not in carried:
+            check_check(required(path, "check", "paths[{}]".format(index)), "paths[{}].check".format(index))
+
+
+def check_check(check: Any, where: str) -> None:
+    kind = required(check, "kind", where)
+    expect(kind in CHECK_KINDS, where + ".kind", "must be suite, direct or drive")
+    why = required(check, "why", where)
+    expect(isinstance(why, str) and bool(why.strip()), where + ".why", "must be a non-empty string")
+    if kind == SUITE_CHECK:
+        tests = required(check, "tests", where)
+        expect(
+            isinstance(tests, list) and bool(tests) and all(isinstance(test, str) and test for test in tests),
+            where + ".tests",
+            "must name at least one test id for a suite check",
+        )
+    else:
+        expect(
+            check.get("tests") in (None, []),
+            where + ".tests",
+            "must be absent or empty for a direct or drive check",
+        )
+
+
 def check_spend(spend: Any) -> None:
     expect(is_count(required(spend, "tokens", "spend")), "spend.tokens", "must be a whole number")
     minutes = required(spend, "minutes", "spend")
@@ -312,24 +349,71 @@ def classify_trials(trials: Dict[str, Any], neighbour: bool) -> str:
     return FLAKY
 
 
-def judge(findings: Dict[str, Any]) -> Tuple[Tuple[Dict[str, Any], str], ...]:
-    return tuple((path, classify(path)) for path in findings["paths"])
+def passed_ids(suite: Any, build: str) -> Optional[List[str]]:
+    summary = suite.get(build) if isinstance(suite, dict) else None
+    tests = summary.get("tests") if isinstance(summary, dict) else None
+    passed = tests.get("passed") if isinstance(tests, dict) else None
+    if isinstance(passed, list) and all(isinstance(test, str) for test in passed):
+        return passed
+    return None
 
 
-def named(judged: Tuple[Tuple[Dict[str, Any], str], ...], classification: str) -> List[str]:
-    return [path["name"] for path, outcome in judged if outcome == classification]
+def recorded_test_ids(results: str) -> Dict[str, Optional[List[str]]]:
+    suite = optional_json(os.path.join(results, SUITE))
+    return {build: passed_ids(suite, build) for build in BUILDS}
+
+
+def missing_from(build: str, label: str, tests: List[str], recorded: Dict[str, Optional[List[str]]]) -> Optional[str]:
+    passed = recorded[build]
+    if passed is None:
+        return "suite check: {} records no test ids for {}".format(SUITE, label)
+    missing = [test for test in tests if test not in passed]
+    if missing:
+        return "suite check: {} did not pass on {}'s first run".format(", ".join(missing), label)
+    return None
+
+
+def suite_check_problem(path: Dict[str, Any], recorded: Dict[str, Optional[List[str]]]) -> Optional[str]:
+    check = path.get("check")
+    if not isinstance(check, dict) or check.get("kind") != SUITE_CHECK:
+        return None
+    tests = check["tests"]
+    feature_problem = missing_from("feature", "FEATURE", tests, recorded)
+    if feature_problem is not None or path["kind"] != "neighbour":
+        return feature_problem
+    return missing_from("core", "core", tests, recorded)
+
+
+def judged_path(
+    path: Dict[str, Any], carried: List[Dict[str, Any]], recorded: Dict[str, Optional[List[str]]]
+) -> Tuple[Dict[str, Any], str, Optional[str]]:
+    outcome = classify(path)
+    problem = None if path in carried else suite_check_problem(path, recorded)
+    if problem is None or outcome == CONFIRMED_FAILURE:
+        return path, outcome, None
+    return path, UNPROVEN, problem
+
+
+def judge(
+    findings: Dict[str, Any], carried: List[Dict[str, Any]], recorded: Dict[str, Optional[List[str]]]
+) -> Tuple[Tuple[Dict[str, Any], str, Optional[str]], ...]:
+    return tuple(judged_path(path, carried, recorded) for path in findings["paths"])
+
+
+def named(judged: Tuple[Tuple[Dict[str, Any], str, Optional[str]], ...], classification: str) -> List[str]:
+    return [path["name"] for path, outcome, _ in judged if outcome == classification]
 
 
 def suite_ids(suite: Dict[str, Any], key: str) -> List[str]:
     return ["suite: {}".format(suite_test_id(entry)) for entry in suite[key]]
 
 
-def verdict_of(findings: Dict[str, Any], judged: Tuple[Tuple[Dict[str, Any], str], ...]) -> str:
+def verdict_of(findings: Dict[str, Any], judged: Tuple[Tuple[Dict[str, Any], str, Optional[str]], ...]) -> str:
     if findings["suite"]["result"] == "blocked" or findings["build"]["result"] == "blocked":
         return "blocked"
     if findings["suite"]["failures"] or named(judged, CONFIRMED_FAILURE):
         return "failures"
-    if all(outcome == UNPROVEN for path, outcome in judged if path["kind"] == "new"):
+    if all(outcome == UNPROVEN for path, outcome, _ in judged if path["kind"] == "new"):
         return "unproven"
     return "green"
 
@@ -338,14 +422,14 @@ def held_to_plan(verdict: str, skipped: List[str]) -> str:
     return UNPROVEN if skipped and verdict == "green" else verdict
 
 
-def unproven_names(judged: Tuple[Tuple[Dict[str, Any], str], ...], skipped: List[str]) -> List[str]:
+def unproven_names(judged: Tuple[Tuple[Dict[str, Any], str, Optional[str]], ...], skipped: List[str]) -> List[str]:
     judged_unproven = named(judged, UNPROVEN)
     return judged_unproven + [name for name in skipped if name not in judged_unproven]
 
 
 def verdict_line(
     findings: Dict[str, Any],
-    judged: Tuple[Tuple[Dict[str, Any], str], ...],
+    judged: Tuple[Tuple[Dict[str, Any], str, Optional[str]], ...],
     skipped: List[str],
 ) -> Dict[str, Any]:
     suite = findings["suite"]
@@ -373,19 +457,29 @@ def bullets(lines: List[str], empty: str = "None.") -> List[str]:
     return ["- " + line for line in lines] if lines else [empty]
 
 
-def path_line(path: Dict[str, Any], outcome: str) -> str:
+def path_line(path: Dict[str, Any], outcome: str, problem: Optional[str]) -> str:
     evidence = ", ".join(path["evidence"]) if path["evidence"] else "none"
-    return "{} ({}): {}; status {}, retry {}, core {}{}; expected: {}; evidence: {}".format(
+    return "{} ({}): {}{}; status {}, retry {}, core {}{}; {}; expected: {}; evidence: {}".format(
         path["name"],
         path["surface"],
         outcome,
+        " ({})".format(problem) if problem else "",
         path["status"],
         path["retry"] or "none",
         path["core"] or "none",
         trials_text(path["trials"]),
+        check_text(path.get("check")),
         path["expected"],
         evidence,
     )
+
+
+def check_text(check: Any) -> str:
+    if not isinstance(check, dict):
+        return "check none"
+    tests = check.get("tests") or []
+    named_tests = " ({})".format(", ".join(tests)) if tests else ""
+    return "check {}{}: {}".format(check.get("kind"), named_tests, check.get("why"))
 
 
 def trials_text(trials: Optional[Dict[str, Any]]) -> str:
@@ -397,12 +491,12 @@ def trials_text(trials: Optional[Dict[str, Any]]) -> str:
     )
 
 
-def lines_of_kind(judged: Tuple[Tuple[Dict[str, Any], str], ...], kind: str) -> List[str]:
-    return [path_line(path, outcome) for path, outcome in judged if path["kind"] == kind]
+def lines_of_kind(judged: Tuple[Tuple[Dict[str, Any], str, Optional[str]], ...], kind: str) -> List[str]:
+    return [path_line(path, outcome, problem) for path, outcome, problem in judged if path["kind"] == kind]
 
 
-def lines_classified(judged: Tuple[Tuple[Dict[str, Any], str], ...], classification: str) -> List[str]:
-    return [path_line(path, outcome) for path, outcome in judged if outcome == classification]
+def lines_classified(judged: Tuple[Tuple[Dict[str, Any], str, Optional[str]], ...], classification: str) -> List[str]:
+    return [path_line(path, outcome, problem) for path, outcome, problem in judged if outcome == classification]
 
 
 def skipped_lines(skipped: List[str]) -> List[str]:
@@ -415,7 +509,7 @@ def section(title: str, lines: List[str]) -> List[str]:
 
 def report(
     findings: Dict[str, Any],
-    judged: Tuple[Tuple[Dict[str, Any], str], ...],
+    judged: Tuple[Tuple[Dict[str, Any], str, Optional[str]], ...],
     line: Dict[str, Any],
     skipped: List[str],
 ) -> str:

@@ -406,6 +406,15 @@ def build_summary(run: SuiteRun, log_path: str, prepare_minutes: float, suite_mi
     return {"exit": run.exit, "log": log_path, "prepare_minutes": prepare_minutes, "suite_minutes": suite_minutes}
 
 
+def recorded_tests(tests: Optional[Dict[str, bool]]) -> Optional[Dict[str, List[str]]]:
+    if tests is None:
+        return None
+    return {
+        "passed": sorted(test_id for test_id, has_failed in tests.items() if not has_failed),
+        "failed": sorted(test_id for test_id, has_failed in tests.items() if has_failed),
+    }
+
+
 def suite_result(
     result: str,
     reason: Optional[str],
@@ -440,7 +449,11 @@ def core_store_path(root: str, profile: Dict[str, Any], commit: str) -> Optional
     return None if folder is None else os.path.join(folder, CORE_STORE, core_suite_key(profile, commit) + ".json")
 
 
-def stored_core(store: Optional[str]) -> Optional[Tuple[SuiteRun, str]]:
+def is_test_outcomes(tests: Any) -> bool:
+    return tests is None or (isinstance(tests, dict) and all(isinstance(value, bool) for value in tests.values()))
+
+
+def stored_core(store: Optional[str]) -> Optional[Tuple[SuiteRun, str, Optional[Dict[str, bool]]]]:
     if store is None:
         return None
     try:
@@ -451,19 +464,21 @@ def stored_core(store: Optional[str]) -> Optional[Tuple[SuiteRun, str]]:
     if not isinstance(entry, dict):
         return None
     exit_status, tests, log = entry.get("exit"), entry.get("tests"), entry.get("log")
+    first_tests = entry.get("first_tests")
     usable = (
         (exit_status is None or (isinstance(exit_status, int) and not isinstance(exit_status, bool)))
-        and (tests is None or (isinstance(tests, dict) and all(isinstance(value, bool) for value in tests.values())))
+        and is_test_outcomes(tests)
+        and is_test_outcomes(first_tests)
         and isinstance(log, str)
     )
-    return (SuiteRun(exit_status, None, tests), log) if usable else None
+    return (SuiteRun(exit_status, None, tests), log, first_tests) if usable else None
 
 
-def store_core(store: Optional[str], run: SuiteRun, log_path: str) -> None:
+def store_core(store: Optional[str], run: SuiteRun, log_path: str, first: SuiteRun) -> None:
     if store is None:
         return
     with open(log_path, encoding="utf-8") as log:
-        entry = {"exit": run.exit, "tests": run.tests, "log": log.read()}
+        entry = {"exit": run.exit, "tests": run.tests, "first_tests": first.tests, "log": log.read()}
     folder = os.path.dirname(store)
     os.makedirs(folder, mode=0o700, exist_ok=True)
     handle, staged = tempfile.mkstemp(dir=folder, suffix=".json")
@@ -517,11 +532,16 @@ def rerun_suite(
     return targeted if targeted is not None else run_suite(profile, hidden, worktree, build, log_path)
 
 
-def reused_core(stored: Tuple[SuiteRun, str], log_path: str) -> CoreBuild:
-    run, log = stored
+def reused_core(stored: Tuple[SuiteRun, str, Optional[Dict[str, bool]]], log_path: str) -> CoreBuild:
+    run, log, first_tests = stored
     with open(log_path, "w", encoding="utf-8") as handle:
         handle.write(log)
-    summary = {**build_summary(run, log_path, 0.0, 0.0), "rerun_minutes": None, "reused": True}
+    summary = {
+        **build_summary(run, log_path, 0.0, 0.0),
+        "rerun_minutes": None,
+        "reused": True,
+        "tests": recorded_tests(first_tests),
+    }
     return CoreBuild(None, run, summary)
 
 
@@ -550,11 +570,12 @@ def core_build(
     first, suite_minutes = timed(lambda: run_suite(profile, hidden, worktree, "core", log_path))
     baseline, rerun_minutes, storable = confirmed_core(profile, hidden, worktree, log_path, first)
     if storable:
-        store_core(store, baseline, log_path)
+        store_core(store, baseline, log_path, first)
     summary = {
         **build_summary(baseline, log_path, prepare_minutes, suite_minutes),
         "rerun_minutes": rerun_minutes,
         "reused": False,
+        "tests": recorded_tests(first.tests),
     }
     return CoreBuild(None, baseline, summary)
 
@@ -608,6 +629,7 @@ def compare_builds(
     feature = {
         **build_summary(first, logs["feature"], feature_built.prepare_minutes, feature_built.suite_minutes),
         "rerun_minutes": None,
+        "tests": recorded_tests(first.tests),
     }
     if first.problem is not None:
         return suite_result("blocked", "FEATURE's suite cannot run: " + first.problem, NOTHING_FOUND, core, feature)

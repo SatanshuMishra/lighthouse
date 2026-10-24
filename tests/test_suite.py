@@ -732,6 +732,41 @@ class SuiteTest(unittest.TestCase):
         feature_start, _ = interval_of(outside, "feature")
         self.assertLess(core_end, feature_start)
 
+    def test_suite_records_each_builds_first_run_test_ids(self):
+        work = junit_project(
+            self,
+            {
+                "core": {"test_a": "passed", "test_b": "failed"},
+                "feature": {"test_a": "failed", "test_b": "passed"},
+                "feature-rerun": {"test_a": "passed", "test_b": "passed"},
+            },
+        )
+        result = suite_of(self, work)
+        self.assertEqual(result["feature"]["tests"], {"passed": ["tests.T.test_b"], "failed": ["tests.T.test_a"]})
+        self.assertEqual(result["core"]["tests"], {"passed": ["tests.T.test_a"], "failed": ["tests.T.test_b"]})
+
+    def test_suite_without_a_report_records_no_test_ids(self):
+        profile = scratch.sample_profile(suite={"command": "true", "junit": None, "timeout_minutes": None})
+        work = project_with(self, {}, profile)
+        result = suite_of(self, work)
+        self.assertIsNone(result["core"]["tests"])
+        self.assertIsNone(result["feature"]["tests"])
+
+    def test_reused_core_keeps_its_first_run_test_ids(self):
+        work = junit_project(
+            self,
+            {
+                "core": {"steady": "passed", "flaky_one": "failed"},
+                "core-rerun": {"steady": "passed", "flaky_one": "passed"},
+                "feature": {"steady": "passed", "flaky_one": "passed"},
+            },
+        )
+        home = scratch.make_home(self)
+        suite_in(self, work, home)
+        second = suite_in(self, work, home)
+        self.assertIs(second["core"]["reused"], True)
+        self.assertEqual(second["core"]["tests"], {"passed": ["tests.T.steady"], "failed": ["tests.T.flaky_one"]})
+
 
 if __name__ == "__main__":
     unittest.main()
