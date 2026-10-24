@@ -12,7 +12,9 @@ Write `.lighthouse/profile.json` in the repository `--repo` names, from what the
 - `--repo <path>`: the repository to profile. Default: the current working directory.
 - `--unattended`: ask nothing. Treat a run that lighthouse:test invoked the same way.
 
-Run the lighthouse command as `lighthouse` when it is on PATH, otherwise as `${CLAUDE_PLUGIN_ROOT}/bin/lighthouse`.
+`lighthouse` in this skill always means `${CLAUDE_PLUGIN_ROOT}/bin/lighthouse`: run it by that full path, written out in each command, never a `lighthouse` found on PATH, which may be an older installed copy.
+
+Everything a run needs from lighthouse is in this skill and in what its commands print, including their refusals: never read lighthouse's own code, profile schema or README, and never run its `--help`.
 
 ## Steps
 
@@ -40,6 +42,50 @@ Run the lighthouse command as `lighthouse` when it is on PATH, otherwise as `${C
    - `facts`: everything not certain from the code, such as ports, URLs, accounts, services and environment, each with `value`, `confirmed` and `recheck` (how to re-check it). Mark every fact you cannot confirm from the codebase `confirmed: false`.
    - `off_limits`: every outward-facing action not confirmed safe, in plain language, such as sending email or messages, taking payments, and writing to shared or production services.
    - `test_data`, when the project documents how test data is made.
+
+   A complete profile for a small web app, holding every field above:
+
+   ```json
+   {
+     "version": 1,
+     "sources": ["package.json", ".github/workflows/ci.yml", "jest.config.js"],
+     "setup": {"command": "npm ci"},
+     "build": {"command": "npm run build"},
+     "start": {"command": "PORT=4100 npm start", "ready": "http://localhost:4100/health"},
+     "suite": {
+       "command": "npx jest --ci --reporters=default --reporters=jest-junit",
+       "junit": "junit.xml",
+       "timeout_minutes": 15,
+       "rerun": "npx jest --ci --reporters=default --reporters=jest-junit -t {names_regex}",
+       "isolated": true
+     },
+     "test_data": "npm run seed loads three sample users and their notes into a local SQLite file",
+     "surfaces": [
+       {
+         "name": "notes page",
+         "kind": "web page",
+         "paths": ["src/pages/notes.tsx", "src/api/notes.ts"],
+         "driver": "Playwright, run with npx playwright test against http://localhost:4100/notes",
+         "available": true,
+         "sign_in": {"method": "form", "command": "npx playwright test e2e/sign-in.spec.ts"},
+         "credentials": ["NOTES_TEST_EMAIL", "NOTES_TEST_PASSWORD"],
+         "trials": 1
+       }
+     ],
+     "credentials": {
+       "file": null,
+       "names": {
+         "NOTES_TEST_EMAIL": {"production": false},
+         "NOTES_TEST_PASSWORD": {"production": false}
+       }
+     },
+     "facts": {
+       "port": {"value": 4100, "confirmed": true, "recheck": "read PORT in the start script of package.json"},
+       "mail service": {"value": "a local mail catcher on port 1025", "confirmed": false, "recheck": "read the SMTP settings in src/config.ts"}
+     },
+     "off_limits": ["sending email to real addresses", "writing to the shared staging database"]
+   }
+   ```
 4. When any surface needs signing in, run `lighthouse credentials init --repo <repo>`. It creates the credentials file with empty values, or uses the project's own file.
 5. Run `lighthouse profile check --repo <repo>`. When it reports problems, fix each once in the profile and run the check once more. When it still fails, stop and report every remaining problem, so a caller treats the profile as blocked.
 

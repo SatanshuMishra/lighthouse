@@ -66,6 +66,10 @@ def path_named(spend, name):
     return next(path for path in spend["paths"] if path["name"] == name)
 
 
+def step_named(spend, name):
+    return next(step for step in spend["steps"] if step["name"] == name)
+
+
 def write_marks(results, folder, start, end):
     lines = [
         {"step": "drive", "build": "feature", "path": "pick skill", "folder": folder, "edge": edge, "time": time}
@@ -421,6 +425,73 @@ class SpendTest(unittest.TestCase):
         write_marks(results, folder, "2026-10-16T10:00:00.400Z", "2026-10-16T10:05:00.400Z")
         spend = spend_of(self, ["--results", results], home)
         self.assertEqual(path_named(spend, "pick skill")["output"], 300)
+
+    def test_a_mark_chained_into_its_command_owns_that_message(self):
+        home = scratch.make_home(self)
+        results = scratch.temporary_folder(self, "lh-results-")
+        work = os.path.join(results, "work")
+        chained = "lighthouse mark --results {0} --step suite start && lighthouse suite --repo X; lighthouse mark --results {0} --step suite end".format(
+            results
+        )
+        write_session(
+            home,
+            work,
+            "child.jsonl",
+            [
+                assistant("msg_suite", "2026-10-16T09:59:58Z", {"output_tokens": 100}, cwd=work, content=bash("toolu_suite", chained)),
+                tool_result("toolu_suite", "2026-10-16T10:01:31Z", cwd=work),
+            ],
+        )
+        lines = [
+            {"step": "suite", "build": None, "path": None, "folder": None, "edge": "start", "time": "2026-10-16T10:00:00Z"},
+            {"step": "suite", "build": None, "path": None, "folder": None, "edge": "end", "time": "2026-10-16T10:01:30Z"},
+        ]
+        with open(os.path.join(results, "marks.jsonl"), "w", encoding="utf-8") as handle:
+            handle.write("".join(json.dumps(line) + "\n" for line in lines))
+        spend = spend_of(self, ["--results", results], home)
+        self.assertEqual(step_named(spend, "suite")["output"], 100)
+        self.assertEqual(step_named(spend, "suite")["minutes"], 1.5)
+        self.assertEqual(spend["shared"]["tokens"], 0)
+
+    def test_a_mark_through_a_shell_variable_counts(self):
+        start = "LH=/x/bin/lighthouse; $LH mark --results R --step drive --build feature --path 'sign in' start"
+        end = "LH=/x/bin/lighthouse; $LH mark --results R --step drive --build feature --path 'sign in' end"
+        spend = spend_of_lines(
+            self,
+            [
+                assistant("msg_start", "2026-10-16T10:00:00Z", {"cache_read_input_tokens": 10}, content=bash("toolu_start", start)),
+                tool_result("toolu_start", "2026-10-16T10:00:01Z"),
+                assistant("msg_one", "2026-10-16T10:01:00Z", {"output_tokens": 100}),
+                assistant("msg_end", "2026-10-16T10:02:00Z", {"cache_read_input_tokens": 10}, content=bash("toolu_end", end)),
+                tool_result("toolu_end", "2026-10-16T10:02:01Z"),
+            ],
+        )
+        self.assertEqual(path_named(spend, "sign in")["output"], 100)
+
+    def test_a_mark_on_a_later_row_of_its_message_owns_that_message(self):
+        chained = "lighthouse mark --results R --step suite start && lighthouse suite --repo X; lighthouse mark --results R --step suite end"
+        thinking = [{"type": "thinking", "thinking": "run the suite"}]
+        spend = spend_of_lines(
+            self,
+            [
+                assistant("msg_suite", "2026-10-16T10:00:00Z", {"output_tokens": 100}, content=thinking),
+                assistant("msg_suite", "2026-10-16T10:00:01Z", {"output_tokens": 100}, content=bash("toolu_suite", chained)),
+                tool_result("toolu_suite", "2026-10-16T10:01:30Z"),
+            ],
+        )
+        self.assertEqual(step_named(spend, "suite")["output"], 100)
+        self.assertEqual(spend["shared"]["tokens"], 0)
+
+    def test_a_mark_ended_by_a_newline_counts(self):
+        command = "lighthouse mark --results R --step change start\nlighthouse change --repo X; lighthouse mark --results R --step change end"
+        spend = spend_of_lines(
+            self,
+            [
+                assistant("msg_change", "2026-10-16T10:00:00Z", {"output_tokens": 100}, content=bash("toolu_change", command)),
+                tool_result("toolu_change", "2026-10-16T10:00:05Z"),
+            ],
+        )
+        self.assertEqual(step_named(spend, "change")["output"], 100)
 
     def test_spend_refuses_a_marks_line_that_is_not_a_json_object(self):
         results = scratch.temporary_folder(self, "lh-results-")
