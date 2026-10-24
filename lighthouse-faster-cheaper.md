@@ -1,6 +1,6 @@
 # lighthouse-faster-cheaper: Make lighthouse:test runs faster and cheaper without lowering test quality, and improve its metrics
 Status: active
-Updated: 2026-10-24T12:30:01.496Z
+Updated: 2026-10-24T12:30:05.766Z
 Next ids: c4 D5 R3 S1
 
 ## Goal
@@ -27,7 +27,6 @@ Needs: D2, D3, R1, R2.
 
 - D2 first build: three stacked MSPs cut by layer: Recut by layer into three stacked MSPs, command (all lighthouse_tool changes and their unit tests), skills (skill and agent text, README), held-out (harness, baseline and comparison); plan 3 MSPs in 1 cluster of depth 3.
 - D3 interphase hand-off: first build labels the MSPs faster-command, faster-skills, faster-held-out: MSPs are faster-command, faster-skills and faster-held-out with the subject 'make lighthouse:test fast and cheap'; the layer cut of D2 stands.
-- D4 interphase hand-off: start the first build in a clean run directory: Start a fresh first build of items with MSPs faster-command, faster-skills and faster-held-out.
 
 ## Open risks
 
@@ -45,3 +44,4 @@ Needs: D2, D3, R1, R2.
 - Run scripts and charter: run.zsh, dispatch.zsh, worker-rules.txt, CHARTER.md, items.json, graph.json in the run home
 - mitosis run directory: ~/.mitosis/runs/lighthouse/lighthouse-faster-cheaper/
 - Probe evidence for the design (fork skill, plugin agent cache, headless background wait, AskUserQuestion disallowed, priority): the decisions file's round 1 and 2 lines
+- Held-out pass 1 data (per-case baseline.jsonl and branch.jsonl, measure script, the Lane 5 worktree patch and baseline file): ~/.mitosis/lighthouse/lighthouse-faster-cheaper/held-out-1/
