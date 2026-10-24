@@ -1,7 +1,7 @@
 # lighthouse-faster-cheaper: Make lighthouse:test runs faster and cheaper without lowering test quality, and improve its metrics
 Status: active
-Updated: 2026-10-24T07:45:22.817Z
-Next ids: c4 D4 R3 S1
+Updated: 2026-10-24T07:46:27.478Z
+Next ids: c4 D5 R3 S1
 
 ## Goal
 
@@ -29,6 +29,7 @@ Needs: D2, D3, R1, R2.
 
 - D2 first build: three stacked MSPs cut by layer: Recut by layer into three stacked MSPs, command (all lighthouse_tool changes and their unit tests), skills (skill and agent text, README), held-out (harness, baseline and comparison); plan 3 MSPs in 1 cluster of depth 3.
 - D3 interphase hand-off: first build labels the MSPs faster-command, faster-skills, faster-held-out: MSPs are faster-command, faster-skills and faster-held-out with the subject 'make lighthouse:test fast and cheap'; the layer cut of D2 stands.
+- D4 interphase hand-off: start the first build in a clean run directory: Start a fresh first build of items with MSPs faster-command, faster-skills and faster-held-out.
 
 ## Open risks
 
