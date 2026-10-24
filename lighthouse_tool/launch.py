@@ -129,9 +129,13 @@ def launch(options: argparse.Namespace) -> Outcome:
     reason = None if line is not None else blocked_reason(child, output)
     printed = line if line is not None else blocked_text(reason)
     write_text(os.path.join(results, LAUNCH), printed + "\n")
-    verdict.append_ledger(root, launch_record(root, results, record, json.loads(printed)["verdict"], reason))
     summary = "lighthouse launch: the child exited {}".format(child.exit)
-    return 0, printed, summary if reason is None else "{}; blocked: {}".format(summary, reason)
+    told = summary if reason is None else "{}; blocked: {}".format(summary, reason)
+    try:
+        verdict.append_ledger(root, launch_record(root, results, record, json.loads(printed)["verdict"], reason))
+    except Refusal as problem:
+        return 2, printed, "{}; the run is not in the ledger: {}".format(told, problem)
+    return 0, printed, told
 
 
 def test_flags(options: argparse.Namespace) -> List[str]:

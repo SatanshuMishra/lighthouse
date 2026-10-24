@@ -329,6 +329,18 @@ class LaunchTest(unittest.TestCase):
                     self.assertEqual(status.stdout, "")
         self.assertEqual(calls_of(stubs, "claude"), [])
 
+    def test_a_ledger_that_cannot_be_appended_keeps_the_childs_verdict_line(self):
+        repo, _ = scratch.make_repo(self)
+        home = scratch.make_home(self)
+        os.makedirs(os.path.join(home, ".lighthouse", "work", "runs.jsonl"))
+        results = os.path.join(scratch.temporary_folder(self, "lh-results-"), "results")
+        env = scratch.environment(home, stub_folder(self, claude_output(GREEN_LINE)))
+        code, stdout, stderr = scratch.run_lighthouse(["launch", *launch_flags(repo, results)], env)
+        self.assertEqual(code, 2, stderr)
+        self.assertEqual(json.loads(stdout.strip().splitlines()[-1]), json.loads(GREEN_LINE))
+        self.assertEqual(read_json(os.path.join(results, "launch.json")), json.loads(GREEN_LINE))
+        self.assertIn("runs.jsonl", stderr)
+
     def test_launch_refuses_a_results_path_that_is_a_file_without_a_traceback(self):
         repo, _ = scratch.make_repo(self)
         results = os.path.join(scratch.temporary_folder(self, "lh-results-"), "results")
