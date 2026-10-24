@@ -1,7 +1,7 @@
 # lighthouse-faster-cheaper: Make lighthouse:test runs faster and cheaper without lowering test quality, and improve its metrics
 Status: active
-Updated: 2026-10-24T07:23:31.483Z
-Next ids: c4 D1 R1 S1
+Updated: 2026-10-24T07:41:02.650Z
+Next ids: c4 D2 R1 S1
 
 ## Goal
 
@@ -24,6 +24,8 @@ Round 2 answered and recorded (Q23: inherit priority as industry standard, recor
 interphase Phase 8: copy the feature template to docs/specs/lighthouse-faster-cheaper.md, fill it, write each Step's task into the record, render, then Phases 9 and 10, then pipeline Stage 2.
 
 ## Decisions in force
+
+- D1 interphase hand-off: build the approved spec as four stacked MSPs: Build all 17 Steps in one mitosis run as the four MSPs, metrics, suite, tokens and checks, in that order.
 
 ## Open risks
 
