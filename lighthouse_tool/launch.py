@@ -50,18 +50,23 @@ def located_parser() -> Parser:
     return arguments
 
 
-def results_outside_repository(arguments: List[str]) -> Optional[str]:
+class Located(NamedTuple):
+    root: Optional[str]
+    results: Optional[str]
+
+
+def located_run(arguments: List[str]) -> Located:
     try:
         located, _ = located_parser().parse_known_args(arguments)
     except Refusal:
-        return None
-    if located.results is None:
-        return None
+        return Located(None, None)
     root = toplevel(located.repo) if located.repo is not None else None
+    if located.results is None:
+        return Located(root, None)
     guarded = root if root is not None else enclosing_checkout(located.results)
     if guarded is not None and suite.is_inside(guarded, located.results):
-        return None
-    return os.path.realpath(located.results)
+        return Located(root, None)
+    return Located(root, os.path.realpath(located.results))
 
 
 def enclosing_checkout(path: str) -> Optional[str]:
@@ -72,16 +77,16 @@ def enclosing_checkout(path: str) -> Optional[str]:
 
 
 def run(argv: List[str]) -> Outcome:
-    results = results_outside_repository(argv[1:])
+    located = located_run(argv[1:])
     try:
-        if results is not None:
-            clear_earlier_run(results)
+        if located.results is not None:
+            clear_earlier_run(located.results)
         options = parser().parse_args(argv[1:])
         return launch(options)
     except (Refusal, OSError) as problem:
         reason = refusal_reason(problem)
-        if results is not None:
-            leave_blocked_line(results, reason)
+        if located.results is not None:
+            leave_blocked_line(located.root, located.results, reason)
         return 2, json.dumps({"error": reason}), "lighthouse launch: {}".format(reason)
 
 
@@ -102,7 +107,13 @@ def clear_earlier_run(results: str) -> None:
             raise Refusal("cannot clear {} from an earlier run: {}".format(path, error.strerror or error))
 
 
-def leave_blocked_line(results: str, reason: str) -> None:
+def leave_blocked_line(root: Optional[str], results: str, reason: str) -> None:
+    if root is not None:
+        refused = {"cost": {}, "minutes": 0, "keep_awake": NO_KEEP_AWAKE, "priority": priority()}
+        try:
+            verdict.append_ledger(root, launch_record(root, results, refused, "blocked", reason))
+        except Refusal:
+            pass
     try:
         os.makedirs(results, exist_ok=True)
         write_text(os.path.join(results, LAUNCH), blocked_text(reason) + "\n")
