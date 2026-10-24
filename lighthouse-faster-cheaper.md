@@ -1,6 +1,6 @@
 # lighthouse-faster-cheaper: Make lighthouse:test runs faster and cheaper without lowering test quality, and improve its metrics
 Status: active
-Updated: 2026-10-24T19:17:35.516Z
+Updated: 2026-10-24T19:25:00.725Z
 Next ids: c4 D9 R5 S1
 
 ## Goal
@@ -10,7 +10,7 @@ Cut lighthouse:test wall time and token spend on live pipeline runs while keepin
 ## Done when
 
 - [x] c1 The spec is approved by the user at interphase's read-back evidence: owner chose Approve at the read-back; docs/specs/lighthouse-faster-cheaper.record.json status handed-off, check_record --complete, check_spec and check_items pass
-- [ ] c2 The MSP pull requests are open, reviewed green or opened as drafts with their blockers
+- [x] c2 The MSP pull requests are open, reviewed green or opened as drafts with their blockers evidence: SatanshuMishra/lighthouse#9 (faster-command, base feat/lighthouse-faster-cheaper) and #10 (faster-skills, stacked on mitosis/faster-command) are open, ready for review, assigned to SatanshuMishra and carry their review comments; both reviewed green at round 4; faster-held-out ended unchanged by D7, so it has no pull request
 - [ ] c3 Integration's lighthouse run opens the FEATURE pull request
 
 ## Where things stand
@@ -19,9 +19,9 @@ Ship. faster-command and faster-skills are reviewed green at round 4 with every 
 
 ## Next step
 
-Run SHIP=1 /Users/satanshumishra/.mitosis/lighthouse/lighthouse-faster-cheaper/run.zsh --resume, read mitosis's JSON result for each pushed MSP's branch, base, title and body, then open the pull requests in stack order through GitHub MCP, assign each to the owner and post review/<msp>.comment.md on it.
+The owner merges SatanshuMishra/lighthouse#9 and then #10 into feat/lighthouse-faster-cheaper; when they say the MSP pull requests merged, start Integration: lighthouse tests the FEATURE branch and opens the FEATURE pull request.
 
-Needs: D2, D7, D8.
+Needs: D7.
 
 ## Decisions in force
 
