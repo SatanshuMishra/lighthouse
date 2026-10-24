@@ -1,6 +1,6 @@
 # lighthouse-faster-cheaper: Make lighthouse:test runs faster and cheaper without lowering test quality, and improve its metrics
 Status: active
-Updated: 2026-10-24T14:02:26.765Z
+Updated: 2026-10-24T14:02:29.543Z
 Next ids: c4 D7 R5 S1
 
 ## Goal
@@ -19,7 +19,7 @@ Stage 3 round 2. faster-command (base 480f500, head 02af478, previous head fe222
 
 ## Next step
 
-Build amendment 1: write amend-1.zsh in the run home and copy docs/specs/lighthouse-faster-cheaper.amend-1.items.json to <home>/amend-1.items.json. Run --plan-only, then the build, and merge its branch into mitosis/faster-skills. Rerun pipeline obligations for faster-skills with the amendment criteria and re-append the threats. Then run round 2 for faster-command (previous head fe222e5) and faster-skills (previous head 5d56dc9).
+Collect faster-command's round 2 findings and validate them. When faster-skills' suite finishes, run its round 2 code and security reviews and validate their findings. Once faster-skills is green, merge mitosis/faster-skills into mitosis/faster-held-out and run run.zsh --resume once.
 
 Needs: D2, D3, D6, R2.
 
