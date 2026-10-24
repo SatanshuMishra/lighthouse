@@ -1,7 +1,7 @@
 # lighthouse-faster-cheaper: Make lighthouse:test runs faster and cheaper without lowering test quality, and improve its metrics
 Status: active
-Updated: 2026-10-24T07:41:02.650Z
-Next ids: c4 D2 R1 S1
+Updated: 2026-10-24T07:41:08.841Z
+Next ids: c4 D2 R3 S1
 
 ## Goal
 
@@ -9,7 +9,7 @@ Cut lighthouse:test wall time and token spend on live pipeline runs while keepin
 
 ## Done when
 
-- [ ] c1 The spec is approved by the user at interphase's read-back
+- [x] c1 The spec is approved by the user at interphase's read-back evidence: owner chose Approve at the read-back; docs/specs/lighthouse-faster-cheaper.record.json status handed-off, check_record --complete, check_spec and check_items pass
 - [ ] c2 The MSP pull requests are open, reviewed green or opened as drafts with their blockers
 - [ ] c3 Integration's lighthouse run opens the FEATURE pull request
 
@@ -21,13 +21,18 @@ Round 2 answered and recorded (Q23: inherit priority as industry standard, recor
 
 ## Next step
 
-interphase Phase 8: copy the feature template to docs/specs/lighthouse-faster-cheaper.md, fill it, write each Step's task into the record, render, then Phases 9 and 10, then pipeline Stage 2.
+Stage 2: run pipeline feature-branch, commit receipts.config.json through a temporary worktree, write the run home's CHARTER.md, worker-rules.txt, dispatch.zsh and run.zsh, copy items.json and graph.json, run --plan-only, then the first build.
+
+Needs: D1.
 
 ## Decisions in force
 
 - D1 interphase hand-off: build the approved spec as four stacked MSPs: Build all 17 Steps in one mitosis run as the four MSPs, metrics, suite, tokens and checks, in that order.
 
 ## Open risks
+
+- R1 The held-out set starts each session fresh, so the launcher's extra child start-up may cancel the savings there and criterion 5.21's below-baseline totals could fail on small fixtures even though real pipeline runs save. Bears on c2.
+- R2 A held-out pass is 24 live sessions; the baseline Step and the final comparison each spend real money and hours, and run-to-run variation can move a single total either way. Bears on c2.
 
 ## Settled, do not reopen
 
