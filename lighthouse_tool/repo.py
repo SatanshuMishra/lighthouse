@@ -14,11 +14,25 @@ class Refusal(Exception):
     pass
 
 
+def unreadable(path: str, error: OSError) -> Refusal:
+    return Refusal("cannot read {}: {}".format(path, error.strerror or error))
+
+
+def read_json_or_refuse(path: str) -> Any:
+    try:
+        with open(path, encoding="utf-8") as handle:
+            return json.load(handle)
+    except OSError as error:
+        raise unreadable(path, error)
+    except ValueError:
+        raise Refusal("{} is not valid JSON".format(path))
+
+
 def read_json_lines_or_refuse(path: str, command: str) -> List[Dict[str, Any]]:
     try:
         return read_json_lines(path)
     except OSError as error:
-        raise Refusal("cannot read {}: {}".format(path, error.strerror or error))
+        raise unreadable(path, error)
     except UnreadableLine as unreadable:
         raise Refusal("{}; repair or remove that line, then run lighthouse {} again".format(unreadable, command))
 

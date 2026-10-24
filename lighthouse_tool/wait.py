@@ -10,7 +10,7 @@ import urllib.request
 from typing import Any, Callable, List, Optional, Tuple
 
 from lighthouse_tool.ports import port_map, port_pair, url_with_build_ports, with_build_ports
-from lighthouse_tool.repo import Parser, Refusal
+from lighthouse_tool.repo import Parser, Refusal, read_json_or_refuse
 
 DEFAULT_EVERY_SECONDS = 5.0
 LONGEST_WITHIN_SECONDS = 540.0
@@ -53,13 +53,7 @@ def checked_options(options: Any) -> Any:
 
 
 def ready_text(profile_path: str) -> str:
-    try:
-        with open(profile_path, encoding="utf-8") as handle:
-            profile = json.load(handle)
-    except OSError as error:
-        raise Refusal("cannot read {}: {}".format(profile_path, error.strerror or error))
-    except ValueError:
-        raise Refusal("{} is not valid JSON".format(profile_path))
+    profile = read_json_or_refuse(profile_path)
     start = profile.get("start") if isinstance(profile, dict) else None
     ready = start.get("ready") if isinstance(start, dict) else None
     if not isinstance(ready, str) or not ready.strip():
