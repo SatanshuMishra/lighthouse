@@ -1,7 +1,7 @@
 # lighthouse-faster-cheaper: Make lighthouse:test runs faster and cheaper without lowering test quality, and improve its metrics
 Status: active
-Updated: 2026-10-24T19:15:49.185Z
-Next ids: c4 D8 R5 S1
+Updated: 2026-10-24T19:16:35.850Z
+Next ids: c4 D9 R5 S1
 
 ## Goal
 
@@ -29,6 +29,7 @@ Needs: D2, D3, D6, R2.
 - D3 interphase hand-off: first build labels the MSPs faster-command, faster-skills, faster-held-out: MSPs are faster-command, faster-skills and faster-held-out with the subject 'make lighthouse:test fast and cheap'; the layer cut of D2 stands.
 - D6 amendment 1 hand-off: five Steps on faster-skills-amend-1, faster-held-out resumes on the amended tasks: Build amendment 1 with amend-1.zsh (--no-push, plan-only first) into mitosis/faster-skills. Then set Lane 5's uncommitted patch aside (it is saved as held-out-1/worktree.patch) and merge mitosis/faster-skills into mitosis/faster-held-out. Add to CHARTER.md that the held-out-baseline and held-out-compare tasks in the spec's items file govern where a brief differs. Then run one resume.
 - D7 owner skips the live held-out measurement; live runs measure success: The owner chose to skip the measurement and continue: faster-held-out ships nothing, criterion 5.21 is reported unproven, and faster-command and faster-skills ship as stacked pull requests.
+- D8 ship: push faster-command and faster-skills as stacked pull requests: Run SHIP=1 run.zsh --resume, then open each pushed MSP's pull request through GitHub MCP in stack order, assign it to the owner and post its saved comment.
 
 ## Open risks
 
