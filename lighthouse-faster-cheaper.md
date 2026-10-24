@@ -1,6 +1,6 @@
 # lighthouse-faster-cheaper: Make lighthouse:test runs faster and cheaper without lowering test quality, and improve its metrics
 Status: active
-Updated: 2026-10-24T12:57:36.616Z
+Updated: 2026-10-24T12:57:39.354Z
 Next ids: c4 D6 R3 S1
 
 ## Goal
@@ -19,7 +19,7 @@ Stage 3 round 1 fix pass; both MSPs' verdict is loop. faster-command (head fe222
 
 ## Next step
 
-When the six round 1 reviewers report, collect review/round-1/<msp>.findings.json for faster-command and faster-skills with their arrays plus the held-out pass 1 result as suite findings, then run pipeline candidates, the validator, record, verdict and diagnosis.
+Fix faster-command's C1, C2, C3 (receipt first, class-wide fix, selecting check) and advisories C6, C7, C8, S4; merge mitosis/faster-command into mitosis/faster-skills; run the faster-skills amendment for 5.21 through interphase; then round 2 for both.
 
 Needs: D2, D3, R1, R2.
 
