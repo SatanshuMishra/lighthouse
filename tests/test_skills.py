@@ -207,7 +207,7 @@ class SkillsTest(unittest.TestCase):
 
     def test_every_wait_instruction_sets_the_bash_timeout_to_its_ceiling(self):
         for path in (scratch.skill_path("test"), os.path.join(scratch.ROOT, "agents", "driver.md")):
-            holds = [line for line in scratch.read_text(path).splitlines() if "lighthouse wait --until" in line]
+            holds = [line for line in scratch.read_text(path).splitlines() if "lighthouse wait --" in line]
             with self.subTest(path=path):
                 self.assertTrue(holds)
                 for line in holds:
@@ -365,9 +365,10 @@ class SkillsTest(unittest.TestCase):
         building = text.split("6. Build and start", 1)[1].split("7. Prove each path", 1)[0]
         self.assertIn("<results>/<build>-start.log", " ".join(reference.replace("`", "").split()))
         self.assertIn("Run each build's start command with its output written to <results>/<build>-start.log", building)
-        self.assertIn("a URL as curl -fsS <url>", text)
-        self.assertIn("a log line as grep -qF '<line>' <results>/<build>-start.log", text)
-        self.assertIn("a command as itself", text)
+        self.assertIn("url for an http or https URL, ready once it answers with a status below 400", text)
+        self.assertIn("line for a log line, ready once --log holds it", text)
+        self.assertIn("command for a command, run as the profile writes it", text)
+        self.assertIn("lighthouse wait --ready <url, line or command> --profile <results>/profile.json", building)
 
     def test_init_and_doctor_show_one_complete_example_profile(self):
         from lighthouse_tool import profile

@@ -73,7 +73,7 @@ Everything a run needs from lighthouse is in this skill and in what its commands
      - `suite.isolated`: true only when the suite uses no fixed ports, shared databases or shared folders, so core's and FEATURE's suites may run at the same time; otherwise false.
 4. Run `lighthouse profile check --repo <repo>` again. When it still fails, stop and report every remaining problem, so a caller treats the profile as blocked.
 5. Run `lighthouse credentials check --repo <repo>`. Report each missing or empty name as a readiness item, naming the file it belongs in and never a value.
-6. For each surface whose `sign_in` records a command, run it through `lighthouse with-credentials --repo <repo> -- /bin/sh -c '<the surface's sign_in command>'`, since the command is a shell command. Pass no `--profile`: lighthouse then reads the profile at the root of the repository `--repo` is in, the one doctor just checked. Report a sign-in that fails as a readiness item for that surface. Never print, ask for or accept a credential value.
+6. For each surface whose `sign_in` records a command, run it through `lighthouse with-credentials --repo <repo> --sign-in <the surface's position in the profile's surfaces, counted from 0>`, which runs the recorded command as the profile writes it, so no profile text is copied into a shell line. Pass no `--profile`: lighthouse then reads the profile at the root of the repository `--repo` is in, the one doctor just checked. Report a sign-in that fails as a readiness item for that surface. Never print, ask for or accept a credential value.
 
 ## Asking
 
