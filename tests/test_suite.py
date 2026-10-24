@@ -541,6 +541,17 @@ class SuiteTest(unittest.TestCase):
         self.assertIs(second["core"]["reused"], True)
         self.assertEqual(second["core"]["exit"], first["core"]["exit"])
 
+    def test_an_uncreatable_state_folder_runs_both_suites_without_storing_core(self):
+        counter = os.path.join(scratch.temporary_folder(self, "lh-counter-"), "runs")
+        profile = scratch.sample_profile(suite={"command": counting_suite(counter), "junit": None, "timeout_minutes": None})
+        work = project_with(self, {}, profile)
+        home = scratch.make_home(self)
+        open(os.path.join(home, ".lighthouse"), "w").close()
+        first = suite_in(self, work, home)
+        suite_in(self, work, home)
+        self.assertEqual(runs_of(counter, "core"), 2)
+        self.assertIs(first["core"]["reused"], False)
+
     def test_changed_suite_command_runs_core_again(self):
         counter = os.path.join(scratch.temporary_folder(self, "lh-counter-"), "runs")
         profile = scratch.sample_profile(suite={"command": counting_suite(counter), "junit": None, "timeout_minutes": None})

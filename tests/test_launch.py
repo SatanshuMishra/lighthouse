@@ -378,3 +378,34 @@ class LaunchTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class UncreatableStateFolderTest(unittest.TestCase):
+    def setUp(self):
+        self.repo, _ = scratch.make_repo(self)
+        self.home = scratch.make_home(self)
+        open(os.path.join(self.home, ".lighthouse"), "w").close()
+        self.results = os.path.join(scratch.temporary_folder(self, "lh-results-"), "results")
+        self.env = scratch.environment(self.home, stub_folder(self, claude_output(GREEN_LINE)))
+
+    def test_a_refused_launch_with_an_uncreatable_state_folder_still_leaves_a_blocked_line(self):
+        flags = [flag for flag in launch_flags(self.repo, self.results) if flag not in ("--core", "main")]
+        code, stdout, stderr = scratch.run_lighthouse(["launch", *flags], self.env)
+        self.assertEqual(code, 2, stderr)
+        self.assertNotIn("Traceback", stderr)
+        self.assertIn("error", json.loads(stdout.strip().splitlines()[-1]))
+        self.assertEqual(read_json(os.path.join(self.results, "launch.json"))["verdict"], "blocked")
+
+    def test_a_launch_with_an_uncreatable_state_folder_keeps_the_childs_verdict_line(self):
+        code, stdout, stderr = scratch.run_lighthouse(["launch", *launch_flags(self.repo, self.results)], self.env)
+        self.assertEqual(code, 2, stderr)
+        self.assertNotIn("Traceback", stderr)
+        self.assertIn("the run is not in the ledger", stderr)
+        self.assertEqual(json.loads(stdout.strip().splitlines()[-1]), json.loads(GREEN_LINE))
+        self.assertEqual(read_json(os.path.join(self.results, "launch.json")), json.loads(GREEN_LINE))
+
+    def test_a_blocked_verdict_with_an_uncreatable_state_folder_is_refused_without_a_traceback(self):
+        code, stdout, stderr = scratch.run_lighthouse(["verdict", "--blocked", "x", "--repo", self.repo], self.env)
+        self.assertEqual(code, 2, stderr)
+        self.assertNotIn("Traceback", stderr)
+        self.assertIn(".lighthouse", json.loads(stdout.strip().splitlines()[-1])["error"])
