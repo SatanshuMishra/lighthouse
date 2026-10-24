@@ -170,6 +170,14 @@ class SkillsTest(unittest.TestCase):
         self.assertIn("With --child, run the Steps below", launching)
         self.assertNotIn("LIGHTHOUSE_CHILD", text)
 
+    def test_every_wait_instruction_sets_the_bash_timeout_to_its_ceiling(self):
+        for path in (scratch.skill_path("test"), os.path.join(scratch.ROOT, "agents", "driver.md")):
+            holds = [line for line in scratch.read_text(path).splitlines() if "lighthouse wait --until" in line]
+            with self.subTest(path=path):
+                self.assertTrue(holds)
+                for line in holds:
+                    self.assertIn("600000", line)
+
     def test_test_skill_dispatches_drivers_through_the_driver_agent(self):
         text = scratch.skill_text("test")
         steps = section(text, "## Steps", "## Stopping early")
