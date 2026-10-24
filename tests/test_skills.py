@@ -6,6 +6,7 @@ import unittest
 from tests import e2e_harness, scratch
 
 SKILLS = ("init", "doctor", "test")
+SPLICED_PROFILE_TEXT = re.compile(r"curl -fsS <[^>]*>|grep -qF '<[^>]*>'|--until '<the ready check>'|'<the surface's sign_in command>'")
 
 
 def frontmatter_name(text):
@@ -196,6 +197,13 @@ class SkillsTest(unittest.TestCase):
         launching = section(scratch.skill_text("test"), "## Launch", "## Steps")
         self.assertIn("When that line's verdict is blocked, say in one line the reason lighthouse launch printed", launching)
         self.assertIn("lighthouse launch has already appended the run to the ledger, so never run Stopping early for it", launching)
+
+    def test_no_skill_splices_profile_text_into_a_shell_line(self):
+        agents = os.path.join(scratch.ROOT, "agents")
+        paths = [scratch.skill_path(name) for name in SKILLS] + [os.path.join(agents, name) for name in sorted(os.listdir(agents))]
+        for path in paths:
+            with self.subTest(path=path):
+                self.assertEqual(SPLICED_PROFILE_TEXT.findall(scratch.read_text(path)), [])
 
     def test_every_wait_instruction_sets_the_bash_timeout_to_its_ceiling(self):
         for path in (scratch.skill_path("test"), os.path.join(scratch.ROOT, "agents", "driver.md")):
