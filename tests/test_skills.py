@@ -198,6 +198,12 @@ class SkillsTest(unittest.TestCase):
         self.assertIn("When that line's verdict is blocked, say in one line the reason lighthouse launch printed", launching)
         self.assertIn("lighthouse launch has already appended the run to the ledger, so never run Stopping early for it", launching)
 
+    def test_the_reference_says_a_blocked_line_has_no_dollars(self):
+        reference = scratch.read_text(scratch.skill_path("test")).split("## Command reference", 1)[1]
+        for subcommand in ("launch", "verdict"):
+            with self.subTest(subcommand=subcommand):
+                self.assertIn("a blocked line has no `dollars`", reference_line(reference, subcommand))
+
     def test_no_skill_splices_profile_text_into_a_shell_line(self):
         agents = os.path.join(scratch.ROOT, "agents")
         paths = [scratch.skill_path(name) for name in SKILLS] + [os.path.join(agents, name) for name in sorted(os.listdir(agents))]
