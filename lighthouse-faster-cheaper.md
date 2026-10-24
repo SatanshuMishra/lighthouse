@@ -1,6 +1,6 @@
 # lighthouse-faster-cheaper: Make lighthouse:test runs faster and cheaper without lowering test quality, and improve its metrics
 Status: active
-Updated: 2026-10-24T15:37:51.786Z
+Updated: 2026-10-24T15:37:54.164Z
 Next ids: c4 D7 R5 S1
 
 ## Goal
@@ -19,7 +19,7 @@ Stage 3. faster-command is green at round 4 (head 08a8ed2, reviewed green), with
 
 ## Next step
 
-Review faster-skills round 4 (code-reviewer and security-reviewer, then candidates, validator, record and verdict) and loop or diagnose as its verdict says. Once faster-skills is green, merge mitosis/faster-skills into mitosis/faster-held-out and run run.zsh --resume once.
+When the resume ends, read mitosis's last stdout line for faster-held-out, then review it from round 1 (its diff against mitosis/faster-skills, suite, reviewers, validator, verdict), and once every MSP is green or blocked, ship.
 
 Needs: D2, D3, D6, R2.
 
