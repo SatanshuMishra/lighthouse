@@ -1,6 +1,6 @@
 # lighthouse-faster-cheaper: Make lighthouse:test runs faster and cheaper without lowering test quality, and improve its metrics
 Status: active
-Updated: 2026-10-24T19:17:12.426Z
+Updated: 2026-10-24T19:17:12.543Z
 Next ids: c4 D9 R5 S1
 
 ## Goal
@@ -21,7 +21,7 @@ Ship. faster-command and faster-skills are reviewed green at round 4 with every 
 
 Run SHIP=1 /Users/satanshumishra/.mitosis/lighthouse/lighthouse-faster-cheaper/run.zsh --resume, read mitosis's JSON result for each pushed MSP's branch, base, title and body, then open the pull requests in stack order through GitHub MCP, assign each to the owner and post review/<msp>.comment.md on it.
 
-Needs: D2, D7.
+Needs: D2, D7, D8.
 
 ## Decisions in force
 
@@ -33,8 +33,6 @@ Needs: D2, D7.
 
 ## Open risks
 
-- R2 A held-out pass is 24 live sessions; the baseline Step and the final comparison each spend real money and hours, and run-to-run variation can move a single total either way. Bears on c2.
-- R4 The per-fixture bar against main is the amendment's own reading. It departs from the owner's round 2 answer (decision record 0004 holds on both runs) only for the cases main itself fails, and noise in two runs per fixture can fail an unchanged branch, which sends drivers back to Opus. Bears on c2.
 
 ## Settled, do not reopen
 
