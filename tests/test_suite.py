@@ -685,6 +685,21 @@ class SuiteTest(unittest.TestCase):
         for folder in (work, os.path.join(feature, "feature"), os.path.join(feature, "core"), outside):
             self.assertFalse(os.path.exists(os.path.join(folder, "pwned")), folder)
 
+    def test_rerun_with_a_quoted_placeholder_reruns_the_whole_suite(self):
+        outside = scratch.temporary_folder(self, "lh-counter-")
+        counter, chosen = os.path.join(outside, "runs"), os.path.join(outside, "chosen")
+        work = rerun_project(
+            self,
+            counter,
+            {"core": {"a;touch pwned": "passed"}, "feature": {"a;touch pwned": "failed"}},
+            "echo '{{names}}' > {}; cp reports/feature.xml report.xml".format(chosen),
+        )
+        result = suite_of(self, work)
+        self.assertEqual(runs_of(counter, "feature"), 2)
+        feature = os.path.dirname(result["feature"]["log"])
+        for folder in (work, os.path.join(feature, "feature"), os.path.join(feature, "core"), outside):
+            self.assertFalse(os.path.exists(os.path.join(folder, "pwned")), folder)
+
     def test_rerun_that_writes_no_report_falls_back_to_the_whole_suite(self):
         counter = os.path.join(scratch.temporary_folder(self, "lh-counter-"), "runs")
         work = rerun_project(

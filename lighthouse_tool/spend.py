@@ -6,6 +6,7 @@ import shlex
 from typing import Any, Dict, Iterable, List, NamedTuple, Optional, Set, Tuple
 
 from lighthouse_tool import mark
+from lighthouse_tool.records import is_number, json_object
 from lighthouse_tool.repo import Parser, Refusal, require_root
 
 KINDS = ("input", "cache_write_5m", "cache_write_1h", "cache_read", "output")
@@ -49,6 +50,14 @@ class MarkCall(NamedTuple):
     path: Optional[str]
     folder: Optional[str]
     timestamp: datetime.datetime
+
+
+class MarkedFolder(NamedTuple):
+    step: str
+    build: Optional[str]
+    path: Optional[str]
+    folder: str
+    time: datetime.datetime
 
 
 class Span(NamedTuple):
@@ -97,7 +106,8 @@ def run(argv: List[str]) -> Tuple[int, Optional[str], Optional[str]]:
             require_root(options.repo)
         prices = read_prices(options.prices or PRICES)
         scope, transcripts = scoped_transcripts(options)
-        totals = spend_report(transcripts, since, prices)
+        marked = read_marked_folders(os.path.realpath(options.results)) if options.results is not None else []
+        totals = spend_report(transcripts, since, prices, marked)
         if options.repo is not None:
             write_spend(os.path.realpath(options.results), totals)
     except Refusal as refusal:
@@ -132,10 +142,6 @@ def parse_time(text: Any) -> Optional[datetime.datetime]:
     if moment.tzinfo is None:
         return moment.replace(tzinfo=datetime.timezone.utc)
     return moment
-
-
-def is_number(value: Any) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
 def read_prices(path: str) -> Prices:
@@ -200,16 +206,8 @@ def parsed_entries(path: str) -> List[Dict[str, Any]]:
             lines = handle.readlines()
     except OSError:
         return []
-    entries = [parsed_line(line) for line in lines]
+    entries = [json_object(line) for line in lines]
     return [entry for entry in entries if entry is not None]
-
-
-def parsed_line(line: str) -> Optional[Dict[str, Any]]:
-    try:
-        entry = json.loads(line)
-    except ValueError:
-        return None
-    return entry if isinstance(entry, dict) else None
 
 
 def read_transcript(path: str) -> Transcript:
@@ -354,16 +352,39 @@ def mark_arguments(command: str) -> List[List[str]]:
     return [words[start:end] for start, end in zip(starts, ends)]
 
 
-def parsed_mark(arguments: List[str], cwd: str, timestamp: datetime.datetime) -> Optional[MarkCall]:
+def parsed_mark(arguments: List[str], timestamp: datetime.datetime) -> Optional[MarkCall]:
     try:
         options = mark.parser().parse_args(arguments)
     except Refusal:
         return None
-    folder = os.path.realpath(os.path.join(cwd, options.folder)) if options.folder else None
-    return MarkCall(options.edge, options.step, options.build, options.path, folder, timestamp)
+    return MarkCall(options.edge, options.step, options.build, options.path, None, timestamp)
 
 
-def mark_calls(row: Row, cwd: str) -> List[MarkCall]:
+def marked_folder(line: Dict[str, Any]) -> Optional[MarkedFolder]:
+    moment = parse_time(line.get("time"))
+    folder, step = line.get("folder"), line.get("step")
+    if line.get("edge") != "start" or not isinstance(folder, str) or not isinstance(step, str) or moment is None:
+        return None
+    build, path = line.get("build"), line.get("path")
+    return MarkedFolder(step, build if isinstance(build, str) else None, path if isinstance(path, str) else None, folder, moment)
+
+
+def read_marked_folders(results: str) -> List[MarkedFolder]:
+    found = [marked_folder(line) for line in parsed_entries(os.path.join(results, mark.MARKS))]
+    return [folder for folder in found if folder is not None]
+
+
+def located(call: MarkCall, marked: List[MarkedFolder]) -> MarkCall:
+    written = [
+        folder
+        for folder in marked
+        if (folder.step, folder.build, folder.path) == mark_key(call) and folder.time >= call.timestamp
+    ]
+    earliest = min(written, key=lambda folder: folder.time, default=None)
+    return call._replace(folder=earliest.folder if earliest is not None else None)
+
+
+def mark_calls(row: Row) -> List[MarkCall]:
     commands = [
         block["input"]["command"]
         for block in blocks_of(row.entry)
@@ -372,8 +393,7 @@ def mark_calls(row: Row, cwd: str) -> List[MarkCall]:
         and isinstance(block.get("input"), dict)
         and isinstance(block["input"].get("command"), str)
     ]
-    row_cwd = row.entry.get("cwd") if isinstance(row.entry.get("cwd"), str) else cwd
-    calls = [parsed_mark(arguments, row_cwd, row.timestamp) for command in commands for arguments in mark_arguments(command)]
+    calls = [parsed_mark(arguments, row.timestamp) for command in commands for arguments in mark_arguments(command)]
     return [call for call in calls if call is not None]
 
 
@@ -386,7 +406,9 @@ def mark_key(call: MarkCall) -> Tuple[str, Optional[str], Optional[str]]:
     return call.step, call.build, call.path
 
 
-def read_marks(transcript: Transcript, counted: Set[str]) -> Tuple[List[Span], Dict[str, Tuple[str, int]]]:
+def read_marks(
+    transcript: Transcript, counted: Set[str], marked: List[MarkedFolder]
+) -> Tuple[List[Span], Dict[str, Tuple[str, int]]]:
     opened: List[Tuple[Tuple[str, int], MarkCall]] = []
     spans: List[Span] = []
     owners: Dict[str, Tuple[str, int]] = {}
@@ -398,9 +420,9 @@ def read_marks(transcript: Transcript, counted: Set[str]) -> Tuple[List[Span], D
             seen.add(identifier)
             if identifier in counted and opened:
                 owners[identifier] = opened[-1][0]
-        for call in mark_calls(row, transcript.cwd or ""):
+        for call in mark_calls(row):
             if call.edge == "start":
-                opened.append(((transcript.path, started), call))
+                opened.append(((transcript.path, started), located(call, marked)))
                 started += 1
                 continue
             matching = [index for index, (_, start) in enumerate(opened) if mark_key(start) == mark_key(call)]
@@ -445,10 +467,12 @@ def folder_owner(transcript: Transcript, spans: List[Span]) -> Optional[Tuple[st
     return deepest.key if deepest is not None else None
 
 
-def reading(transcripts: List[Transcript], since: datetime.datetime) -> Reading:
+def reading(transcripts: List[Transcript], since: datetime.datetime, folders: List[MarkedFolder]) -> Reading:
     windows = [recent(transcript, since) for transcript in transcripts]
     owned = owned_messages(windows, since)
-    marked = [read_marks(window, {message.identifier for message in messages}) for window, messages in zip(windows, owned)]
+    marked = [
+        read_marks(window, {message.identifier for message in messages}, folders) for window, messages in zip(windows, owned)
+    ]
     spans = [span for transcript_spans, _ in marked for span in transcript_spans]
     folder_owners = [folder_owner(window, spans) for window in windows]
     owners = {
@@ -532,8 +556,10 @@ def grouped(
     ]
 
 
-def spend_report(transcripts: List[Transcript], since: datetime.datetime, prices: Prices) -> Dict[str, Any]:
-    found = reading(transcripts, since)
+def spend_report(
+    transcripts: List[Transcript], since: datetime.datetime, prices: Prices, marked: List[MarkedFolder]
+) -> Dict[str, Any]:
+    found = reading(transcripts, since, marked)
     models = models_report(found.messages, prices)
     latest = max((message.timestamp for message in found.messages), default=None)
     minutes = 0 if latest is None else round((latest - since).total_seconds() / 60, 1)

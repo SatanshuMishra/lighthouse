@@ -96,6 +96,32 @@ def verdict_with_repo(test, results, home, repo, findings):
 
 
 class LedgerTest(unittest.TestCase):
+    def test_a_blocked_stop_with_its_results_folder_records_that_run(self):
+        home = scratch.make_home(self)
+        repo, _ = scratch.make_repo(self)
+        results = scratch.temporary_folder(self, "lh-results-")
+        code, stdout, stderr = scratch.run_lighthouse(
+            ["verdict", "--blocked", "the profile is broken", "--results", results, "--repo", repo], scratch.environment(home)
+        )
+        self.assertEqual(code, 0, stderr)
+        self.assertEqual(json.loads(stdout.strip().splitlines()[-1])["verdict"], "blocked")
+        self.assertEqual([(line["run"], line["reason"]) for line in ledger_lines(home)], [(results, "the profile is broken")])
+        self.assertEqual(os.listdir(results), [])
+
+    def test_an_append_after_a_torn_ledger_line_starts_its_own_line(self):
+        home = scratch.make_home(self)
+        repo, _ = scratch.make_repo(self)
+        folder = os.path.join(home, ".lighthouse", "work")
+        os.makedirs(folder)
+        with open(os.path.join(folder, "runs.jsonl"), "w", encoding="utf-8") as handle:
+            handle.write('{"run": "/results/one", "kind": "verd')
+        code, _, stderr = scratch.run_lighthouse(["verdict", "--blocked", "stopped", "--repo", repo], scratch.environment(home))
+        self.assertEqual(code, 0, stderr)
+        with open(os.path.join(folder, "runs.jsonl"), encoding="utf-8") as handle:
+            lines = handle.read().splitlines()
+        self.assertEqual(lines[0], '{"run": "/results/one", "kind": "verd')
+        self.assertEqual(json.loads(lines[1])["reason"], "stopped")
+
     def test_verdict_appends_one_ledger_line(self):
         home = scratch.make_home(self)
         repo, _ = scratch.make_repo(self)
@@ -382,8 +408,7 @@ class VerdictTest(unittest.TestCase):
 
     def test_takes_a_results_folder_or_a_blocked_reason(self):
         env = scratch.environment(scratch.make_home(self))
-        results = scratch.temporary_folder(self, "lh-results-")
-        for arguments in ([], ["--results", results, "--blocked", "why"], ["--blocked", " "]):
+        for arguments in ([], ["--blocked", " "]):
             code, _, _ = scratch.run_lighthouse(["verdict", *arguments], env)
             self.assertEqual(code, 2, arguments)
 

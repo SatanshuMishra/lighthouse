@@ -13,8 +13,9 @@ import sys
 import time
 
 folder = os.path.dirname(os.path.realpath(__file__))
+earlier_line = os.path.join(os.path.dirname(os.getcwd()), "launch.json")
 with open(os.path.join(folder, "claude-calls.jsonl"), "a", encoding="utf-8") as calls:
-    calls.write(json.dumps({{"argv": sys.argv[1:], "cwd": os.getcwd(), "pid": os.getpid()}}) + "\\n")
+    calls.write(json.dumps({{"argv": sys.argv[1:], "cwd": os.getcwd(), "pid": os.getpid(), "saw_launch": os.path.exists(earlier_line)}}) + "\\n")
 time.sleep(0.5)
 with open(os.path.join(folder, "claude-output.txt"), encoding="utf-8") as output:
     sys.stdout.write(output.read())
@@ -62,14 +63,41 @@ wrapped = [argument for argument in arguments if not argument.startswith("--what
 os.execvp(wrapped[0], wrapped)
 """
 
+BLOCKING_CLAUDE_STUB = """#!{python}
+import json
+import shlex
+import subprocess
+import sys
+
+words = shlex.split(sys.argv[2])
+repo = words[words.index("--repo") + 1]
+results = words[words.index("--results") + 1]
+stopped = subprocess.run(
+    [sys.executable, {lighthouse!r}, "verdict", "--blocked", "the profile is broken", "--results", results, "--repo", repo],
+    capture_output=True,
+    text=True,
+)
+line = stopped.stdout.strip().splitlines()[-1]
+print(json.dumps({{"type": "result", "result": line, "session_id": "child-session-1", "duration_ms": 1000, "modelUsage": {{}}}}))
+"""
+
 GREEN_LINE = '{"verdict": "green", "failures": [], "unproven": [], "flaky": [], "tokens": 1200, "minutes": 3, "dollars": 1.25, "pr": null}'
+RED_LINE = '{"verdict": "failures", "failures": ["export writes a csv"], "unproven": [], "flaky": [], "tokens": 900, "minutes": 4, "dollars": 1.5, "pr": null}'
 
 
 def write_stub(folder, name, text):
     path = os.path.join(folder, name)
     with open(path, "w", encoding="utf-8") as handle:
-        handle.write(text.format(python=sys.executable))
+        handle.write(text.format(python=sys.executable, lighthouse=scratch.LIGHTHOUSE))
     os.chmod(path, 0o755)
+
+
+def seed_earlier_run(results):
+    os.makedirs(results, exist_ok=True)
+    with open(os.path.join(results, "launch.json"), "w", encoding="utf-8") as handle:
+        handle.write(GREEN_LINE + "\n")
+    with open(os.path.join(results, "child.json"), "w", encoding="utf-8") as handle:
+        handle.write("{}\n")
 
 
 def claude_output(result, cost=1.25, model="claude-opus-5-5"):
@@ -119,11 +147,14 @@ def launch_flags(repo, results):
     return ["--repo", repo, "--core", "main", "--feature", "feat/x", "--results", results]
 
 
-def launch(test, output, exit_code=0, nice=None):
+def launch(test, output, exit_code=0, nice=None, earlier=False, claude=CLAUDE_STUB):
     repo, _ = scratch.make_repo(test)
     home = scratch.make_home(test)
     results = os.path.join(scratch.temporary_folder(test, "lh-results-"), "results")
+    if earlier:
+        seed_earlier_run(results)
     stubs = stub_folder(test, output, exit_code)
+    write_stub(stubs, "claude", claude)
     env = scratch.environment(home, stubs)
     prefix = ["nice", "-n", str(nice)] if nice is not None else []
     completed = subprocess.run(
@@ -243,6 +274,53 @@ class LaunchTest(unittest.TestCase):
         printed = ran["stdout"].strip().splitlines()[-1]
         with open(os.path.join(ran["results"], "launch.json"), encoding="utf-8") as handle:
             self.assertEqual(handle.read().strip(), printed)
+
+    def test_launch_clears_an_earlier_launch_line_before_the_child_starts(self):
+        ran = launch(self, claude_output(RED_LINE), earlier=True)
+        self.assertEqual(ran["code"], 0, ran["stderr"])
+        self.assertFalse(calls_of(ran["stubs"], "claude")[0]["saw_launch"])
+        self.assertEqual(read_json(os.path.join(ran["results"], "launch.json")), json.loads(RED_LINE))
+
+    def test_a_refused_launch_replaces_an_earlier_launch_line_with_a_blocked_one(self):
+        repo, _ = scratch.make_repo(self)
+        plain = scratch.temporary_folder(self, "lh-plain-")
+        stubs = stub_folder(self, claude_output(GREEN_LINE))
+        env = scratch.environment(scratch.make_home(self), stubs)
+        refusals = {
+            "not a git repository": lambda results: launch_flags(plain, results),
+            "a flag is missing": lambda results: [flag for flag in launch_flags(repo, results) if flag not in ("--core", "main")],
+        }
+        for refusal, flags_for in refusals.items():
+            with self.subTest(refusal=refusal):
+                results = os.path.join(scratch.temporary_folder(self, "lh-results-"), "results")
+                seed_earlier_run(results)
+                code, stdout, stderr = scratch.run_lighthouse(["launch", *flags_for(results)], env)
+                self.assertEqual(code, 2, stderr)
+                self.assertIn("error", json.loads(stdout.strip().splitlines()[-1]))
+                self.assertEqual(read_json(os.path.join(results, "launch.json"))["verdict"], "blocked")
+                self.assertFalse(os.path.exists(os.path.join(results, "child.json")))
+        self.assertEqual(calls_of(stubs, "claude"), [])
+
+    def test_launch_refuses_a_results_path_that_is_a_file_without_a_traceback(self):
+        repo, _ = scratch.make_repo(self)
+        results = os.path.join(scratch.temporary_folder(self, "lh-results-"), "results")
+        with open(results, "w", encoding="utf-8") as handle:
+            handle.write("not a folder\n")
+        env = scratch.environment(scratch.make_home(self), stub_folder(self, claude_output(GREEN_LINE)))
+        code, stdout, stderr = scratch.run_lighthouse(["launch", *launch_flags(repo, results)], env)
+        self.assertEqual(code, 2, stderr)
+        self.assertIn("error", json.loads(stdout.strip().splitlines()[-1]))
+        self.assertNotIn("Traceback", stderr)
+
+    def test_a_blocked_child_and_its_launch_count_as_one_run(self):
+        ran = launch(self, "", claude=BLOCKING_CLAUDE_STUB)
+        self.assertEqual(ran["code"], 0, ran["stderr"])
+        results = os.path.realpath(ran["results"])
+        stopped = [line for line in ledger_lines(ran["home"]) if line["kind"] == "verdict"]
+        self.assertEqual([(line["run"], line["reason"]) for line in stopped], [(results, "the profile is broken")])
+        code, stdout, stderr = scratch.run_lighthouse(["runs", "--repo", ran["repo"]], scratch.environment(ran["home"]))
+        self.assertEqual(code, 0, stderr)
+        self.assertEqual(json.loads(stdout.strip().splitlines()[-1])["runs"], 1)
 
 
 if __name__ == "__main__":

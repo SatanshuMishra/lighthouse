@@ -1,7 +1,7 @@
-import datetime
 import json
 import os
 from typing import Any, Dict, List, Optional, Tuple
+from lighthouse_tool.records import is_number, utc_now
 from lighthouse_tool.repo import Parser, Refusal, ensure_state_dir, repository_folder, require_root
 
 FINDINGS = "findings.json"
@@ -37,9 +37,8 @@ class Malformed(Refusal):
 
 def parser() -> Parser:
     arguments = Parser(prog="lighthouse verdict", add_help=False)
-    source = arguments.add_mutually_exclusive_group(required=True)
-    source.add_argument("--results")
-    source.add_argument("--blocked")
+    arguments.add_argument("--results")
+    arguments.add_argument("--blocked")
     arguments.add_argument("--repo")
     return arguments
 
@@ -54,11 +53,14 @@ def blocked_line(reason: str) -> Tuple[int, Optional[str], Optional[str]]:
 def run(argv: List[str]) -> Tuple[int, Optional[str], Optional[str]]:
     try:
         options = parser().parse_args(argv[1:])
+        if options.results is None and options.blocked is None:
+            raise Refusal("give --results, or --blocked with the reason the run stopped")
         root = require_root(options.repo) if options.repo is not None else None
         if options.blocked is not None:
             outcome = blocked_line(options.blocked)
             if root is not None:
-                append_ledger(root, blocked_record(root, options.blocked.strip()))
+                run_id = os.path.realpath(options.results) if options.results is not None else None
+                append_ledger(root, blocked_record(root, options.blocked.strip(), run_id))
             return outcome
         results = os.path.realpath(options.results)
         findings = read_findings(results)
@@ -153,10 +155,6 @@ def skipped_retests(plan: Optional[List[str]], findings: Dict[str, Any], results
     carried = carried_folder(results)
     driven = {path["name"] for path in findings["paths"] if driven_again(path, results, carried)}
     return [name for name in plan if name not in driven]
-
-
-def is_number(value: Any) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
 def is_count(value: Any) -> bool:
@@ -552,10 +550,6 @@ def report(
     return "\n".join(lines).rstrip("\n") + "\n"
 
 
-def utc_now() -> str:
-    return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
-
-
 def optional_json(path: str) -> Any:
     try:
         with open(path, encoding="utf-8") as handle:
@@ -611,9 +605,9 @@ def run_record(root: str, results: str, findings: Dict[str, Any], line: Dict[str
     }
 
 
-def blocked_record(root: str, reason: str) -> Dict[str, Any]:
+def blocked_record(root: str, reason: str, run_id: Optional[str]) -> Dict[str, Any]:
     return {
-        "run": None,
+        "run": run_id,
         "kind": "verdict",
         "time": utc_now(),
         "repo": repository_folder(root),
@@ -632,8 +626,14 @@ def append_ledger(root: str, record: Dict[str, Any]) -> None:
         raise Refusal("cannot find the state folder of {}".format(root))
     path = os.path.join(folder, LEDGER)
     try:
-        descriptor = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
-        with os.fdopen(descriptor, "a", encoding="utf-8") as handle:
-            handle.write(json.dumps(record) + "\n")
+        descriptor = os.open(path, os.O_RDWR | os.O_APPEND | os.O_CREAT, 0o600)
+        with os.fdopen(descriptor, "a+", encoding="utf-8") as handle:
+            separator = "" if ends_with_newline(descriptor) else "\n"
+            handle.write(separator + json.dumps(record) + "\n")
     except OSError as error:
         raise Refusal("cannot append to {}: {}".format(path, error.strerror or error))
+
+
+def ends_with_newline(descriptor: int) -> bool:
+    size = os.fstat(descriptor).st_size
+    return size == 0 or os.pread(descriptor, 1, size - 1) == b"\n"
