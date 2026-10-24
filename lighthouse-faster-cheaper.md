@@ -1,6 +1,6 @@
 # lighthouse-faster-cheaper: Make lighthouse:test runs faster and cheaper without lowering test quality, and improve its metrics
 Status: active
-Updated: 2026-10-24T19:16:35.850Z
+Updated: 2026-10-24T19:16:37.567Z
 Next ids: c4 D9 R5 S1
 
 ## Goal
@@ -19,9 +19,9 @@ Stage 3. faster-command is green at round 4 (head 08a8ed2, reviewed green), with
 
 ## Next step
 
-The owner has the blocker explained and is asked whether the main session should run the live baseline and held-out pass in the background (about $75 and 3 hours, going by pass 1), commit the baseline to faster-held-out, review it from round 1 and ship; wait for their answer. A proposed session card (mitosis-long-steps) covers letting mitosis Steps run measurements over 10 minutes.
+Run SHIP=1 /Users/satanshumishra/.mitosis/lighthouse/lighthouse-faster-cheaper/run.zsh --resume, read mitosis's JSON result for each pushed MSP's branch, base, title and body, then open the pull requests in stack order through GitHub MCP, assign each to the owner and post review/<msp>.comment.md on it.
 
-Needs: D2, D3, D6, R2.
+Needs: D2, D7.
 
 ## Decisions in force
 
