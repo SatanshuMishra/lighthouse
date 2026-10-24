@@ -1,6 +1,6 @@
 # lighthouse-faster-cheaper: Make lighthouse:test runs faster and cheaper without lowering test quality, and improve its metrics
 Status: parked
-Updated: 2026-10-24T19:33:32.625Z
+Updated: 2026-10-24T19:40:13.446Z
 Next ids: c4 D9 R5 S1
 
 ## Goal
@@ -15,7 +15,7 @@ Cut lighthouse:test wall time and token spend on live pipeline runs while keepin
 
 ## Where things stand
 
-Integration run 2: lighthouse:test against FEATURE tip c5c4620, which holds both MSPs (SatanshuMishra/lighthouse#11 landed faster-skills; its tree equals mitosis/faster-command's), results in the run home's lighthouse/run-2. Run 1 stopped blocked because #10 had merged into mitosis/faster-command, not FEATURE; pipeline integration-ready checks merged state, not ancestry, and the session ready-ancestry is fixing that in the pipeline repository. By D7 criterion 5.21 ships unproven and faster-held-out ended unchanged. mitosis's ship (output in the run home's ship.out) exited 20 because 11 acceptance tests are inert (10 in faster-command, 1 in faster-skills), and reconcile listed undeclared writes and crossings from the fix passes, amendment 1 and the glossary commit; the pull request bodies' What changed repeats "Context: lighthouse is a Claude Code plugin." per Step, a mitosis defect left unedited by rule. The latest anchor is `Pipeline anchor: lighthouse-faster-cheaper at /Users/satanshumishra/.mitosis/lighthouse/lighthouse-faster-cheaper, thread lighthouse-faster-cheaper: SHIP=1 /Users/satanshumishra/.mitosis/lighthouse/lighthouse-faster-cheaper/run.zsh --resume`. SatanshuMishra/pipeline#15 (the pipeline plugin reading spend.json) is open and awaits the owner's merge.
+Integration run 2 is under way with the installed 0.2.0 lighthouse:test skill, results in the run home's lighthouse/run-2. lighthouse:init wrote a profile without suite.rerun and suite.isolated (the installed check refuses them), published to the FEATURE branch as 94f3222. The suite on both builds and the direct command checks (scratchpad direct_checks.py) are running; next come 15 live sessions (scratchpad drive_sessions.py, jobs test:feature:1-3, init and doctor :core and :feature 1-3) on held-out fixtures, each loading only its build's plugin copy through an enabledPlugins override. Run 1 stopped blocked because #10 had merged into mitosis/faster-command, not FEATURE; pipeline integration-ready checks merged state, not ancestry, and the session ready-ancestry is fixing that in the pipeline repository. By D7 criterion 5.21 ships unproven and faster-held-out ended unchanged. mitosis's ship (output in the run home's ship.out) exited 20 because 11 acceptance tests are inert (10 in faster-command, 1 in faster-skills), and reconcile listed undeclared writes and crossings from the fix passes, amendment 1 and the glossary commit; the pull request bodies' What changed repeats "Context: lighthouse is a Claude Code plugin." per Step, a mitosis defect left unedited by rule. The latest anchor is `Pipeline anchor: lighthouse-faster-cheaper at /Users/satanshumishra/.mitosis/lighthouse/lighthouse-faster-cheaper, thread lighthouse-faster-cheaper: SHIP=1 /Users/satanshumishra/.mitosis/lighthouse/lighthouse-faster-cheaper/run.zsh --resume`. SatanshuMishra/pipeline#15 (the pipeline plugin reading spend.json) is open and awaits the owner's merge.
 
 ## Next step
 
