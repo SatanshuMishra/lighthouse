@@ -1,6 +1,6 @@
 # lighthouse-faster-cheaper: Make lighthouse:test runs faster and cheaper without lowering test quality, and improve its metrics
 Status: active
-Updated: 2026-10-24T08:51:28.289Z
+Updated: 2026-10-24T12:29:56.419Z
 Next ids: c4 D5 R3 S1
 
 ## Goal
@@ -15,7 +15,7 @@ Cut lighthouse:test wall time and token spend on live pipeline runs while keepin
 
 ## Where things stand
 
-Stage 2: the first mitosis build is running in the background, writing build-1.log; Lanes 0 to 4 committed (faster-command and faster-skills built); the Lane 5 Worker (faster-held-out, baseline measurement then comparison) is building. Lane 1's notes say it skipped the profile upgrades row (profile.py outside its write-set) and that reused core skips the build despite spec decision 7; review round 1 checks both. Branches are mitosis/faster-command, mitosis/faster-skills and mitosis/faster-held-out stacked on feat/lighthouse-faster-cheaper (which holds the receipts config commit 480f500). Uncommitted in the checkout and shipping with the first pull request: GLOSSARY.md (six new terms), docs/adr/0006 and 0007. Parallel session pipeline-lh-spend (local_c8953839-fc6f-4338-a7c3-a2d73dd68f86) changed the pipeline plugin to read <results>/spend.json and report dollars; its pull request SatanshuMishra/pipeline#15 (mitosis/lighthouse-spend into feat/lighthouse-spend) is open, unmerged and awaiting the owner.
+Stage 3 review round 1 runs for faster-command (head fe222e5, base 480f500) and faster-skills (head 5d56dc9, base fe222e5): code-reviewer, security-reviewer and conformance-auditor dispatched on each; both suites pass under Python 3.15 and 3.9; diffs, obligations, proofs and assumptions are in review/. The first build exited 10: faster-held-out is blocked because Lane 5 reported failed on criterion 5.21. Held-out pass 1: baseline d54e10e 73.1 min and $28.53 over 24 sessions, branch 111.4 min and $46.75; 5 of 24 cases fail on each side (branch H4 broken run 2 and all four H6; baseline H4 clean 1, H5 clean 1, H6 broken 1, H6 clean 1 and 2). Per case the launcher parent costs about $0.50 and the child $1.52 against the baseline's $1.19; lighthouse mark calls take 143 child turns ($6.16 over 21 children), and children read lighthouse's own code and schema in 32 turns. Lane 1's notes say it skipped the profile upgrades row and that reused core skips the build despite spec decision 7. Branches are mitosis/faster-command, mitosis/faster-skills and mitosis/faster-held-out stacked on feat/lighthouse-faster-cheaper (which holds the receipts config commit 480f500). Uncommitted in the checkout and shipping with the first pull request: GLOSSARY.md (six new terms), docs/adr/0006 and 0007. Parallel session pipeline-lh-spend (local_c8953839-fc6f-4338-a7c3-a2d73dd68f86) changed the pipeline plugin to read <results>/spend.json and report dollars; its pull request SatanshuMishra/pipeline#15 (mitosis/lighthouse-spend into feat/lighthouse-spend) is open, unmerged and awaiting the owner.
 
 ## Next step
 
