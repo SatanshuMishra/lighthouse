@@ -89,7 +89,7 @@ Around each step below, run `lighthouse mark --results <results> --step <name> s
 
 ## Stopping early
 
-Every stop before step 9 ends the same way: say the reason in one line, run `lighthouse verdict --blocked '<that reason>' --repo <repo>`, and print its line, `{"verdict": "blocked", "failures": [], "unproven": [], "flaky": [], "tokens": 0, "minutes": 0, "pr": null}`, as the last line of the reply. It needs no results folder and writes no file in it, so the reply still ends in the verdict line a caller reads, and the ledger still records the run.
+Every stop before step 9 ends the same way: say the reason in one line, run `lighthouse verdict --blocked '<that reason>' --repo <repo> --results <results>`, and print its line, `{"verdict": "blocked", "failures": [], "unproven": [], "flaky": [], "tokens": 0, "minutes": 0, "pr": null}`, as the last line of the reply. With `--blocked`, `--results` only names the run: nothing in the results folder is read or written, so the reply still ends in the verdict line a caller reads, and the ledger keys the stop to the same run as its launch line.
 
 ## Cost
 

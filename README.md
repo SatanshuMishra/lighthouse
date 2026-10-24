@@ -108,7 +108,7 @@ The last line lighthouse:test prints is one JSON object on one line, the contrac
 | `suite` | `--repo`, `--core`, `--feature`, `--results`, `--profile` |
 | `retest` | `--previous <dir>`, `--results <dir>`, `--repo`, `--core`, `--feature`, `--profile` |
 | `release` | `--repo`, `--results` |
-| `verdict` | `--results`, or `--blocked <reason>` to print a blocked verdict line for a run that stopped early, with no results folder; `--repo` to append the run to the ledger, also with `--blocked` |
+| `verdict` | `--results`, or `--blocked <reason>` to print a blocked verdict line for a run that stopped early; with `--blocked`, `--results` only names the run in the ledger, and nothing in the folder is read or written; `--repo` to append the run to the ledger, also with `--blocked` |
 | `pr` | `--repo`, `--core`, `--feature`, `--results`, `--summary`, `--type`, `--scope`, `--why`, `--final` |
 | `spend` | `--since <ISO time>`, `--from <dir>`, `--transcripts <dir>`, `--results <dir>`, `--repo` |
 | `mark` | `--results <dir>`, `--step <name>`, `--build core` or `feature`, `--path <name>`, `--folder <dir>`, then `start` or `end` |
