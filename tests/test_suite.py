@@ -459,6 +459,20 @@ class SuiteTest(unittest.TestCase):
         self.assertEqual(code, 0, stderr)
         self.assertEqual(json.loads(read(results, "commits.json")), tips_of(work))
 
+    def test_suite_records_each_phase_minutes(self):
+        profile = scratch.sample_profile(
+            setup={"command": "true"},
+            build={"command": "true"},
+            suite={"command": "true", "junit": None, "timeout_minutes": None},
+        )
+        work = project_with(self, {}, profile)
+        result = suite_of(self, work)
+        for build in ("core", "feature"):
+            for phase in ("prepare_minutes", "suite_minutes"):
+                minutes = result[build][phase]
+                self.assertTrue(isinstance(minutes, (int, float)) and not isinstance(minutes, bool), (build, phase))
+        self.assertIsNone(result["feature"]["rerun_minutes"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,13 +1,20 @@
+import datetime
 import json
 import os
 from typing import Any, Dict, List, Optional, Tuple
-from lighthouse_tool.repo import Parser, Refusal
+from lighthouse_tool.repo import Parser, Refusal, ensure_state_dir, repository_folder, require_root
 
 FINDINGS = "findings.json"
 RETEST = "retest.json"
 CARRIED_FOLDER = "previous"
 VERDICT = "verdict.json"
 REPORT = "report.md"
+LEDGER = "runs.jsonl"
+SPEND = "spend.json"
+SUITE = "suite.json"
+COMMITS = "commits.json"
+BUILDS = ("core", "feature")
+SUITE_PHASES = ("prepare_minutes", "suite_minutes", "rerun_minutes")
 PATH_KINDS = ("new", "neighbour")
 PATH_STATUSES = ("passed", "failed", "unproven")
 RUN_OUTCOMES = ("passed", "failed", None)
@@ -31,6 +38,7 @@ def parser() -> Parser:
     source = arguments.add_mutually_exclusive_group(required=True)
     source.add_argument("--results")
     source.add_argument("--blocked")
+    arguments.add_argument("--repo")
     return arguments
 
 
@@ -44,8 +52,12 @@ def blocked_line(reason: str) -> Tuple[int, Optional[str], Optional[str]]:
 def run(argv: List[str]) -> Tuple[int, Optional[str], Optional[str]]:
     try:
         options = parser().parse_args(argv[1:])
+        root = require_root(options.repo) if options.repo is not None else None
         if options.blocked is not None:
-            return blocked_line(options.blocked)
+            outcome = blocked_line(options.blocked)
+            if root is not None:
+                append_ledger(root, blocked_record(root, options.blocked.strip()))
+            return outcome
         results = os.path.realpath(options.results)
         findings = read_findings(results)
         skipped = skipped_retests(read_plan(results), findings, results)
@@ -53,6 +65,8 @@ def run(argv: List[str]) -> Tuple[int, Optional[str], Optional[str]]:
         line = verdict_line(findings, judged, skipped)
         write_text(os.path.join(results, VERDICT), json.dumps(line) + "\n")
         write_text(os.path.join(results, REPORT), report(findings, judged, line, skipped))
+        if root is not None:
+            append_ledger(root, run_record(root, results, findings, line))
     except Malformed as malformed:
         return (
             2,
@@ -254,6 +268,8 @@ def check_spend(spend: Any) -> None:
     expect(is_count(required(spend, "tokens", "spend")), "spend.tokens", "must be a whole number")
     minutes = required(spend, "minutes", "spend")
     expect(is_number(minutes) and minutes >= 0, "spend.minutes", "must be a number")
+    dollars = spend.get("dollars")
+    expect(dollars is None or (is_number(dollars) and dollars >= 0), "spend.dollars", "must be a number or null")
 
 
 def classify(path: Dict[str, Any]) -> str:
@@ -340,6 +356,7 @@ def verdict_line(
         "flaky": suite_ids(suite, "flaky") + named(judged, FLAKY),
         "tokens": findings["spend"]["tokens"],
         "minutes": findings["spend"]["minutes"],
+        "dollars": findings["spend"].get("dollars"),
         "pr": None,
     }
 
@@ -431,7 +448,98 @@ def report(
         + section("Pre-existing", bullets(suite_ids(suite, "pre_existing") + lines_classified(judged, PRE_EXISTING)))
         + section(
             "Spend",
-            ["Tokens: {}".format(findings["spend"]["tokens"]), "Minutes: {}".format(findings["spend"]["minutes"])],
+            [
+                "Tokens: {}".format(findings["spend"]["tokens"]),
+                "Minutes: {}".format(findings["spend"]["minutes"]),
+                "Dollars: {}".format("unknown" if line["dollars"] is None else line["dollars"]),
+            ],
         )
     )
     return "\n".join(lines).rstrip("\n") + "\n"
+
+
+def utc_now() -> str:
+    return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def optional_json(path: str) -> Any:
+    try:
+        with open(path, encoding="utf-8") as handle:
+            return json.load(handle)
+    except (OSError, ValueError):
+        return None
+
+
+def recorded_commits(results: str) -> Optional[Dict[str, Any]]:
+    commits = optional_json(os.path.join(results, COMMITS))
+    if not isinstance(commits, dict):
+        return None
+    return {build: commits.get(build) if isinstance(commits.get(build), str) else None for build in BUILDS}
+
+
+def phase_minutes(build: Any) -> Optional[Dict[str, Any]]:
+    if not isinstance(build, dict):
+        return None
+    return {phase: build[phase] for phase in SUITE_PHASES if phase in build}
+
+
+def recorded_suite(results: str) -> Optional[Dict[str, Any]]:
+    suite = optional_json(os.path.join(results, SUITE))
+    if not isinstance(suite, dict):
+        return None
+    return {build: phase_minutes(suite.get(build)) for build in BUILDS}
+
+
+def recorded_spend(results: str, findings: Dict[str, Any]) -> Dict[str, Any]:
+    spend = optional_json(os.path.join(results, SPEND))
+    if isinstance(spend, dict):
+        return spend
+    claimed = findings["spend"]
+    return {"tokens": claimed["tokens"], "minutes": claimed["minutes"], "dollars": claimed.get("dollars")}
+
+
+def ledger_path(path: Dict[str, Any]) -> Dict[str, Any]:
+    return {"name": path["name"], "kind": path["kind"], "status": path["status"], "check": path.get("check")}
+
+
+def run_record(root: str, results: str, findings: Dict[str, Any], line: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "run": results,
+        "kind": "verdict",
+        "time": utc_now(),
+        "repo": repository_folder(root),
+        "commits": recorded_commits(results),
+        "verdict": line["verdict"],
+        "reason": None,
+        "spend": recorded_spend(results, findings),
+        "suite": recorded_suite(results),
+        "paths": [ledger_path(path) for path in findings["paths"]],
+    }
+
+
+def blocked_record(root: str, reason: str) -> Dict[str, Any]:
+    return {
+        "run": None,
+        "kind": "verdict",
+        "time": utc_now(),
+        "repo": repository_folder(root),
+        "commits": None,
+        "verdict": "blocked",
+        "reason": reason,
+        "spend": None,
+        "suite": None,
+        "paths": [],
+    }
+
+
+def append_ledger(root: str, record: Dict[str, Any]) -> None:
+    folder = ensure_state_dir(root)
+    if folder is None:
+        raise Refusal("cannot find the state folder of {}".format(root))
+    path = os.path.join(folder, LEDGER)
+    try:
+        descriptor = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+        with os.fdopen(descriptor, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record) + "\n")
+    except OSError as error:
+        raise Refusal("cannot append to {}: {}".format(path, error.strerror or error))

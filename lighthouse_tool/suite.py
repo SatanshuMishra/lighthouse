@@ -6,7 +6,7 @@ import subprocess
 import tempfile
 import time
 import xml.etree.ElementTree as ElementTree
-from typing import Any, Dict, List, NamedTuple, Optional, Set, Tuple
+from typing import Any, Callable, Dict, List, NamedTuple, Optional, Set, Tuple, TypeVar
 
 from lighthouse_tool import credentials
 from lighthouse_tool import repo as repository
@@ -20,6 +20,7 @@ WHOLE_SUITE = "suite"
 OWNER_MARK = "lighthouse-owned"
 COMMITS = "commits.json"
 UNREAPED_POLL_SECONDS = 0.05
+Timed = TypeVar("Timed")
 
 
 class StepRun(NamedTuple):
@@ -356,8 +357,14 @@ def no_baseline_reason(core_problem: Optional[str], core_run: Optional[SuiteRun]
     return None
 
 
-def build_summary(run: Optional[SuiteRun], log_path: str) -> Optional[Dict[str, Any]]:
-    return {"exit": run.exit, "log": log_path} if run is not None else None
+def timed(action: Callable[[], Timed]) -> Tuple[Timed, float]:
+    started = time.monotonic()
+    outcome = action()
+    return outcome, round((time.monotonic() - started) / 60, 3)
+
+
+def build_summary(run: SuiteRun, log_path: str, prepare_minutes: float, suite_minutes: float) -> Dict[str, Any]:
+    return {"exit": run.exit, "log": log_path, "prepare_minutes": prepare_minutes, "suite_minutes": suite_minutes}
 
 
 def suite_result(
@@ -386,20 +393,28 @@ def compare_builds(
         open(log_path, "w", encoding="utf-8").close()
     core_path = worktrees["core"]["path"]
     feature_path = worktrees["feature"]["path"]
-    core_problem = prepare(profile, hidden, core_path, "core", logs["core"])
-    core_run = run_suite(profile, hidden, core_path, "core", logs["core"]) if core_problem is None else None
-    core = build_summary(core_run, logs["core"])
-    feature_problem = prepare(profile, hidden, feature_path, "feature", logs["feature"])
+    core_problem, core_prepare_minutes = timed(lambda: prepare(profile, hidden, core_path, "core", logs["core"]))
+    core_run, core_suite_minutes = timed(
+        lambda: run_suite(profile, hidden, core_path, "core", logs["core"]) if core_problem is None else None
+    )
+    core = None if core_run is None else build_summary(core_run, logs["core"], core_prepare_minutes, core_suite_minutes)
+    feature_problem, feature_prepare_minutes = timed(
+        lambda: prepare(profile, hidden, feature_path, "feature", logs["feature"])
+    )
     if feature_problem is not None:
         return suite_result("blocked", "FEATURE did not build: " + feature_problem, NOTHING_FOUND, core, None)
-    first = run_suite(profile, hidden, feature_path, "feature", logs["feature"])
-    feature = build_summary(first, logs["feature"])
+    first, feature_suite_minutes = timed(lambda: run_suite(profile, hidden, feature_path, "feature", logs["feature"]))
+    feature = {
+        **build_summary(first, logs["feature"], feature_prepare_minutes, feature_suite_minutes),
+        "rerun_minutes": None,
+    }
     if first.problem is not None:
         return suite_result("blocked", "FEATURE's suite cannot run: " + first.problem, NOTHING_FOUND, core, feature)
     baseline_reason = no_baseline_reason(core_problem, core_run)
     if not has_failures(first):
         return suite_result("passed", baseline_reason, NOTHING_FOUND, core, feature)
-    second = run_suite(profile, hidden, feature_path, "feature", logs["feature"])
+    second, rerun_minutes = timed(lambda: run_suite(profile, hidden, feature_path, "feature", logs["feature"]))
+    feature = {**feature, "rerun_minutes": rerun_minutes}
     if second.problem is not None:
         return suite_result(
             "blocked", "FEATURE's suite cannot run on its rerun: " + second.problem, NOTHING_FOUND, core, feature
