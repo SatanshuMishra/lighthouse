@@ -1,7 +1,7 @@
 # lighthouse-faster-cheaper: Make lighthouse:test runs faster and cheaper without lowering test quality, and improve its metrics
 Status: active
-Updated: 2026-10-24T13:15:34.934Z
-Next ids: c4 D6 R3 S1
+Updated: 2026-10-24T13:47:11.455Z
+Next ids: c4 D7 R3 S1
 
 ## Goal
 
@@ -27,7 +27,7 @@ Needs: D2, D3, R1, R2.
 
 - D2 first build: three stacked MSPs cut by layer: Recut by layer into three stacked MSPs, command (all lighthouse_tool changes and their unit tests), skills (skill and agent text, README), held-out (harness, baseline and comparison); plan 3 MSPs in 1 cluster of depth 3.
 - D3 interphase hand-off: first build labels the MSPs faster-command, faster-skills, faster-held-out: MSPs are faster-command, faster-skills and faster-held-out with the subject 'make lighthouse:test fast and cheap'; the layer cut of D2 stands.
-- D5 faster-held-out's one resume waits for the upstream fix pass: Held-out pass 1 goes into round 1 as suite findings on faster-command and faster-skills; faster-held-out's one resume runs after their fixes are merged into it, reusing the baseline measured at d54e10e (saved in held-out-1/).
+- D6 amendment 1 hand-off: five Steps on faster-skills-amend-1, faster-held-out resumes on the amended tasks: Build amendment 1 with amend-1.zsh (--no-push, plan-only first) into mitosis/faster-skills. Then set Lane 5's uncommitted patch aside (it is saved as held-out-1/worktree.patch) and merge mitosis/faster-skills into mitosis/faster-held-out. Add to CHARTER.md that the held-out-baseline and held-out-compare tasks in the spec's items file govern where a brief differs. Then run one resume.
 
 ## Open risks
 
