@@ -1,6 +1,6 @@
 # lighthouse-faster-cheaper: Make lighthouse:test runs faster and cheaper without lowering test quality, and improve its metrics
 Status: active
-Updated: 2026-10-24T07:45:21.457Z
+Updated: 2026-10-24T07:45:22.817Z
 Next ids: c4 D4 R3 S1
 
 ## Goal
@@ -21,9 +21,9 @@ Round 2 answered and recorded (Q23: inherit priority as industry standard, recor
 
 ## Next step
 
-Read the last stdout line of ~/.mitosis/lighthouse/lighthouse-faster-cheaper/build-1.log when the first build finishes, write each lane's Assumption notes to review/<msp>.assumptions.txt, then start Stage 3 review round 1 for MSPs command, skills and held-out.
+Read the last stdout line of ~/.mitosis/lighthouse/lighthouse-faster-cheaper/build-1.log when the first build finishes, write each lane's Assumption notes to review/<msp>.assumptions.txt, then start Stage 3 review round 1 for MSPs faster-command, faster-skills and faster-held-out.
 
-Needs: D2, R1, R2.
+Needs: D2, D3, R1, R2.
 
 ## Decisions in force
 
