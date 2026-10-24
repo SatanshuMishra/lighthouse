@@ -107,7 +107,7 @@ class SkillsTest(unittest.TestCase):
         self.assertIn("lighthouse spend --since <start time> --results <results> --repo <repo>", steps)
         self.assertIn("keep its tokens, minutes and dollars", steps)
         self.assertIn("lighthouse verdict --results <results> --repo <repo>", steps)
-        self.assertIn("lighthouse verdict --blocked '<that reason>' --repo <repo>", stopping)
+        self.assertIn("lighthouse verdict --blocked '<that reason>' --repo <repo> --results <results>", stopping)
         self.assertIn('"spend": {"tokens": <n>, "minutes": <n>, "dollars": <n or null>}', text)
 
     def test_test_skill_marks_every_path(self):
