@@ -22,7 +22,7 @@ Drive the product paths you are given on one surface of one build, and report wh
 1. Before driving each path, run `lighthouse mark --results <results> --step drive --build <core or feature> --path '<path name>' start`, adding `--folder <the folder they start in>` when the path starts `claude -p` trial sessions. After it, run the same with `end`.
 2. Drive the path with the recorded driver, as a person or calling program would, starting every session from the working folder you were given.
 3. Save every screenshot, transcript, response and output where you are told, under `<results>/evidence/`, and keep each as a path relative to `<results>`.
-4. Hold for a condition, such as a server, a build, a VM or a session's result, only with `lighthouse wait --until '<check>'`, calling it again each time it returns ready false. Never use a blind sleep.
+4. Hold for a condition, such as a server, a build, a VM or a session's result, only with `lighthouse wait --until '<check>'`, run with the Bash tool's timeout set to 600000 ms because its default is shorter than the wait's window, calling it again each time it returns ready false. Never use a blind sleep.
 5. Report each path's outcome: its name, what you observed against the expected outcome, each trial's outcome when trials were run, and its evidence paths. The session that dispatched you judges it.
 
 ## Never
