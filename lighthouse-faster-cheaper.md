@@ -1,6 +1,6 @@
 # lighthouse-faster-cheaper: Make lighthouse:test runs faster and cheaper without lowering test quality, and improve its metrics
 Status: parked
-Updated: 2026-10-24T19:25:23.602Z
+Updated: 2026-10-24T19:27:41.613Z
 Next ids: c4 D9 R5 S1
 
 ## Goal
@@ -15,7 +15,7 @@ Cut lighthouse:test wall time and token spend on live pipeline runs while keepin
 
 ## Where things stand
 
-Shipped and waiting on the owner's merges. By D7 criterion 5.21 ships unproven and faster-held-out ended unchanged. mitosis's ship (output in the run home's ship.out) exited 20 because 11 acceptance tests are inert (10 in faster-command, 1 in faster-skills), and reconcile listed undeclared writes and crossings from the fix passes, amendment 1 and the glossary commit; the pull request bodies' What changed repeats "Context: lighthouse is a Claude Code plugin." per Step, a mitosis defect left unedited by rule. The latest anchor is `Pipeline anchor: lighthouse-faster-cheaper at /Users/satanshumishra/.mitosis/lighthouse/lighthouse-faster-cheaper, thread lighthouse-faster-cheaper: SHIP=1 /Users/satanshumishra/.mitosis/lighthouse/lighthouse-faster-cheaper/run.zsh --resume`. SatanshuMishra/pipeline#15 (the pipeline plugin reading spend.json) is open and awaits the owner's merge.
+Integration. SatanshuMishra/lighthouse#9 and #10 are merged into feat/lighthouse-faster-cheaper (integration-ready: ready), and lighthouse:test run 1 (core main, results in the run home's lighthouse/run-1) is starting. By D7 criterion 5.21 ships unproven and faster-held-out ended unchanged. mitosis's ship (output in the run home's ship.out) exited 20 because 11 acceptance tests are inert (10 in faster-command, 1 in faster-skills), and reconcile listed undeclared writes and crossings from the fix passes, amendment 1 and the glossary commit; the pull request bodies' What changed repeats "Context: lighthouse is a Claude Code plugin." per Step, a mitosis defect left unedited by rule. The latest anchor is `Pipeline anchor: lighthouse-faster-cheaper at /Users/satanshumishra/.mitosis/lighthouse/lighthouse-faster-cheaper, thread lighthouse-faster-cheaper: SHIP=1 /Users/satanshumishra/.mitosis/lighthouse/lighthouse-faster-cheaper/run.zsh --resume`. SatanshuMishra/pipeline#15 (the pipeline plugin reading spend.json) is open and awaits the owner's merge.
 
 ## Next step
 
