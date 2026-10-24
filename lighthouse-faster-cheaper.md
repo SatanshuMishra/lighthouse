@@ -1,6 +1,6 @@
 # lighthouse-faster-cheaper: Make lighthouse:test runs faster and cheaper without lowering test quality, and improve its metrics
 Status: active
-Updated: 2026-10-24T07:47:03.409Z
+Updated: 2026-10-24T07:51:02.519Z
 Next ids: c4 D5 R3 S1
 
 ## Goal
@@ -15,7 +15,7 @@ Cut lighthouse:test wall time and token spend on live pipeline runs while keepin
 
 ## Where things stand
 
-Stage 2: the first mitosis build is running in the background, writing build-1.log, on branches mitosis/faster-command, mitosis/faster-skills and mitosis/faster-held-out stacked on feat/lighthouse-faster-cheaper (which holds the receipts config commit 480f500). Uncommitted in the checkout and shipping with the first pull request: GLOSSARY.md (six new terms), docs/adr/0006 and 0007. Parallel session pipeline-lh-spend (local_c8953839-fc6f-4338-a7c3-a2d73dd68f86) is changing the pipeline plugin to read <results>/spend.json and report dollars.
+Stage 2: the first mitosis build is running in the background, writing build-1.log; its Lane 0 Worker (session 1 of 4 of MSP faster-command) is building, and the other MSPs wait on it. Branches are mitosis/faster-command, mitosis/faster-skills and mitosis/faster-held-out stacked on feat/lighthouse-faster-cheaper (which holds the receipts config commit 480f500). Uncommitted in the checkout and shipping with the first pull request: GLOSSARY.md (six new terms), docs/adr/0006 and 0007. Parallel session pipeline-lh-spend (local_c8953839-fc6f-4338-a7c3-a2d73dd68f86) is changing the pipeline plugin to read <results>/spend.json and report dollars.
 
 ## Next step
 
