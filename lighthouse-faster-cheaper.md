@@ -1,6 +1,6 @@
 # lighthouse-faster-cheaper: Make lighthouse:test runs faster and cheaper without lowering test quality, and improve its metrics
 Status: active
-Updated: 2026-10-24T19:17:12.543Z
+Updated: 2026-10-24T19:17:35.516Z
 Next ids: c4 D9 R5 S1
 
 ## Goal
@@ -50,3 +50,4 @@ Needs: D2, D7, D8.
 - Amendment 1 build: amend-1.zsh, amend-1.items.json and amend-1.build.out/err in the run home; mitosis run directory ~/.mitosis/runs/lighthouse/lighthouse-faster-cheaper-amend-1/
 - Manual gate of amendment 1: ~/.mitosis/lighthouse/lighthouse-faster-cheaper/review/faster-skills-amend-1.manual-gate.txt
 - Security-touching readings for the final report: ~/.mitosis/lighthouse/lighthouse-faster-cheaper/review/final-report.security.md
+- Pull request comments per MSP: ~/.mitosis/lighthouse/lighthouse-faster-cheaper/review/<msp>.comment.md
