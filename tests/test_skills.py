@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import unittest
@@ -22,6 +23,27 @@ def frontmatter(text):
 
 def section(text, heading, next_heading):
     return text.split(heading, 1)[1].split(next_heading, 1)[0]
+
+
+def driver_path():
+    return os.path.join(scratch.ROOT, "agents", "driver.md")
+
+
+def driver_text():
+    return " ".join(scratch.read_text(driver_path()).replace("`", "").split())
+
+
+def json_block(path):
+    return scratch.read_text(path).split("```json", 1)[1].split("```", 1)[0]
+
+
+def reference_line(reference, subcommand):
+    prefix = "- `lighthouse {}`:".format(subcommand)
+    return next(line for line in reference.splitlines() if line.startswith(prefix))
+
+
+def parser_flags(arguments):
+    return [option for action in arguments._actions for option in action.option_strings]
 
 
 class SkillsTest(unittest.TestCase):
@@ -246,6 +268,131 @@ class SkillsTest(unittest.TestCase):
 
         self.assertIn("Go one hop only", text)
         self.assertIn("otherwise 3", text)
+
+    def test_skills_run_the_plugins_own_lighthouse(self):
+        for name in SKILLS:
+            text = scratch.skill_text(name)
+            with self.subTest(skill=name):
+                self.assertIn(
+                    "lighthouse in this skill always means ${CLAUDE_PLUGIN_ROOT}/bin/lighthouse: run it by that full path, written out in each command, never a lighthouse found on PATH, which may be an older installed copy",
+                    text,
+                )
+                self.assertNotIn("when it is on PATH", text)
+
+    def test_drivers_get_the_command_path(self):
+        text = scratch.skill_text("test")
+        driving = text.split("7. Prove each path by its check", 1)[1].split("8. Run lighthouse spend", 1)[0]
+        driver = driver_text()
+        given = driver.split("## What you are given", 1)[1].split("## Steps", 1)[0]
+
+        self.assertIn(
+            "Dispatch every driver through the lighthouse:driver agent, giving it the absolute path of the lighthouse command",
+            driving,
+        )
+        self.assertIn("- The absolute path of the lighthouse command.", given)
+        self.assertIn(
+            "run lighthouse only by the absolute path you were given, written out in each command, never a lighthouse found on PATH",
+            driver,
+        )
+
+    def test_skills_never_send_a_run_into_lighthouse_itself(self):
+        texts = {**{name: scratch.skill_text(name) for name in SKILLS}, "driver": driver_text()}
+        for name, text in texts.items():
+            with self.subTest(file=name):
+                self.assertIn("in what its commands print, including their refusals", text)
+                self.assertIn("never read lighthouse's own code, profile schema or README, and never run its --help", text)
+        for name in SKILLS:
+            with self.subTest(skill=name):
+                self.assertIn("Everything a run needs from lighthouse is in this skill and in what its commands print", texts[name])
+
+    def test_test_skill_carries_a_command_reference(self):
+        from lighthouse_tool import change, credentials, launch, mark, pr, profile, retest, spend, suite, verdict, wait
+
+        raw = scratch.read_text(scratch.skill_path("test"))
+        self.assertLess(raw.index("## Never"), raw.index("## Command reference"))
+        reference = raw.split("## Command reference", 1)[1]
+        parsers = {
+            "launch": launch.parser(),
+            "wait": wait.parser(),
+            "mark": mark.parser(),
+            "worktrees": suite.parser("worktrees"),
+            "retest": retest.parser(),
+            "profile check": profile.check_parser(),
+            "profile publish": profile.publish_parser(),
+            "change": change.parser(),
+            "suite": suite.parser("suite"),
+            "with-credentials": credentials.with_credentials_parser(),
+            "spend": spend.parser(),
+            "verdict": verdict.parser(),
+            "pr": pr.parser(),
+            "release": suite.parser("release"),
+        }
+        for subcommand, arguments in parsers.items():
+            line = reference_line(reference, subcommand)
+            flags = parser_flags(arguments)
+            with self.subTest(subcommand=subcommand):
+                self.assertTrue(flags)
+                for flag in flags:
+                    self.assertRegex(line, re.escape("`" + flag) + r"[` ]")
+        for flag in ["--until", "--every", "--within"]:
+            self.assertIn("`{} ".format(flag), reference_line(reference, "wait"))
+        keys = {
+            "wait": ["ready"],
+            "retest": ["full", "changed", "retest", "surfaces", "carried"],
+            "profile check": ["problems", "upgrades"],
+            "profile publish": ["committed"],
+            "spend": ["tokens", "minutes", "dollars"],
+        }
+        for subcommand, named in keys.items():
+            line = reference_line(reference, subcommand)
+            for key in named:
+                with self.subTest(subcommand=subcommand, key=key):
+                    self.assertIn("`{}`".format(key), line)
+        text = scratch.skill_text("test")
+        building = text.split("6. Build and start", 1)[1].split("7. Prove each path", 1)[0]
+        self.assertIn("<results>/<build>-start.log", " ".join(reference.replace("`", "").split()))
+        self.assertIn("Run each build's start command with its output written to <results>/<build>-start.log", building)
+        self.assertIn("a URL as curl -fsS <url>", text)
+        self.assertIn("a log line as grep -qF '<line>' <results>/<build>-start.log", text)
+        self.assertIn("a command as itself", text)
+
+    def test_init_and_doctor_show_one_complete_example_profile(self):
+        from lighthouse_tool import profile
+
+        init_block = json_block(scratch.skill_path("init"))
+        doctor_block = json_block(scratch.skill_path("doctor"))
+        self.assertEqual(init_block, doctor_block)
+        example = json.loads(init_block)
+        self.assertEqual(profile.schema_problems(example, profile.load_schema()["profile"], "profile"), [])
+        for field in ["setup", "build", "start", "test_data", "facts", "off_limits"]:
+            self.assertIn(field, example)
+        self.assertIn("rerun", example["suite"])
+        self.assertIn("isolated", example["suite"])
+        self.assertTrue(example["facts"])
+        self.assertTrue(example["off_limits"])
+        self.assertTrue(example["surfaces"])
+        for key in ["name", "kind", "paths", "driver", "available", "sign_in", "credentials", "trials"]:
+            self.assertIn(key, example["surfaces"][0])
+
+    def test_marks_ride_in_the_commands_they_time(self):
+        texts = {"test": section(scratch.skill_text("test"), "## Steps", "## Stopping early"), "driver": driver_text()}
+        for name, text in texts.items():
+            with self.subTest(file=name):
+                self.assertIn("Run a start mark in the same Bash call as the first command it marks, joined by && or ;", text)
+                self.assertIn("and the end mark in the same call as the last, always after ;", text)
+                self.assertIn("never a mark in a Bash call of its own", text)
+                self.assertIn("A mark around an action that is not a Bash call", text)
+                self.assertIn("rides in the nearest Bash call before or after that action", text)
+
+    def test_test_skill_names_paths_in_the_changes_words(self):
+        text = scratch.skill_text("test")
+        planning = text.split("5. Plan the paths.", 1)[1].split("6. Build and start", 1)[0]
+
+        self.assertIn(
+            "Name each path for the behaviour it checks in the words the spec, the merged pull requests and the commits use for it",
+            planning,
+        )
+        self.assertIn("so the name under failures or unproven tells a reader what broke", planning)
 
 if __name__ == "__main__":
     unittest.main()
