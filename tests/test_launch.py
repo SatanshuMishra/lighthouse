@@ -301,6 +301,19 @@ class LaunchTest(unittest.TestCase):
                 self.assertFalse(os.path.exists(os.path.join(results, "child.json")))
         self.assertEqual(calls_of(stubs, "claude"), [])
 
+    def test_a_refused_launch_appends_a_ledger_line_with_its_reason(self):
+        repo, _ = scratch.make_repo(self)
+        home = scratch.make_home(self)
+        results = os.path.join(scratch.temporary_folder(self, "lh-results-"), "results")
+        env = scratch.environment(home, stub_folder(self, claude_output(GREEN_LINE)))
+        flags = [flag for flag in launch_flags(repo, results) if flag not in ("--core", "main")]
+        code, _, stderr = scratch.run_lighthouse(["launch", *flags], env)
+        self.assertEqual(code, 2, stderr)
+        self.assertEqual(read_json(os.path.join(results, "launch.json"))["verdict"], "blocked")
+        lines = ledger_lines(home)
+        self.assertEqual([(line["run"], line["kind"], line["verdict"]) for line in lines], [(os.path.realpath(results), "launch", "blocked")])
+        self.assertIn("--core", lines[0]["reason"])
+
     def test_a_refused_launch_leaves_a_checkout_it_cannot_judge_untouched(self):
         repo, _ = scratch.make_repo(self)
         user = os.path.join(scratch.temporary_folder(self, "lh-user-"), "checkout")
