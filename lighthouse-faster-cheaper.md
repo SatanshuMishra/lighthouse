@@ -1,6 +1,6 @@
 # lighthouse-faster-cheaper: Make lighthouse:test runs faster and cheaper without lowering test quality, and improve its metrics
 Status: active
-Updated: 2026-10-24T06:32:33.457Z
+Updated: 2026-10-24T07:15:19.969Z
 Next ids: c4 D1 R1 S1
 
 ## Goal
@@ -15,11 +15,11 @@ Cut lighthouse:test wall time and token spend on live pipeline runs while keepin
 
 ## Where things stand
 
-interphase:feature interview: intent I1-I4 and the shape (four pull requests) are approved and recorded. Run-3's 23.5 hours held 314 silent minutes, 194 of them waiting on an owner AskUserQuestion answer. Probes on Claude Code 2.1.308: a context: fork skill gets a fresh context but no Agent tool; a plugin agent with experimental.cacheTtl 1h and model sonnet writes 1h cache on sonnet, while 30 of 30 sampled ordinary subagents wrote 5m only; a subagent has no Agent tool, so drivers can only be dispatched from a top-level session; claude -p --output-format json reports costUSD per model and the 1h/5m cache split. Frontier round 1 is asked.
+interphase:feature interview: intent I1-I4 and the shape (four pull requests) are approved and recorded. Run-3's 23.5 hours held 314 silent minutes, 194 of them waiting on an owner AskUserQuestion answer. Probes on Claude Code 2.1.308: a context: fork skill gets a fresh context but no Agent tool; a plugin agent with experimental.cacheTtl 1h and model sonnet writes 1h cache on sonnet, while 30 of 30 sampled ordinary subagents wrote 5m only; a subagent has no Agent tool, so drivers can only be dispatched from a top-level session; claude -p --output-format json reports costUSD per model and the 1h/5m cache split. Round 1 (Q1-Q19) answered "Yes to all", with Q18 widened: out-of-scope elements may change when the audit's issues need it, other plugins in a parallel session. Recorded: decisions, three seams, criteria 5.1-5.18, 13 Steps in MSPs metrics, suite, tokens, checks. Found: all 3 AskUserQuestion calls in lighthouse runs came from lighthouse:test's main thread (557 minutes, one offered to narrow macOS scope); the VM throttle was the pipeline session's own taskpolicy -b and a keep-vms-background.zsh script, not vmlab; install/build was 18 minutes over 25 runs, so build reuse stays out. Round 2 (vmlab, never ask, keep awake, priority, held-out measuring) is asked; launcher, driver-agent and held-out criteria wait on it.
 
 ## Next step
 
-Record the owner's round 1 answers to the decisions file and the record, run check_record.py, then ask the next frontier round.
+Record round 2 answers, add the launch, skill-tokens and held-out criteria and Steps, run check_record.py --complete, then hold the read-back.
 
 ## Decisions in force
 
