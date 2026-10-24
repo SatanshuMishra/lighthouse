@@ -3,8 +3,8 @@ import os
 import statistics
 from typing import Any, Dict, List, Optional, Tuple
 
-from lighthouse_tool.records import UnreadableLine, is_number, read_json_lines
-from lighthouse_tool.repo import Parser, Refusal, require_root, state_dir
+from lighthouse_tool.records import is_number
+from lighthouse_tool.repo import Parser, Refusal, read_json_lines_or_refuse, require_root, state_dir
 from lighthouse_tool.spend import KINDS
 
 LEDGER = "runs.jsonl"
@@ -29,12 +29,7 @@ def run(argv: List[str]) -> Tuple[int, Optional[str], Optional[str]]:
 
 
 def read_ledger(path: str) -> List[Dict[str, Any]]:
-    try:
-        return read_json_lines(path)
-    except OSError as error:
-        raise Refusal("cannot read {}: {}".format(path, error.strerror or error))
-    except UnreadableLine as unreadable:
-        raise Refusal("{}; repair or remove that line, then run lighthouse runs again".format(unreadable))
+    return read_json_lines_or_refuse(path, "runs")
 
 
 def run_key(index: int, line: Dict[str, Any]) -> str:
