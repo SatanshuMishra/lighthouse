@@ -376,10 +376,6 @@ class LaunchTest(unittest.TestCase):
         self.assertEqual(json.loads(stdout.strip().splitlines()[-1])["runs"], 1)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class UncreatableStateFolderTest(unittest.TestCase):
     def setUp(self):
         self.repo, _ = scratch.make_repo(self)
@@ -409,3 +405,7 @@ class UncreatableStateFolderTest(unittest.TestCase):
         self.assertEqual(code, 2, stderr)
         self.assertNotIn("Traceback", stderr)
         self.assertIn(".lighthouse", json.loads(stdout.strip().splitlines()[-1])["error"])
+
+
+if __name__ == "__main__":
+    unittest.main()
