@@ -1,6 +1,6 @@
 # lighthouse-faster-cheaper: Make lighthouse:test runs faster and cheaper without lowering test quality, and improve its metrics
 Status: active
-Updated: 2026-10-24T06:20:43.948Z
+Updated: 2026-10-24T06:22:44.663Z
 Next ids: c4 D1 R1 S1
 
 ## Goal
@@ -15,11 +15,11 @@ Cut lighthouse:test wall time and token spend on live pipeline runs while keepin
 
 ## Where things stand
 
-Not started.
+interphase:feature is grounding (Phase 3), slug lighthouse-faster-cheaper; receipts answers are drafted.
 
 ## Next step
 
-Draft receipts answers in /var/folders/tz/b798spt96sjfyy924nf0cw4c0000gn/T/tmp.DJPmb5YLy8 (receipts init --agent output in agent.json there), then invoke interphase:feature with Interview me first; save answers as <home>/receipts-answers.json once the slug exists.
+Finish grounding, then ask the intent round; copy the receipts answers to ~/.mitosis/lighthouse/lighthouse-faster-cheaper/receipts-answers.json before the first frontier round.
 
 ## Decisions in force
 
