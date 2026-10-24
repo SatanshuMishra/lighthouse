@@ -9,7 +9,7 @@ import time
 from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
 from lighthouse_tool import suite, verdict
-from lighthouse_tool.records import is_number, utc_now
+from lighthouse_tool.records import is_number, utc_now, write_atomically
 from lighthouse_tool.repo import Parser, Refusal, repository_folder, require_root, toplevel
 
 Outcome = Tuple[int, Optional[str], Optional[str]]
@@ -18,7 +18,6 @@ WORK = "work"
 CHILD = "child.json"
 LAUNCH = "launch.json"
 EARLIER_RUN_FILES = (LAUNCH, CHILD)
-STAGING_SUFFIX = ".partial"
 CAFFEINATE = "caffeinate"
 SYSTEMD_INHIBIT = "systemd-inhibit"
 NO_KEEP_AWAKE = "none"
@@ -51,30 +50,43 @@ def located_parser() -> Parser:
     return arguments
 
 
-def results_outside_repository(arguments: List[str]) -> Optional[str]:
+class Located(NamedTuple):
+    root: Optional[str]
+    results: Optional[str]
+
+
+def located_run(arguments: List[str]) -> Located:
     try:
         located, _ = located_parser().parse_known_args(arguments)
     except Refusal:
-        return None
-    if located.results is None:
-        return None
+        return Located(None, None)
     root = toplevel(located.repo) if located.repo is not None else None
-    if root is not None and suite.is_inside(root, located.results):
-        return None
-    return os.path.realpath(located.results)
+    if located.results is None:
+        return Located(root, None)
+    guarded = root if root is not None else enclosing_checkout(located.results)
+    if guarded is not None and suite.is_inside(guarded, located.results):
+        return Located(root, None)
+    return Located(root, os.path.realpath(located.results))
+
+
+def enclosing_checkout(path: str) -> Optional[str]:
+    folder = os.path.realpath(path)
+    while not os.path.isdir(folder) and os.path.dirname(folder) != folder:
+        folder = os.path.dirname(folder)
+    return toplevel(folder)
 
 
 def run(argv: List[str]) -> Outcome:
-    results = results_outside_repository(argv[1:])
+    located = located_run(argv[1:])
     try:
-        if results is not None:
-            clear_earlier_run(results)
+        if located.results is not None:
+            clear_earlier_run(located.results)
         options = parser().parse_args(argv[1:])
         return launch(options)
     except (Refusal, OSError) as problem:
         reason = refusal_reason(problem)
-        if results is not None:
-            leave_blocked_line(results, reason)
+        if located.results is not None:
+            leave_blocked_line(located.root, located.results, reason)
         return 2, json.dumps({"error": reason}), "lighthouse launch: {}".format(reason)
 
 
@@ -95,7 +107,13 @@ def clear_earlier_run(results: str) -> None:
             raise Refusal("cannot clear {} from an earlier run: {}".format(path, error.strerror or error))
 
 
-def leave_blocked_line(results: str, reason: str) -> None:
+def leave_blocked_line(root: Optional[str], results: str, reason: str) -> None:
+    if root is not None:
+        refused = {"cost": {}, "minutes": 0, "keep_awake": NO_KEEP_AWAKE, "priority": priority()}
+        try:
+            verdict.append_ledger(root, launch_record(root, results, refused, "blocked", reason))
+        except Refusal:
+            pass
     try:
         os.makedirs(results, exist_ok=True)
         write_text(os.path.join(results, LAUNCH), blocked_text(reason) + "\n")
@@ -121,9 +139,13 @@ def launch(options: argparse.Namespace) -> Outcome:
     reason = None if line is not None else blocked_reason(child, output)
     printed = line if line is not None else blocked_text(reason)
     write_text(os.path.join(results, LAUNCH), printed + "\n")
-    verdict.append_ledger(root, launch_record(root, results, record, json.loads(printed)["verdict"], reason))
     summary = "lighthouse launch: the child exited {}".format(child.exit)
-    return 0, printed, summary if reason is None else "{}; blocked: {}".format(summary, reason)
+    told = summary if reason is None else "{}; blocked: {}".format(summary, reason)
+    try:
+        verdict.append_ledger(root, launch_record(root, results, record, json.loads(printed)["verdict"], reason))
+    except Refusal as problem:
+        return 2, printed, "{}; the run is not in the ledger: {}".format(told, problem)
+    return 0, printed, told
 
 
 def test_flags(options: argparse.Namespace) -> List[str]:
@@ -316,10 +338,7 @@ def write_json(path: str, value: Dict[str, Any]) -> None:
 
 
 def write_text(path: str, text: str) -> None:
-    staging = path + STAGING_SUFFIX
     try:
-        with open(staging, "w", encoding="utf-8") as handle:
-            handle.write(text)
-        os.replace(staging, path)
+        write_atomically(path, text)
     except OSError as error:
         raise Refusal("cannot write {}: {}".format(path, error.strerror or error))

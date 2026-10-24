@@ -77,7 +77,7 @@ class SkillsTest(unittest.TestCase):
     def test_a_stop_before_the_verdict_still_ends_in_the_verdict_line(self):
         text = scratch.skill_text("test")
         self.assertIn("Every stop before step 9", text)
-        self.assertIn("lighthouse verdict --blocked", text)
+        self.assertIn("lighthouse verdict --blocked '<that reason>' --repo <repo> --results <results>", text)
         reason = "the results folder must be outside the checkout"
         env = scratch.environment(scratch.make_home(self))
         code, stdout, stderr = scratch.run_lighthouse(["verdict", "--blocked", reason], env)

@@ -2,7 +2,7 @@ import json
 import os
 from typing import Any, Dict, List, Optional, Tuple
 
-from lighthouse_tool.records import utc_now
+from lighthouse_tool.records import PRIVATE_FILE, append_json_line, utc_now
 from lighthouse_tool.repo import Parser, Refusal
 
 MARKS = "marks.jsonl"
@@ -37,8 +37,7 @@ def mark_line(options: Any, time: str) -> Dict[str, Any]:
 def append_mark(results: str, line: Dict[str, Any]) -> None:
     try:
         os.makedirs(results, exist_ok=True)
-        with open(os.path.join(results, MARKS), "a", encoding="utf-8") as handle:
-            handle.write(json.dumps(line) + "\n")
+        append_json_line(os.path.join(results, MARKS), line, PRIVATE_FILE)
     except OSError as error:
         raise Refusal("cannot write {}: {}".format(os.path.join(results, MARKS), error.strerror or error))
 

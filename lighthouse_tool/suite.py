@@ -14,6 +14,7 @@ from typing import Any, Callable, Dict, List, NamedTuple, Optional, Set, Tuple, 
 
 from lighthouse_tool import credentials
 from lighthouse_tool import repo as repository
+from lighthouse_tool.records import write_atomically
 from lighthouse_tool.repo import Parser, Refusal, checked_git, require_root
 
 Outcome = Tuple[int, Optional[str], Optional[str]]
@@ -482,10 +483,7 @@ def store_core(store: Optional[str], run: SuiteRun, log_path: str, first: SuiteR
         entry = {"exit": run.exit, "tests": run.tests, "first_tests": first.tests, "log": log.read()}
     folder = os.path.dirname(store)
     os.makedirs(folder, mode=0o700, exist_ok=True)
-    handle, staged = tempfile.mkstemp(dir=folder, suffix=".json")
-    with os.fdopen(handle, "w", encoding="utf-8") as staged_file:
-        staged_file.write(json.dumps(entry) + "\n")
-    os.replace(staged, store)
+    write_atomically(store, json.dumps(entry) + "\n")
 
 
 def confirmed_failures(first: SuiteRun, second: SuiteRun) -> SuiteRun:

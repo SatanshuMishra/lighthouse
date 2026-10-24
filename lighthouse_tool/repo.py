@@ -2,8 +2,9 @@ import argparse
 import json
 import os
 import subprocess
-import tempfile
 from typing import Any, Dict, List, Optional, Tuple
+
+from lighthouse_tool.records import write_atomically
 
 GIT_ENVIRONMENT_OVERRIDES = {"GIT_TERMINAL_PROMPT": "0"}
 ANSWERS_FILE = "answers.json"
@@ -85,16 +86,7 @@ def read_answers(repo: str) -> Dict[str, Any]:
 
 
 def write_answers(folder: str, answers: Dict[str, Any]) -> None:
-    descriptor, staging = tempfile.mkstemp(prefix=".answers-", suffix=".json", dir=folder)
-    try:
-        os.fchmod(descriptor, 0o600)
-        with os.fdopen(descriptor, "w", encoding="utf-8") as answers_file:
-            answers_file.write(json.dumps(answers, indent=2) + "\n")
-        os.replace(staging, os.path.join(folder, ANSWERS_FILE))
-    except OSError:
-        if os.path.exists(staging):
-            os.remove(staging)
-        raise
+    write_atomically(os.path.join(folder, ANSWERS_FILE), json.dumps(answers, indent=2) + "\n")
 
 
 def commit_of(repo: str, ref: str) -> Optional[str]:

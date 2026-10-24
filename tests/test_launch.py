@@ -301,6 +301,59 @@ class LaunchTest(unittest.TestCase):
                 self.assertFalse(os.path.exists(os.path.join(results, "child.json")))
         self.assertEqual(calls_of(stubs, "claude"), [])
 
+    def test_a_refused_launch_appends_a_ledger_line_with_its_reason(self):
+        repo, _ = scratch.make_repo(self)
+        home = scratch.make_home(self)
+        results = os.path.join(scratch.temporary_folder(self, "lh-results-"), "results")
+        env = scratch.environment(home, stub_folder(self, claude_output(GREEN_LINE)))
+        flags = [flag for flag in launch_flags(repo, results) if flag not in ("--core", "main")]
+        code, _, stderr = scratch.run_lighthouse(["launch", *flags], env)
+        self.assertEqual(code, 2, stderr)
+        self.assertEqual(read_json(os.path.join(results, "launch.json"))["verdict"], "blocked")
+        lines = ledger_lines(home)
+        self.assertEqual([(line["run"], line["kind"], line["verdict"]) for line in lines], [(os.path.realpath(results), "launch", "blocked")])
+        self.assertIn("--core", lines[0]["reason"])
+
+    def test_a_refused_launch_leaves_a_checkout_it_cannot_judge_untouched(self):
+        repo, _ = scratch.make_repo(self)
+        user = os.path.join(scratch.temporary_folder(self, "lh-user-"), "checkout")
+        os.makedirs(os.path.join(user, ".vscode"))
+        scratch.run_git(user, "init", "-q")
+        for name in ("launch.json", "child.json"):
+            with open(os.path.join(user, ".vscode", name), "w", encoding="utf-8") as handle:
+                handle.write("{}\n")
+        scratch.run_git(user, "add", "-A")
+        scratch.run_git(user, "-c", "user.name=u", "-c", "user.email=u@example.invalid", "commit", "-qm", "init")
+        plain = scratch.temporary_folder(self, "lh-plain-")
+        stubs = stub_folder(self, claude_output(GREEN_LINE))
+        env = scratch.environment(scratch.make_home(self), stubs)
+        unjudged = {
+            "repo omitted": lambda results: [flag for flag in launch_flags(repo, results) if flag not in ("--repo", repo)],
+            "repo not a git repository": lambda results: launch_flags(plain, results),
+        }
+        for refusal, flags_for in unjudged.items():
+            for results in (os.path.join(user, ".vscode"), os.path.join(user, "out", "run")):
+                with self.subTest(refusal=refusal, results=results):
+                    code, _, stderr = scratch.run_lighthouse(["launch", *flags_for(results)], env)
+                    self.assertEqual(code, 2, stderr)
+                    status = subprocess.run(
+                        ["git", "-C", user, "status", "--porcelain", "--untracked-files=all"], capture_output=True, text=True
+                    )
+                    self.assertEqual(status.stdout, "")
+        self.assertEqual(calls_of(stubs, "claude"), [])
+
+    def test_a_ledger_that_cannot_be_appended_keeps_the_childs_verdict_line(self):
+        repo, _ = scratch.make_repo(self)
+        home = scratch.make_home(self)
+        os.makedirs(os.path.join(home, ".lighthouse", "work", "runs.jsonl"))
+        results = os.path.join(scratch.temporary_folder(self, "lh-results-"), "results")
+        env = scratch.environment(home, stub_folder(self, claude_output(GREEN_LINE)))
+        code, stdout, stderr = scratch.run_lighthouse(["launch", *launch_flags(repo, results)], env)
+        self.assertEqual(code, 2, stderr)
+        self.assertEqual(json.loads(stdout.strip().splitlines()[-1]), json.loads(GREEN_LINE))
+        self.assertEqual(read_json(os.path.join(results, "launch.json")), json.loads(GREEN_LINE))
+        self.assertIn("runs.jsonl", stderr)
+
     def test_launch_refuses_a_results_path_that_is_a_file_without_a_traceback(self):
         repo, _ = scratch.make_repo(self)
         results = os.path.join(scratch.temporary_folder(self, "lh-results-"), "results")

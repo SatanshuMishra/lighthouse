@@ -6,7 +6,7 @@ import shlex
 from typing import Any, Dict, Iterable, List, NamedTuple, Optional, Set, Tuple
 
 from lighthouse_tool import mark
-from lighthouse_tool.records import is_number, json_object
+from lighthouse_tool.records import UnreadableLine, is_number, json_object, read_json_lines
 from lighthouse_tool.repo import Parser, Refusal, require_root
 
 KINDS = ("input", "cache_write_5m", "cache_write_1h", "cache_read", "output")
@@ -55,11 +55,15 @@ class MarkCall(NamedTuple):
     written: Optional[datetime.datetime]
 
 
-class MarkLine(NamedTuple):
-    edge: str
+class MarkKey(NamedTuple):
     step: str
     build: Optional[str]
     path: Optional[str]
+
+
+class MarkLine(NamedTuple):
+    edge: str
+    key: MarkKey
     folder: Optional[str]
     time: datetime.datetime
 
@@ -385,11 +389,19 @@ def mark_line(line: Dict[str, Any]) -> Optional[MarkLine]:
     edge, step = line.get("edge"), line.get("step")
     if edge not in mark.EDGES or not isinstance(step, str) or moment is None:
         return None
-    return MarkLine(edge, step, text_or_none(line.get("build")), text_or_none(line.get("path")), text_or_none(line.get("folder")), moment)
+    key = MarkKey(step, text_or_none(line.get("build")), text_or_none(line.get("path")))
+    return MarkLine(edge, key, text_or_none(line.get("folder")), moment)
 
 
 def read_mark_lines(results: str) -> List[MarkLine]:
-    found = [mark_line(line) for line in parsed_entries(os.path.join(results, mark.MARKS))]
+    path = os.path.join(results, mark.MARKS)
+    try:
+        lines = read_json_lines(path)
+    except OSError as error:
+        raise Refusal("cannot read {}: {}".format(path, error.strerror or error))
+    except UnreadableLine as unreadable:
+        raise Refusal("{}; repair or remove that line, then run lighthouse spend again".format(unreadable))
+    found = [mark_line(line) for line in lines]
     return [line for line in found if line is not None]
 
 
@@ -399,7 +411,7 @@ def located(call: MarkCall, marked: List[MarkLine], used: Set[int]) -> Tuple[Mar
         for index, line in enumerate(marked)
         if index not in used
         and line.edge == call.edge
-        and (line.step, line.build, line.path) == mark_key(call)
+        and line.key == mark_key(call)
         and line.time >= call.timestamp
     ]
     earliest = min(candidates, key=lambda candidate: candidate[1].time, default=None)
@@ -443,8 +455,8 @@ def message_calls(rows: List[Row]) -> Dict[str, List[MarkCall]]:
     }
 
 
-def mark_key(call: MarkCall) -> Tuple[str, Optional[str], Optional[str]]:
-    return call.step, call.build, call.path
+def mark_key(call: MarkCall) -> MarkKey:
+    return MarkKey(call.step, call.build, call.path)
 
 
 def read_marks(

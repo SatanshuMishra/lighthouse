@@ -1,7 +1,7 @@
 import json
 import os
 from typing import Any, Dict, List, Optional, Tuple
-from lighthouse_tool.records import is_number, utc_now
+from lighthouse_tool.records import PRIVATE_FILE, append_json_line, is_number, utc_now
 from lighthouse_tool.repo import Parser, Refusal, ensure_state_dir, repository_folder, require_root
 
 FINDINGS = "findings.json"
@@ -626,14 +626,6 @@ def append_ledger(root: str, record: Dict[str, Any]) -> None:
         raise Refusal("cannot find the state folder of {}".format(root))
     path = os.path.join(folder, LEDGER)
     try:
-        descriptor = os.open(path, os.O_RDWR | os.O_APPEND | os.O_CREAT, 0o600)
-        with os.fdopen(descriptor, "a+", encoding="utf-8") as handle:
-            separator = "" if ends_with_newline(descriptor) else "\n"
-            handle.write(separator + json.dumps(record) + "\n")
+        append_json_line(path, record, PRIVATE_FILE)
     except OSError as error:
         raise Refusal("cannot append to {}: {}".format(path, error.strerror or error))
-
-
-def ends_with_newline(descriptor: int) -> bool:
-    size = os.fstat(descriptor).st_size
-    return size == 0 or os.pread(descriptor, 1, size - 1) == b"\n"
