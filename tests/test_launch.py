@@ -301,6 +301,34 @@ class LaunchTest(unittest.TestCase):
                 self.assertFalse(os.path.exists(os.path.join(results, "child.json")))
         self.assertEqual(calls_of(stubs, "claude"), [])
 
+    def test_a_refused_launch_leaves_a_checkout_it_cannot_judge_untouched(self):
+        repo, _ = scratch.make_repo(self)
+        user = os.path.join(scratch.temporary_folder(self, "lh-user-"), "checkout")
+        os.makedirs(os.path.join(user, ".vscode"))
+        scratch.run_git(user, "init", "-q")
+        for name in ("launch.json", "child.json"):
+            with open(os.path.join(user, ".vscode", name), "w", encoding="utf-8") as handle:
+                handle.write("{}\n")
+        scratch.run_git(user, "add", "-A")
+        scratch.run_git(user, "-c", "user.name=u", "-c", "user.email=u@example.invalid", "commit", "-qm", "init")
+        plain = scratch.temporary_folder(self, "lh-plain-")
+        stubs = stub_folder(self, claude_output(GREEN_LINE))
+        env = scratch.environment(scratch.make_home(self), stubs)
+        unjudged = {
+            "repo omitted": lambda results: [flag for flag in launch_flags(repo, results) if flag not in ("--repo", repo)],
+            "repo not a git repository": lambda results: launch_flags(plain, results),
+        }
+        for refusal, flags_for in unjudged.items():
+            for results in (os.path.join(user, ".vscode"), os.path.join(user, "out", "run")):
+                with self.subTest(refusal=refusal, results=results):
+                    code, _, stderr = scratch.run_lighthouse(["launch", *flags_for(results)], env)
+                    self.assertEqual(code, 2, stderr)
+                    status = subprocess.run(
+                        ["git", "-C", user, "status", "--porcelain", "--untracked-files=all"], capture_output=True, text=True
+                    )
+                    self.assertEqual(status.stdout, "")
+        self.assertEqual(calls_of(stubs, "claude"), [])
+
     def test_launch_refuses_a_results_path_that_is_a_file_without_a_traceback(self):
         repo, _ = scratch.make_repo(self)
         results = os.path.join(scratch.temporary_folder(self, "lh-results-"), "results")
