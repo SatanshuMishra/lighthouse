@@ -211,6 +211,14 @@ class SkillsTest(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertEqual(SPLICED_PROFILE_TEXT.findall(scratch.read_text(path)), [])
 
+    def test_each_build_waits_and_signs_in_on_its_own_ports(self):
+        text = scratch.skill_text("test")
+        building = text.split("6. Build and start", 1)[1].split("7. Prove each path", 1)[0]
+        for call in ("lighthouse wait --ready", "lighthouse with-credentials"):
+            with self.subTest(call=call):
+                line = next(line for line in building.splitlines() if call in line)
+                self.assertIn("--port <profile port>=<build port>", line)
+
     def test_every_wait_instruction_sets_the_bash_timeout_to_its_ceiling(self):
         for path in (scratch.skill_path("test"), os.path.join(scratch.ROOT, "agents", "driver.md")):
             holds = [line for line in scratch.read_text(path).splitlines() if "lighthouse wait --" in line]
