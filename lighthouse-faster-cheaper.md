@@ -1,7 +1,7 @@
 # lighthouse-faster-cheaper: Make lighthouse:test runs faster and cheaper without lowering test quality, and improve its metrics
 Status: active
-Updated: 2026-10-24T13:47:11.455Z
-Next ids: c4 D7 R3 S1
+Updated: 2026-10-24T13:47:17.909Z
+Next ids: c4 D7 R5 S1
 
 ## Goal
 
@@ -19,9 +19,9 @@ Stage 3 round 1 fix pass; both MSPs' verdict is loop. faster-command (reviewed h
 
 ## Next step
 
-Run amendment 1 for criterion 5.21 through interphase autonomously on mitosis/faster-skills (MSP faster-skills-amend-1), record its hand-off, build it with amend-1.zsh and merge it into mitosis/faster-skills; then round 2 for faster-command and faster-skills.
+Build amendment 1: write amend-1.zsh in the run home and copy docs/specs/lighthouse-faster-cheaper.amend-1.items.json to <home>/amend-1.items.json. Run --plan-only, then the build, and merge its branch into mitosis/faster-skills. Rerun pipeline obligations for faster-skills with the amendment criteria and re-append the threats. Then run round 2 for faster-command (previous head fe222e5) and faster-skills (previous head 5d56dc9).
 
-Needs: D2, D3, R1, R2.
+Needs: D2, D3, D6, R2.
 
 ## Decisions in force
 
@@ -31,8 +31,9 @@ Needs: D2, D3, R1, R2.
 
 ## Open risks
 
-- R1 The held-out set starts each session fresh, so the launcher's extra child start-up cancels the savings there: held-out pass 1 measured it, and criterion 5.21 fails until the fix pass removes the fixed overhead. Bears on c2.
 - R2 A held-out pass is 24 live sessions; the baseline Step and the final comparison each spend real money and hours, and run-to-run variation can move a single total either way. Bears on c2.
+- R3 Lane 5's resumed Worker may follow its frozen brief (the absolute per-case bar, a four-key baseline) over the charter's pointer to the amended tasks; if it ends uncommitted, the rules make it a hard failure, which stops the run before any push. Bears on c2.
+- R4 The per-fixture bar against main is the amendment's own reading. It departs from the owner's round 2 answer (decision record 0004 holds on both runs) only for the cases main itself fails, and noise in two runs per fixture can fail an unchanged branch, which sends drivers back to Opus. Bears on c2.
 
 ## Settled, do not reopen
 
