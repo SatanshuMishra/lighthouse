@@ -1,7 +1,7 @@
 # lighthouse-faster-cheaper: Make lighthouse:test runs faster and cheaper without lowering test quality, and improve its metrics
 Status: active
-Updated: 2026-10-24T07:41:08.841Z
-Next ids: c4 D2 R3 S1
+Updated: 2026-10-24T07:44:13.189Z
+Next ids: c4 D3 R3 S1
 
 ## Goal
 
@@ -27,7 +27,7 @@ Needs: D1.
 
 ## Decisions in force
 
-- D1 interphase hand-off: build the approved spec as four stacked MSPs: Build all 17 Steps in one mitosis run as the four MSPs, metrics, suite, tokens and checks, in that order.
+- D2 first build: three stacked MSPs cut by layer: Recut by layer into three stacked MSPs, command (all lighthouse_tool changes and their unit tests), skills (skill and agent text, README), held-out (harness, baseline and comparison); plan 3 MSPs in 1 cluster of depth 3.
 
 ## Open risks
 
