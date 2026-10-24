@@ -138,6 +138,62 @@ def tips_of(work):
     }
 
 
+def suite_in(test, work, home):
+    results = os.path.join(scratch.temporary_folder(test, "lh-results-"), "results")
+    code, stdout, stderr = scratch.run_lighthouse(
+        ["suite", "--repo", work, "--core", "main", "--feature", "feat/x", "--results", results],
+        scratch.environment(home),
+    )
+    test.assertEqual(code, 0, stderr)
+    return json.loads(stdout)
+
+
+def counting_suite(counter, then="true"):
+    return 'echo "$LIGHTHOUSE_BUILD" >> {}; {}'.format(counter, then)
+
+
+def runs_of(counter, build):
+    if not os.path.exists(counter):
+        return 0
+    with open(counter, encoding="utf-8") as handle:
+        return handle.read().split().count(build)
+
+
+def change_feature_profile(work, profile):
+    scratch.run_git(work, "checkout", "-q", "feat/x")
+    scratch.commit_files(work, {".lighthouse/profile.json": json.dumps(profile, indent=2) + "\n"}, "change the profile")
+    scratch.run_git(work, "push", "-q", "origin", "feat/x")
+    scratch.run_git(work, "checkout", "-q", "main")
+
+
+def stored_core_results(home):
+    found = []
+    for folder, _, names in os.walk(os.path.join(home, ".lighthouse")):
+        if os.path.basename(folder) == "core-suites":
+            found.extend(json.loads(read(folder, name)) for name in names if name.endswith(".json"))
+    return found
+
+
+def rerun_project(test, counter, reports, rerun, suite_script="cp reports/$LIGHTHOUSE_BUILD.xml report.xml"):
+    report_files = {"reports/{}.xml".format(name): junit(outcomes) for name, outcomes in reports.items()}
+    suite = {
+        "command": counting_suite(counter, suite_script),
+        "junit": "report.xml",
+        "timeout_minutes": None,
+        "rerun": rerun,
+    }
+    return project_with(test, {"suite.sh": JUNIT_SUITE, **report_files}, scratch.sample_profile(suite=suite))
+
+
+def timed_suite(outside):
+    stamp = 'python3 -c "import time; print(time.time())" > {}/$LIGHTHOUSE_BUILD.{}'
+    return "{}; sleep 1; {}".format(stamp.format(outside, "start"), stamp.format(outside, "end"))
+
+
+def interval_of(outside, build):
+    return float(read(outside, build + ".start")), float(read(outside, build + ".end"))
+
+
 class SuiteTest(unittest.TestCase):
     def test_counts_a_new_failure(self):
         work = junit_project(
@@ -472,6 +528,209 @@ class SuiteTest(unittest.TestCase):
                 minutes = result[build][phase]
                 self.assertTrue(isinstance(minutes, (int, float)) and not isinstance(minutes, bool), (build, phase))
         self.assertIsNone(result["feature"]["rerun_minutes"])
+
+
+    def test_same_core_commit_reuses_core_suite(self):
+        counter = os.path.join(scratch.temporary_folder(self, "lh-counter-"), "runs")
+        profile = scratch.sample_profile(suite={"command": counting_suite(counter), "junit": None, "timeout_minutes": None})
+        work = project_with(self, {}, profile)
+        home = scratch.make_home(self)
+        first = suite_in(self, work, home)
+        second = suite_in(self, work, home)
+        self.assertEqual(runs_of(counter, "core"), 1)
+        self.assertIs(second["core"]["reused"], True)
+        self.assertEqual(second["core"]["exit"], first["core"]["exit"])
+
+    def test_changed_suite_command_runs_core_again(self):
+        counter = os.path.join(scratch.temporary_folder(self, "lh-counter-"), "runs")
+        profile = scratch.sample_profile(suite={"command": counting_suite(counter), "junit": None, "timeout_minutes": None})
+        work = project_with(self, {}, profile)
+        home = scratch.make_home(self)
+        suite_in(self, work, home)
+        changed = {**profile, "suite": {**profile["suite"], "command": counting_suite(counter, "echo changed")}}
+        change_feature_profile(work, changed)
+        suite_in(self, work, home)
+        self.assertEqual(runs_of(counter, "core"), 2)
+
+    def test_moved_core_commit_runs_core_again(self):
+        counter = os.path.join(scratch.temporary_folder(self, "lh-counter-"), "runs")
+        profile = scratch.sample_profile(suite={"command": counting_suite(counter), "junit": None, "timeout_minutes": None})
+        work = project_with(self, {}, profile)
+        home = scratch.make_home(self)
+        suite_in(self, work, home)
+        scratch.commit_files(work, {"core.txt": "a new core commit\n"}, "move core")
+        scratch.run_git(work, "push", "-q", "origin", "main")
+        suite_in(self, work, home)
+        self.assertEqual(runs_of(counter, "core"), 2)
+
+    def test_feature_suite_always_runs(self):
+        counter = os.path.join(scratch.temporary_folder(self, "lh-counter-"), "runs")
+        profile = scratch.sample_profile(suite={"command": counting_suite(counter), "junit": None, "timeout_minutes": None})
+        work = project_with(self, {}, profile)
+        home = scratch.make_home(self)
+        suite_in(self, work, home)
+        suite_in(self, work, home)
+        self.assertEqual(runs_of(counter, "feature"), 2)
+
+    def test_core_that_did_not_build_is_not_reused(self):
+        scratch_folder = scratch.temporary_folder(self, "lh-counter-")
+        counter = os.path.join(scratch_folder, "runs")
+        ready = os.path.join(scratch_folder, "ready")
+        profile = scratch.sample_profile(
+            setup={"command": 'test "$LIGHTHOUSE_BUILD" = feature || test -f {}'.format(ready)},
+            suite={"command": counting_suite(counter), "junit": None, "timeout_minutes": None},
+        )
+        work = project_with(self, {}, profile)
+        home = scratch.make_home(self)
+        first = suite_in(self, work, home)
+        self.assertIsNone(first["core"])
+        self.assertEqual(runs_of(counter, "core"), 0)
+        open(ready, "w", encoding="utf-8").close()
+        second = suite_in(self, work, home)
+        self.assertEqual(runs_of(counter, "core"), 1)
+        self.assertIs(second["core"]["reused"], False)
+
+    def test_a_core_failure_seen_once_is_not_stored_as_failing(self):
+        work = junit_project(
+            self,
+            {
+                "core": {"steady": "passed", "flaky_one": "failed"},
+                "core-rerun": {"steady": "passed", "flaky_one": "passed"},
+                "feature": {"steady": "passed", "flaky_one": "failed"},
+            },
+        )
+        home = scratch.make_home(self)
+        suite_in(self, work, home)
+        stored = stored_core_results(home)
+        self.assertEqual(len(stored), 1)
+        self.assertIs(stored[0]["tests"]["tests.T.flaky_one"], False)
+        second = suite_in(self, work, home)
+        self.assertIs(second["core"]["reused"], True)
+        self.assertEqual(second["failures"], ["tests.T.flaky_one"])
+        self.assertEqual(second["pre_existing"], [])
+
+    def test_changed_junit_path_runs_core_again(self):
+        counter = os.path.join(scratch.temporary_folder(self, "lh-counter-"), "runs")
+        reports = "cp reports/clean.xml report.xml && cp reports/clean.xml other.xml"
+        profile = scratch.sample_profile(
+            suite={"command": counting_suite(counter, reports), "junit": "report.xml", "timeout_minutes": None}
+        )
+        work = project_with(self, {"reports/clean.xml": junit({"test_a": "passed"})}, profile)
+        home = scratch.make_home(self)
+        suite_in(self, work, home)
+        change_feature_profile(work, {**profile, "suite": {**profile["suite"], "junit": "other.xml"}})
+        suite_in(self, work, home)
+        self.assertEqual(runs_of(counter, "core"), 2)
+
+
+    def test_rerun_runs_only_failed_tests(self):
+        outside = scratch.temporary_folder(self, "lh-counter-")
+        counter, chosen = os.path.join(outside, "runs"), os.path.join(outside, "chosen")
+        work = rerun_project(
+            self,
+            counter,
+            {
+                "core": {"test_a": "passed", "test_b": "passed", "test_c": "passed"},
+                "feature": {"test_a": "passed", "test_b": "failed", "test_c": "passed"},
+                "rerun": {"test_b": "failed"},
+            },
+            "echo {{tests}} > {}; cp reports/rerun.xml report.xml".format(chosen),
+        )
+        suite_of(self, work)
+        self.assertEqual(read(outside, "chosen"), "tests.T.test_b\n")
+        self.assertEqual(runs_of(counter, "feature"), 1)
+
+    def test_rerun_falls_back_when_a_failed_test_is_missing(self):
+        counter = os.path.join(scratch.temporary_folder(self, "lh-counter-"), "runs")
+        work = rerun_project(
+            self,
+            counter,
+            {
+                "core": {"test_a": "passed", "test_b": "passed"},
+                "feature": {"test_a": "failed", "test_b": "failed"},
+                "feature-rerun": {"test_a": "failed", "test_b": "passed"},
+                "partial": {"test_a": "passed"},
+            },
+            "cp reports/partial.xml report.xml",
+            suite_script="sh suite.sh",
+        )
+        result = suite_of(self, work)
+        self.assertEqual(runs_of(counter, "feature"), 2)
+        self.assertEqual(result["failures"], ["tests.T.test_a"])
+        self.assertEqual(result["flaky"], ["tests.T.test_b"])
+
+    def test_without_rerun_template_whole_suite_reruns(self):
+        counter = os.path.join(scratch.temporary_folder(self, "lh-counter-"), "runs")
+        work = rerun_project(
+            self,
+            counter,
+            {"core": {"test_a": "passed"}, "feature": {"test_a": "failed"}},
+            None,
+        )
+        suite_of(self, work)
+        self.assertEqual(runs_of(counter, "feature"), 2)
+
+    def test_rerun_quotes_a_test_name_holding_shell_characters(self):
+        outside = scratch.temporary_folder(self, "lh-counter-")
+        counter, chosen = os.path.join(outside, "runs"), os.path.join(outside, "chosen")
+        work = rerun_project(
+            self,
+            counter,
+            {"core": {"it's;touch pwned": "passed"}, "feature": {"it's;touch pwned": "failed"}},
+            "echo {{names}} > {}; cp reports/feature.xml report.xml".format(chosen),
+        )
+        result = suite_of(self, work)
+        self.assertEqual(read(outside, "chosen"), "it's;touch pwned\n")
+        feature = os.path.dirname(result["feature"]["log"])
+        for folder in (work, os.path.join(feature, "feature"), os.path.join(feature, "core"), outside):
+            self.assertFalse(os.path.exists(os.path.join(folder, "pwned")), folder)
+
+    def test_rerun_that_writes_no_report_falls_back_to_the_whole_suite(self):
+        counter = os.path.join(scratch.temporary_folder(self, "lh-counter-"), "runs")
+        work = rerun_project(
+            self,
+            counter,
+            {"core": {"test_a": "passed"}, "feature": {"test_a": "failed"}},
+            "true",
+        )
+        result = suite_of(self, work)
+        self.assertEqual(runs_of(counter, "feature"), 2)
+        self.assertNotEqual(result["result"], "blocked")
+
+    def test_rerun_fills_the_name_regex(self):
+        outside = scratch.temporary_folder(self, "lh-counter-")
+        counter, chosen = os.path.join(outside, "runs"), os.path.join(outside, "chosen")
+        work = rerun_project(
+            self,
+            counter,
+            {
+                "core": {"TestA": "passed", "TestB": "passed", "TestC": "passed"},
+                "feature": {"TestA": "failed", "TestB": "failed", "TestC": "passed"},
+            },
+            "echo {{names_regex}} > {}; cp reports/feature.xml report.xml".format(chosen),
+        )
+        suite_of(self, work)
+        self.assertEqual(read(outside, "chosen"), "^(TestA|TestB)$\n")
+
+
+    def test_isolated_profile_runs_both_builds_together(self):
+        outside = scratch.temporary_folder(self, "lh-times-")
+        suite = {"command": timed_suite(outside), "junit": None, "timeout_minutes": None, "isolated": True}
+        work = project_with(self, {}, scratch.sample_profile(suite=suite))
+        suite_of(self, work)
+        core_start, core_end = interval_of(outside, "core")
+        feature_start, feature_end = interval_of(outside, "feature")
+        self.assertLess(core_start, feature_end)
+        self.assertLess(feature_start, core_end)
+
+    def test_unisolated_profile_runs_builds_one_after_another(self):
+        outside = scratch.temporary_folder(self, "lh-times-")
+        suite = {"command": timed_suite(outside), "junit": None, "timeout_minutes": None}
+        work = project_with(self, {}, scratch.sample_profile(suite=suite))
+        suite_of(self, work)
+        _, core_end = interval_of(outside, "core")
+        feature_start, _ = interval_of(outside, "feature")
+        self.assertLess(core_end, feature_start)
 
 
 if __name__ == "__main__":

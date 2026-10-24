@@ -192,6 +192,41 @@ class ProfileCheckTest(unittest.TestCase):
         self.assertEqual(report, {"ok": True, "problems": []})
 
 
+    def test_profile_accepts_rerun(self):
+        work, _ = scratch.make_repo(self)
+        suite = {**scratch.sample_profile()["suite"], "rerun": "pytest --lf"}
+        scratch.write_profile(work, scratch.sample_profile(suite=suite))
+
+        code, report, stderr = profile_check(self, work)
+
+        self.assertEqual(code, 0, stderr)
+        self.assertTrue(report["ok"])
+        self.assertEqual(report["problems"], [])
+
+
+    def test_profile_accepts_isolated(self):
+        work, _ = scratch.make_repo(self)
+        suite = {**scratch.sample_profile()["suite"], "isolated": True}
+        scratch.write_profile(work, scratch.sample_profile(suite=suite))
+
+        code, report, stderr = profile_check(self, work)
+
+        self.assertEqual(code, 0, stderr)
+        self.assertTrue(report["ok"])
+        self.assertEqual(report["problems"], [])
+
+    def test_profile_rejects_a_non_boolean_isolated(self):
+        work, _ = scratch.make_repo(self)
+        suite = {**scratch.sample_profile()["suite"], "isolated": "yes"}
+        scratch.write_profile(work, scratch.sample_profile(suite=suite))
+
+        code, report, _ = profile_check(self, work)
+
+        self.assertEqual(code, 1)
+        self.assertEqual(problem_kinds(report), ["schema"])
+        self.assertIn("suite.isolated", details_of(report, "schema")[0])
+
+
 class ProfilePublishTest(unittest.TestCase):
     def test_publish_commits_to_the_feature_branch(self):
         work, remote = scratch.make_repo(self)

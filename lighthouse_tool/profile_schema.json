@@ -11,6 +11,10 @@
           "command": {"type": "string"},
           "junit": {"type": ["string", "null"]},
           "timeout_minutes": {"type": ["number", "null"]}
+        },
+        "optional": {
+          "rerun": {"type": ["string", "null"]},
+          "isolated": {"type": "boolean"}
         }
       },
       "surfaces": {
