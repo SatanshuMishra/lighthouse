@@ -3,7 +3,7 @@ import os
 import statistics
 from typing import Any, Dict, List, Optional, Tuple
 
-from lighthouse_tool.records import is_number, json_object
+from lighthouse_tool.records import UnreadableLine, is_number, read_json_lines
 from lighthouse_tool.repo import Parser, Refusal, require_root, state_dir
 from lighthouse_tool.spend import KINDS
 
@@ -30,22 +30,11 @@ def run(argv: List[str]) -> Tuple[int, Optional[str], Optional[str]]:
 
 def read_ledger(path: str) -> List[Dict[str, Any]]:
     try:
-        with open(path, encoding="utf-8") as handle:
-            text_lines = handle.read().splitlines()
-    except FileNotFoundError:
-        return []
+        return read_json_lines(path)
     except OSError as error:
         raise Refusal("cannot read {}: {}".format(path, error.strerror or error))
-    numbered = [(number, text) for number, text in enumerate(text_lines, start=1) if text.strip()]
-    parsed = [(number, json_object(text)) for number, text in numbered]
-    unreadable = [number for number, line in parsed if line is None]
-    if unreadable:
-        raise Refusal(
-            "{} line {} is not a JSON object; repair or remove that line, then run lighthouse runs again".format(
-                path, unreadable[0]
-            )
-        )
-    return [line for _, line in parsed if line is not None]
+    except UnreadableLine as unreadable:
+        raise Refusal("{}; repair or remove that line, then run lighthouse runs again".format(unreadable))
 
 
 def run_key(index: int, line: Dict[str, Any]) -> str:

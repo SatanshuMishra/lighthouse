@@ -9,7 +9,7 @@ import time
 from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
 from lighthouse_tool import suite, verdict
-from lighthouse_tool.records import is_number, utc_now
+from lighthouse_tool.records import is_number, utc_now, write_atomically
 from lighthouse_tool.repo import Parser, Refusal, repository_folder, require_root, toplevel
 
 Outcome = Tuple[int, Optional[str], Optional[str]]
@@ -18,7 +18,6 @@ WORK = "work"
 CHILD = "child.json"
 LAUNCH = "launch.json"
 EARLIER_RUN_FILES = (LAUNCH, CHILD)
-STAGING_SUFFIX = ".partial"
 CAFFEINATE = "caffeinate"
 SYSTEMD_INHIBIT = "systemd-inhibit"
 NO_KEEP_AWAKE = "none"
@@ -328,10 +327,7 @@ def write_json(path: str, value: Dict[str, Any]) -> None:
 
 
 def write_text(path: str, text: str) -> None:
-    staging = path + STAGING_SUFFIX
     try:
-        with open(staging, "w", encoding="utf-8") as handle:
-            handle.write(text)
-        os.replace(staging, path)
+        write_atomically(path, text)
     except OSError as error:
         raise Refusal("cannot write {}: {}".format(path, error.strerror or error))

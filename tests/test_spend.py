@@ -422,6 +422,19 @@ class SpendTest(unittest.TestCase):
         spend = spend_of(self, ["--results", results], home)
         self.assertEqual(path_named(spend, "pick skill")["output"], 300)
 
+    def test_spend_refuses_a_marks_line_that_is_not_a_json_object(self):
+        results = scratch.temporary_folder(self, "lh-results-")
+        write_marks(results, os.path.join(results, "work"), "2026-10-16T10:00:00.400Z", "2026-10-16T10:05:00.400Z")
+        path = os.path.join(results, "marks.jsonl")
+        with open(path, encoding="utf-8") as handle:
+            text = handle.read()
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write('{"step": "suite", "bu' + text)
+        env = scratch.environment(scratch.make_home(self))
+        code, stdout, stderr = scratch.run_lighthouse(["spend", "--since", "2026-10-16T09:00:00Z", "--results", results], env)
+        self.assertEqual(code, 2, stderr)
+        self.assertIn("marks.jsonl line 1 is not a JSON object", json.loads(stdout.strip().splitlines()[-1])["error"])
+
     def test_spend_writes_spend_json_with_results_and_repo(self):
         home = scratch.make_home(self)
         repo, _ = scratch.make_repo(self)
