@@ -1,6 +1,6 @@
 # lighthouse-faster-cheaper: Make lighthouse:test runs faster and cheaper without lowering test quality, and improve its metrics
 Status: active
-Updated: 2026-10-24T07:46:59.761Z
+Updated: 2026-10-24T07:47:03.409Z
 Next ids: c4 D5 R3 S1
 
 ## Goal
@@ -42,3 +42,6 @@ Needs: D2, D3, D4, R1, R2.
 - Run home: ~/.mitosis/lighthouse/lighthouse-faster-cheaper/
 - Spec files: docs/specs/lighthouse-faster-cheaper.* in the checkout
 - Receipts answers: ~/.mitosis/lighthouse/lighthouse-faster-cheaper/receipts-answers.json
+- Run scripts and charter: run.zsh, dispatch.zsh, worker-rules.txt, CHARTER.md, items.json, graph.json in the run home
+- mitosis run directory: ~/.mitosis/runs/lighthouse/lighthouse-faster-cheaper/
+- Probe evidence for the design (fork skill, plugin agent cache, headless background wait, AskUserQuestion disallowed, priority): the decisions file's round 1 and 2 lines
