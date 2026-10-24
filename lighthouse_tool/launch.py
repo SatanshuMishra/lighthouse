@@ -108,17 +108,17 @@ def clear_earlier_run(results: str) -> None:
 
 
 def leave_blocked_line(root: Optional[str], results: str, reason: str) -> None:
+    try:
+        os.makedirs(results, exist_ok=True)
+        write_text(os.path.join(results, LAUNCH), blocked_text(reason) + "\n")
+    except (OSError, Refusal):
+        pass
     if root is not None:
         refused = {"cost": {}, "minutes": 0, "keep_awake": NO_KEEP_AWAKE, "priority": priority()}
         try:
             verdict.append_ledger(root, launch_record(root, results, refused, "blocked", reason))
         except Refusal:
             pass
-    try:
-        os.makedirs(results, exist_ok=True)
-        write_text(os.path.join(results, LAUNCH), blocked_text(reason) + "\n")
-    except (OSError, Refusal):
-        return
 
 
 def launch(options: argparse.Namespace) -> Outcome:

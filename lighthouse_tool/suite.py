@@ -447,7 +447,10 @@ def core_suite_key(profile: Dict[str, Any], commit: str) -> str:
 
 
 def core_store_path(root: str, profile: Dict[str, Any], commit: str) -> Optional[str]:
-    folder = repository.ensure_state_dir(root)
+    try:
+        folder = repository.ensure_state_dir(root)
+    except Refusal:
+        return None
     return None if folder is None else os.path.join(folder, CORE_STORE, core_suite_key(profile, commit) + ".json")
 
 

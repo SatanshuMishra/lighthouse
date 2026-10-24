@@ -68,8 +68,11 @@ def ensure_state_dir(repo: str) -> Optional[str]:
     path = state_dir(repo)
     if path is None:
         return None
-    os.makedirs(path, mode=0o700, exist_ok=True)
-    os.chmod(path, 0o700)
+    try:
+        os.makedirs(path, mode=0o700, exist_ok=True)
+        os.chmod(path, 0o700)
+    except OSError as error:
+        raise Refusal("cannot create the state folder {}: {}".format(path, error.strerror or error))
     return path
 
 
