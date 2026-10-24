@@ -1,6 +1,6 @@
 # lighthouse-faster-cheaper: Make lighthouse:test runs faster and cheaper without lowering test quality, and improve its metrics
 Status: active
-Updated: 2026-10-24T06:23:42.122Z
+Updated: 2026-10-24T06:23:44.806Z
 Next ids: c4 D1 R1 S1
 
 ## Goal
@@ -32,4 +32,4 @@ Record the owner's intent answers as I1-I3 in docs/specs/lighthouse-faster-cheap
 - Live-run analysis: 25 runs 2026-10-16 to 2026-10-24, about $803 API-equivalent; scripts in session scratchpad d048cfb3
 - Run home: ~/.mitosis/lighthouse/lighthouse-faster-cheaper/
 - Spec files: docs/specs/lighthouse-faster-cheaper.* in the checkout
-- Receipts draft: /var/folders/tz/b798spt96sjfyy924nf0cw4c0000gn/T/tmp.DJPmb5YLy8/answers.json
+- Receipts answers: ~/.mitosis/lighthouse/lighthouse-faster-cheaper/receipts-answers.json
