@@ -2,8 +2,9 @@ import argparse
 import json
 import os
 import subprocess
-import tempfile
 from typing import Any, Dict, List, Optional, Tuple
+
+from lighthouse_tool.records import UnreadableLine, read_json_lines, write_atomically
 
 GIT_ENVIRONMENT_OVERRIDES = {"GIT_TERMINAL_PROMPT": "0"}
 ANSWERS_FILE = "answers.json"
@@ -11,6 +12,29 @@ ANSWERS_FILE = "answers.json"
 
 class Refusal(Exception):
     pass
+
+
+def unreadable(path: str, error: OSError) -> Refusal:
+    return Refusal("cannot read {}: {}".format(path, error.strerror or error))
+
+
+def read_json_or_refuse(path: str) -> Any:
+    try:
+        with open(path, encoding="utf-8") as handle:
+            return json.load(handle)
+    except OSError as error:
+        raise unreadable(path, error)
+    except ValueError:
+        raise Refusal("{} is not valid JSON".format(path))
+
+
+def read_json_lines_or_refuse(path: str, command: str) -> List[Dict[str, Any]]:
+    try:
+        return read_json_lines(path)
+    except OSError as error:
+        raise unreadable(path, error)
+    except UnreadableLine as unreadable:
+        raise Refusal("{}; repair or remove that line, then run lighthouse {} again".format(unreadable, command))
 
 
 class Parser(argparse.ArgumentParser):
@@ -67,8 +91,11 @@ def ensure_state_dir(repo: str) -> Optional[str]:
     path = state_dir(repo)
     if path is None:
         return None
-    os.makedirs(path, mode=0o700, exist_ok=True)
-    os.chmod(path, 0o700)
+    try:
+        os.makedirs(path, mode=0o700, exist_ok=True)
+        os.chmod(path, 0o700)
+    except OSError as error:
+        raise Refusal("cannot create the state folder {}: {}".format(path, error.strerror or error))
     return path
 
 
@@ -85,16 +112,7 @@ def read_answers(repo: str) -> Dict[str, Any]:
 
 
 def write_answers(folder: str, answers: Dict[str, Any]) -> None:
-    descriptor, staging = tempfile.mkstemp(prefix=".answers-", suffix=".json", dir=folder)
-    try:
-        os.fchmod(descriptor, 0o600)
-        with os.fdopen(descriptor, "w", encoding="utf-8") as answers_file:
-            answers_file.write(json.dumps(answers, indent=2) + "\n")
-        os.replace(staging, os.path.join(folder, ANSWERS_FILE))
-    except OSError:
-        if os.path.exists(staging):
-            os.remove(staging)
-        raise
+    write_atomically(os.path.join(folder, ANSWERS_FILE), json.dumps(answers, indent=2) + "\n")
 
 
 def commit_of(repo: str, ref: str) -> Optional[str]:

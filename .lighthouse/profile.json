@@ -1,0 +1,216 @@
+{
+  "version": 1,
+  "sources": [
+    ".github/workflows/ci.yml",
+    ".claude-plugin/plugin.json",
+    ".claude-plugin/marketplace.json",
+    ".gitignore",
+    "README.md",
+    "bin/lighthouse",
+    "lighthouse_tool/cli.py",
+    "lighthouse_tool/profile_schema.json",
+    "agents/driver.md",
+    "skills/init/SKILL.md",
+    "skills/doctor/SKILL.md",
+    "skills/test/SKILL.md",
+    "tests/scratch.py",
+    "tests/e2e_harness.py",
+    "tests/test_e2e_held_out.py",
+    "tests/test_e2e_init_doctor.py",
+    "tests/test_suite.py",
+    "tests/test_wait.py",
+    "docs/adr/0004-judged-on-a-held-out-set.md",
+    "tests/fixtures/held-out/H4/base/pyproject.toml"
+  ],
+  "suite": {
+    "command": "python3 -m unittest discover tests",
+    "junit": null,
+    "timeout_minutes": null
+  },
+  "surfaces": [
+    {
+      "name": "lighthouse command",
+      "kind": "command-line tool with the subcommands version, change, profile check, profile publish, readiness, answer, credentials init, credentials check, with-credentials, worktrees, suite, release, verdict, retest, pr, spend, mark, runs, wait and launch, printing JSON on stdout and exiting 0, 1 or 2",
+      "paths": [
+        "bin/lighthouse",
+        "lighthouse_tool"
+      ],
+      "driver": "run python3 bin/lighthouse <subcommand> directly in a scratch git repository with a bare local remote, a temporary HOME and a stub gh first on PATH, the way tests/scratch.py builds them (make_repo, make_home, stub_gh, environment, run_lighthouse)",
+      "available": true,
+      "sign_in": {
+        "method": "none",
+        "command": null
+      },
+      "credentials": [],
+      "trials": 1
+    },
+    {
+      "name": "lighthouse:init skill",
+      "kind": "Claude Code skill that reads a codebase and writes .lighthouse/profile.json",
+      "paths": [
+        "skills/init/SKILL.md",
+        "bin/lighthouse",
+        "lighthouse_tool/profile.py",
+        "lighthouse_tool/profile_schema.json",
+        "lighthouse_tool/credentials.py",
+        "lighthouse_tool/readiness.py"
+      ],
+      "driver": "claude -p with a plain request to set lighthouse up on a held-out fixture repository built by tests/e2e_harness.py build(<fixture>, 'base'), --plugin-dir at the build's worktree, --permission-mode bypassPermissions and --output-format stream-json --verbose, then lighthouse profile check on the fixture; tests/test_e2e_init_doctor.py test_init_writes_a_checked_profile is the project's own version",
+      "available": true,
+      "sign_in": {
+        "method": "none",
+        "command": null
+      },
+      "credentials": [],
+      "trials": 3
+    },
+    {
+      "name": "lighthouse:doctor skill",
+      "kind": "Claude Code skill that repairs .lighthouse/profile.json so lighthouse profile check passes, changing only that file",
+      "paths": [
+        "skills/doctor/SKILL.md",
+        "bin/lighthouse",
+        "lighthouse_tool/profile.py",
+        "lighthouse_tool/profile_schema.json",
+        "lighthouse_tool/credentials.py",
+        "lighthouse_tool/readiness.py"
+      ],
+      "driver": "commit tests/fixtures/held-out/H4/profile.json into an H4 base fixture repository from tests/e2e_harness.py, break it (rename the suite script, delete a surface path, add a source file or delete the profile), then claude -p with a plain request to fix the lighthouse profile, --plugin-dir at the build's worktree, --permission-mode bypassPermissions and --output-format stream-json --verbose, and check that lighthouse profile check exits 0 and only .lighthouse/profile.json changed; tests/test_e2e_init_doctor.py test_doctor_repairs_only_the_profile is the project's own version",
+      "available": true,
+      "sign_in": {
+        "method": "none",
+        "command": null
+      },
+      "credentials": [],
+      "trials": 3
+    },
+    {
+      "name": "lighthouse:test skill",
+      "kind": "Claude Code skill that tests a FEATURE branch against its core branch in a child claude -p session, computes the verdict through the lighthouse command, records spend and ends with one JSON verdict line",
+      "paths": [
+        "skills/test/SKILL.md",
+        "agents/driver.md",
+        "bin/lighthouse",
+        "lighthouse_tool/change.py",
+        "lighthouse_tool/credentials.py",
+        "lighthouse_tool/launch.py",
+        "lighthouse_tool/mark.py",
+        "lighthouse_tool/ports.py",
+        "lighthouse_tool/pr.py",
+        "lighthouse_tool/profile.py",
+        "lighthouse_tool/records.py",
+        "lighthouse_tool/repo.py",
+        "lighthouse_tool/retest.py",
+        "lighthouse_tool/runs.py",
+        "lighthouse_tool/spend.py",
+        "lighthouse_tool/suite.py",
+        "lighthouse_tool/verdict.py",
+        "lighthouse_tool/wait.py"
+      ],
+      "driver": "claude -p '/lighthouse:test --repo <fixture> --core main --feature <feature> --results <results>' with --plugin-dir at the build's worktree, --permission-mode bypassPermissions and --output-format stream-json --verbose, on a broken or clean held-out fixture repository built by tests/e2e_harness.py build(<fixture>, <variant>) with a bare local remote and a stub gh, reading the last JSON line of the transcript, the results folder and checking the fixture checkout is unchanged; tests/test_e2e_held_out.py is the project's own version",
+      "available": true,
+      "sign_in": {
+        "method": "none",
+        "command": null
+      },
+      "credentials": [],
+      "trials": 3
+    },
+    {
+      "name": "lighthouse:driver agent",
+      "kind": "Claude Code agent on Sonnet with a one-hour prompt cache that the lighthouse:test child session dispatches to drive one surface's paths and report each outcome",
+      "paths": [
+        "agents/driver.md",
+        "skills/test/SKILL.md",
+        "lighthouse_tool/mark.py",
+        "lighthouse_tool/wait.py"
+      ],
+      "driver": "reached only through a lighthouse:test session as above; read from its stream-json transcript which agent each driver dispatch named and that its paths carry marks in the results folder",
+      "available": true,
+      "sign_in": {
+        "method": "none",
+        "command": null
+      },
+      "credentials": [],
+      "trials": 3
+    },
+    {
+      "name": "plugin manifest and marketplace entry",
+      "kind": "Claude Code plugin package that a person adds with claude plugin marketplace add and installs with claude plugin install lighthouse@lighthouse",
+      "paths": [
+        ".claude-plugin/plugin.json",
+        ".claude-plugin/marketplace.json",
+        "skills",
+        "agents"
+      ],
+      "driver": "claude plugin validate --strict . and claude plugin validate --strict .claude-plugin/plugin.json from the repository root, as the validate job in .github/workflows/ci.yml runs them through npx @anthropic-ai/claude-code@2.1.278",
+      "available": true,
+      "sign_in": {
+        "method": "none",
+        "command": null
+      },
+      "credentials": [],
+      "trials": 1
+    }
+  ],
+  "credentials": {
+    "file": null,
+    "names": {}
+  },
+  "facts": {
+    "python_versions": {
+      "value": "the README requires Python 3.9 or later and CI runs the suite on 3.9 and 3.14 as python; the suite runs here as python3",
+      "confirmed": true,
+      "recheck": "read the matrix in .github/workflows/ci.yml and run python3 --version"
+    },
+    "no_dependencies": {
+      "value": "the command and tests use only the Python standard library, git and an optional gh, so there is no setup, build or start step",
+      "confirmed": true,
+      "recheck": "read the imports in lighthouse_tool/*.py and tests/*.py, and confirm there is no pyproject.toml, requirements file or package.json at the repository root"
+    },
+    "suite_isolation": {
+      "value": "the suite's servers bind port 0 and its repositories, homes and results live in temporary folders, so two builds' suites may run at once",
+      "confirmed": true,
+      "recheck": "grep tests/test_*.py for bind, HTTPServer and fixed port numbers"
+    },
+    "live_end_to_end_tests": {
+      "value": "tests/test_e2e_held_out.py and tests/test_e2e_init_doctor.py start real claude -p sessions with permissions bypassed and are skipped unless LIGHTHOUSE_E2E=1, which CI never sets",
+      "confirmed": true,
+      "recheck": "read the skipUnless decorators in tests/test_e2e_held_out.py and tests/test_e2e_init_doctor.py and E2E in tests/e2e_harness.py"
+    },
+    "plugin_version": {
+      "value": "plugin.json still says 0.2.0, the same version as the installed copy, which lacks launch, mark, runs and wait",
+      "confirmed": true,
+      "recheck": "read version in .claude-plugin/plugin.json and list ~/.claude/plugins/cache/lighthouse/lighthouse/"
+    },
+    "claude_headless_sign_in": {
+      "value": "claude -p is signed in under the real HOME; a fresh temporary HOME or CLAUDE_CONFIG_DIR is not signed in, so live sessions must use the real HOME",
+      "confirmed": true,
+      "recheck": "claude -p 'reply with ok' --output-format text, and check it replies rather than asking to log in"
+    },
+    "plugin_validate_offline": {
+      "value": "@anthropic-ai/claude-code@2.1.278 is not in the npx cache; validate locally with the installed claude 2.1.300 and leave the pinned version to CI",
+      "confirmed": true,
+      "recheck": "npx --yes @anthropic-ai/claude-code@2.1.278 --version"
+    },
+    "end_to_end_cost": {
+      "value": "one held-out run took about 57 minutes at the mitosis gate and about 76 minutes when the main session ran it on 2026-10-16; tokens were not measured",
+      "confirmed": true,
+      "recheck": "run lighthouse spend over a recorded end-to-end run"
+    },
+    "held_out_leak_rule": {
+      "value": "the held-out fixtures under tests/fixtures/held-out must never be named in skills/ or lighthouse_tool/; tests/test_leak.py fails when any line of tests/fixtures/held-out/LEAK_MARKERS appears there",
+      "confirmed": true,
+      "recheck": "read docs/adr/0004-judged-on-a-held-out-set.md and tests/test_leak.py"
+    }
+  },
+  "off_limits": [
+    "pushing to, deleting branches on, or opening, updating or merging pull requests in any real GitHub repository while driving a surface; a driven path uses a bare local remote and a stub gh",
+    "driving lighthouse:init, lighthouse:doctor, lighthouse:test, lighthouse pr or lighthouse profile publish against this checkout or any real project instead of a scratch fixture repository",
+    "writing to lighthouse state for a real repository under ~/.lighthouse, such as its credentials.env or answers.json",
+    "running the whole live end-to-end suite with LIGHTHOUSE_E2E=1, which starts dozens of paid claude -p sessions with permissions bypassed",
+    "adding the marketplace or installing, updating or removing the plugin in the person's own Claude Code configuration",
+    "publishing a release or tag of the plugin"
+  ],
+  "test_data": "Unit tests make scratch git repositories with a bare local remote, a temporary HOME and a stub gh through tests/scratch.py. The end-to-end harness builds fixture repositories from tests/fixtures/held-out/H1 to H6 through tests/e2e_harness.py: build(<fixture>, 'base') commits the base tree, while 'broken' and 'clean' cut the fixture's feature branch and merge each change folder as pull-request commits. Each fixture.json names its kind, feature branch, suite, changes, pull requests, bug markers, surfaces and expected verdicts."
+}

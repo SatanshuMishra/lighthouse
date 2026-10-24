@@ -20,6 +20,10 @@ COMMANDS = {
     "retest": "retest",
     "pr": "pr",
     "spend": "spend",
+    "mark": "mark",
+    "runs": "runs",
+    "wait": "wait",
+    "launch": "launch",
 }
 
 SUBCOMMANDS = sorted([*COMMANDS, "version"])

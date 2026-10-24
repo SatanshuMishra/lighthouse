@@ -245,6 +245,48 @@ class CredentialsTest(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(work, "out.txt")))
 
 
+    def test_sign_in_runs_the_profiles_command_as_written(self):
+        base = profile_needing_user_and_password()
+        surface = {**base["surfaces"][0], "sign_in": {"method": "command", "command": "touch 'signed in'"}}
+        work, home, env = setting(self, {**base, "surfaces": [surface]})
+        init_code, _, init_stderr = scratch.run_lighthouse(["credentials", "init", "--repo", work], env)
+        folder = scratch.temporary_folder(self, "lh-cwd-")
+
+        code, _, stderr = scratch.run_lighthouse(["with-credentials", "--repo", work, "--cwd", folder, "--sign-in", "0"], env)
+
+        self.assertEqual(init_code, 0, init_stderr)
+        self.assertEqual(code, 0, stderr)
+        self.assertEqual(sorted(os.listdir(folder)), ["signed in"])
+
+    def test_sign_in_reaches_the_build_s_own_port(self):
+        base = profile_needing_user_and_password()
+        surface = {**base["surfaces"][0], "sign_in": {"method": "command", "command": "touch port-4100 port-41000"}}
+        work, home, env = setting(self, {**base, "surfaces": [surface]})
+        init_code, _, init_stderr = scratch.run_lighthouse(["credentials", "init", "--repo", work], env)
+        folder = scratch.temporary_folder(self, "lh-cwd-")
+
+        code, _, stderr = scratch.run_lighthouse(
+            ["with-credentials", "--repo", work, "--cwd", folder, "--sign-in", "0", "--port", "4100=4101"], env
+        )
+
+        self.assertEqual(init_code, 0, init_stderr)
+        self.assertEqual(code, 0, stderr)
+        self.assertEqual(sorted(os.listdir(folder)), ["port-41000", "port-4101"])
+
+    def test_sign_in_refuses_a_surface_without_a_command_or_a_second_command(self):
+        work, home, env = setting(self, profile_needing_user_and_password())
+        scratch.run_lighthouse(["credentials", "init", "--repo", work], env)
+        for case, flags in {
+            "no sign-in command": ["--sign-in", "0"],
+            "no such surface": ["--sign-in", "5"],
+            "a command as well": ["--sign-in", "0", "--", "true"],
+            "a port for a given command": ["--port", "4100=4101", "--", "true"],
+        }.items():
+            with self.subTest(case=case):
+                code, stdout, stderr = scratch.run_lighthouse(["with-credentials", "--repo", work, *flags], env)
+                self.assertEqual(code, 2, stderr)
+                self.assertIn("error", json.loads(stdout.strip().splitlines()[-1]))
+
     def test_an_empty_production_entry_is_not_asked_for(self):
         work, home, env = setting(self, profile_needing_user_and_password(production=True))
         code, stdout, stderr = scratch.run_lighthouse(["credentials", "init", "--repo", work], env)

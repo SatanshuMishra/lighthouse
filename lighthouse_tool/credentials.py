@@ -9,6 +9,7 @@ import urllib.parse
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from lighthouse_tool import repo as repository
+from lighthouse_tool.ports import port_map, port_pair, with_build_ports
 from lighthouse_tool.repo import Parser, Refusal, require_root
 
 Outcome = Tuple[int, Optional[str], Optional[str]]
@@ -38,6 +39,8 @@ def with_credentials_parser() -> Parser:
     arguments.add_argument("--repo", required=True)
     arguments.add_argument("--profile")
     arguments.add_argument("--cwd")
+    arguments.add_argument("--sign-in", type=int)
+    arguments.add_argument("--port", type=port_pair, action="append")
     return arguments
 
 
@@ -225,11 +228,29 @@ def check(root: str, profile: Dict[str, Any]) -> Outcome:
     return 1, report, reasons
 
 
+WITH_CREDENTIALS_USAGE = (
+    "usage: lighthouse with-credentials --repo <repo> [--profile <path>] [--cwd <dir>]"
+    " (--sign-in <surface index> [--port <profile port>=<build port>]... | -- <command...>)"
+)
+
+
 def split_command(arguments: List[str]) -> Tuple[List[str], List[str]]:
     if "--" not in arguments:
-        raise Refusal("usage: lighthouse with-credentials --repo <repo> [--profile <path>] [--cwd <dir>] -- <command...>")
+        return arguments, []
     boundary = arguments.index("--")
     return arguments[:boundary], arguments[boundary + 1 :]
+
+
+def sign_in_command(profile: Dict[str, Any], index: int, ports: Dict[int, int]) -> List[str]:
+    surfaces = profile.get("surfaces")
+    listed = surfaces if isinstance(surfaces, list) else []
+    if not 0 <= index < len(listed) or not isinstance(listed[index], dict):
+        raise Refusal("the profile has no surface {}; surfaces are numbered from 0".format(index))
+    sign_in = listed[index].get("sign_in")
+    command = sign_in.get("command") if isinstance(sign_in, dict) else None
+    if not isinstance(command, str) or not command.strip():
+        raise Refusal("surface {} records no sign_in command".format(index))
+    return ["/bin/sh", "-c", with_build_ports(command, ports)]
 
 
 def encodings(value: str) -> List[str]:
@@ -297,11 +318,12 @@ def passed_on(text: str, filled: Dict[str, str]) -> Optional[str]:
 
 
 def with_credentials(arguments: List[str]) -> Outcome:
-    flags, command = split_command(arguments)
+    flags, given = split_command(arguments)
     options = with_credentials_parser().parse_args(flags)
-    if not command:
-        raise Refusal("no command given after --")
+    if (options.sign_in is None) == (not given) or (options.sign_in is None and options.port):
+        raise Refusal(WITH_CREDENTIALS_USAGE)
     root, profile = located(options.repo, options.profile)
+    command = given if options.sign_in is None else sign_in_command(profile, options.sign_in, port_map(options.port))
     path = credentials_path(root, profile) or ""
     refusing = [problem for problem in file_problems(root, profile) if problem["kind"] in REFUSING_KINDS]
     if refusing:
