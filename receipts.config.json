@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "claim": {
+    "issue_link": "closes #(\\d+)",
+    "downgrade_tags": [
+      "unverified-reasoned",
+      "speculative",
+      "reverted"
+    ]
+  },
+  "build": {
+    "sha_source": "none",
+    "platform": "none",
+    "deploy_host_patterns": [],
+    "environments": {},
+    "verify_against": "none"
+  },
+  "verify": {
+    "test_command": "python3 -m unittest {test}",
+    "suite_command": "python3 -m unittest discover tests",
+    "live_drive": null,
+    "require_fresh_base": "warn"
+  },
+  "degrade": {
+    "on_no_receipt": "require-downgrade-tag",
+    "on_unreachable_build": "sha-bind-only"
+  },
+  "agent": {
+    "loop_skills": [
+      "gates"
+    ],
+    "staging_query_patterns": [],
+    "observe": {
+      "confirmed": true,
+      "surface": "the JSON a bin/lighthouse subcommand prints on stdout with its exit code, the files it writes in the results folder (suite.json, commits.json, retest.json, findings.json, verdict.json, report.md), and the verdict line and tool calls a lighthouse:test, lighthouse:init or lighthouse:doctor skill session produces",
+      "value": "specific JSON fields and exit codes (verdict, failures, unproven, flaky, tokens, minutes, suite result and classification, retest plan entries), the exact files written, and which skill or command a live claude -p session invoked",
+      "observe_by": "python3 bin/lighthouse <subcommand> in a scratch git repository built by tests/scratch.py, asserted by unittest; skills through claude -p with --plugin-dir pointing at the checkout, as tests/e2e_harness.py does",
+      "terminal_action": "lighthouse verdict writing verdict.json and printing the verdict line; lighthouse pr composing the FEATURE pull request; lighthouse profile publish committing the profile",
+      "build_artifact": "the checkout itself at the commit under test: lighthouse is pure Python run from bin/lighthouse with no build step, loaded as a Claude Code plugin from that folder",
+      "twin": "skills/test/SKILL.md re-states the rules lighthouse_tool/verdict.py, retest.py and suite.py enforce; README.md re-states the subcommand flags and verdict rules; the pipeline plugin's run skill re-states the verdict-line contract",
+      "dependent": "the pipeline plugin's Integration stage reads lighthouse:test's last stdout line (verdict, failures, unproven, flaky, tokens, minutes, pr) and passes --previous between runs; lighthouse:test calls every bin/lighthouse subcommand",
+      "receipt": "a unittest in tests/ that drives bin/lighthouse in a scratch repository and asserts the JSON and files, red on the base and green on the head; skill behaviour through the LIGHTHOUSE_E2E=1 end-to-end tests",
+      "compat_boundary": "the verdict-line JSON and the results-folder files (findings.json, retest.json, commits.json) read by the pipeline plugin and by later lighthouse runs through --previous, which can come from an older lighthouse version",
+      "reach": {
+        "access": "local only: python3 3.9+ and git on macOS or Linux; skills need the claude CLI signed in for claude -p",
+        "shortcut": "tests/scratch.py builds a scratch repository with a bare local remote, a temporary HOME and a stub gh, so no GitHub or credentials are needed",
+        "fixtures": "tests/fixtures/held-out holds the held-out fixture repositories the end-to-end harness builds; unit tests seed their own scratch repositories",
+        "special_surfaces": "skill behaviour (lighthouse:test, lighthouse:init, lighthouse:doctor) is observable only through a live claude -p session, which the end-to-end tests gate behind LIGHTHOUSE_E2E=1"
+      }
+    },
+    "closeout_fixed_statuses": [
+      "Pending Retest",
+      "Verified"
+    ],
+    "repo_name": "lighthouse",
+    "receipts_version": "0.9.3"
+  },
+  "gates": {
+    "medium": "cli",
+    "enabled": "all",
+    "disabled": [],
+    "G8": {
+      "integration_branch": "main"
+    }
+  }
+}
