@@ -1,6 +1,6 @@
 # lighthouse-faster-cheaper: Make lighthouse:test runs faster and cheaper without lowering test quality, and improve its metrics
-Status: active
-Updated: 2026-10-24T19:25:18.265Z
+Status: parked
+Updated: 2026-10-24T19:25:23.602Z
 Next ids: c4 D9 R5 S1
 
 ## Goal
@@ -19,7 +19,7 @@ Shipped and waiting on the owner's merges. By D7 criterion 5.21 ships unproven a
 
 ## Next step
 
-The owner merges SatanshuMishra/lighthouse#9 and then #10 into feat/lighthouse-faster-cheaper; when they say the MSP pull requests merged, start Integration: lighthouse tests the FEATURE branch and opens the FEATURE pull request.
+The owner merges SatanshuMishra/lighthouse#9 and then #10; the owner starts Integration by saying the MSP pull requests merged, and Integration then has lighthouse test the FEATURE branch and open the FEATURE pull request.
 
 Needs: D7.
 
