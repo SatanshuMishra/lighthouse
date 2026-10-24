@@ -1,6 +1,6 @@
 # lighthouse-faster-cheaper: Make lighthouse:test runs faster and cheaper without lowering test quality, and improve its metrics
 Status: parked
-Updated: 2026-10-24T19:45:45.367Z
+Updated: 2026-10-24T19:53:51.728Z
 Next ids: c4 D9 R5 S1
 
 ## Goal
@@ -11,7 +11,7 @@ Cut lighthouse:test wall time and token spend on live pipeline runs while keepin
 
 - [x] c1 The spec is approved by the user at interphase's read-back evidence: owner chose Approve at the read-back; docs/specs/lighthouse-faster-cheaper.record.json status handed-off, check_record --complete, check_spec and check_items pass
 - [x] c2 The MSP pull requests are open, reviewed green or opened as drafts with their blockers evidence: SatanshuMishra/lighthouse#9 (faster-command, base feat/lighthouse-faster-cheaper) and #10 (faster-skills, stacked on mitosis/faster-command) are open, ready for review, assigned to SatanshuMishra and carry their review comments; both reviewed green at round 4; faster-held-out ended unchanged by D7, so it has no pull request
-- [ ] c3 Integration's lighthouse run opens the FEATURE pull request
+- [x] c3 Integration's lighthouse run opens the FEATURE pull request evidence: lighthouse:test run 2 verdict green (21 paths passed, 1 unproven by D7, no failures; findings, report.md and verdict.json in the run home's lighthouse/run-2) and SatanshuMishra/lighthouse#12 (feat/lighthouse-faster-cheaper into main) is open, ready for review and assigned to SatanshuMishra
 
 ## Where things stand
 
@@ -19,9 +19,7 @@ Integration run 2 is under way with the installed 0.2.0 lighthouse:test skill, r
 
 ## Next step
 
-Read lighthouse:test run 2's verdict line; on green report the FEATURE pull request it opened, otherwise record its failures as integration findings and fix, verdict or rerun as Integration says.
-
-Needs: D7.
+The owner starts Clean-up by saying SatanshuMishra/lighthouse#12 merged; then Sync, run pipeline clean for the run and close the thread.
 
 ## Decisions in force
 
