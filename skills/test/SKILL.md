@@ -28,7 +28,7 @@ Without `--child`, do only this, so the calling session never carries the run's 
 
 1. Start `lighthouse launch <the flags you were given> --repo <repo>` in the background, with run_in_background. It starts the child session with `--child` and the same flags, keeps the machine awake while it runs, and writes the child's verdict line to `<results>/launch.json`.
 2. Run `lighthouse wait --until 'test -s <results>/launch.json'` in the foreground, with the Bash tool's timeout set to 600000 ms, because its 120000 ms default is shorter than the wait's 540-second window and a call that outlives it is moved to the background instead of returning ready false. Each time it returns with ready false, call it again, the same way, until it returns ready true. A headless session ends while a background command still runs, so never wait for a completion notice instead.
-3. Print the line in `<results>/launch.json`, unchanged, as the last line of the reply.
+3. When that line's verdict is blocked, say in one line the reason `lighthouse launch` printed, its `error` or its `blocked:` summary, read from the background command's output. Print the line in `<results>/launch.json`, unchanged, as the last line of the reply. `lighthouse launch` has already appended the run to the ledger, so never run Stopping early for it.
 
 When `lighthouse launch` ended without writing `<results>/launch.json`, such as when it refused a results folder inside the checkout, stop as Stopping early says, with its reason.
 
