@@ -1,6 +1,6 @@
 # lighthouse-faster-cheaper: Make lighthouse:test runs faster and cheaper without lowering test quality, and improve its metrics
 Status: parked
-Updated: 2026-10-24T19:33:30.684Z
+Updated: 2026-10-24T19:33:32.625Z
 Next ids: c4 D9 R5 S1
 
 ## Goal
@@ -19,7 +19,7 @@ Integration run 2: lighthouse:test against FEATURE tip c5c4620, which holds both
 
 ## Next step
 
-The owner starts Integration run 2 by saying SatanshuMishra/lighthouse#11 merged; then Sync, confirm mitosis/faster-skills is an ancestor of origin/feat/lighthouse-faster-cheaper, and run lighthouse:test with results in the run home's lighthouse/run-2.
+Read lighthouse:test run 2's verdict line; on green report the FEATURE pull request it opened, otherwise record its failures as integration findings and fix, verdict or rerun as Integration says.
 
 Needs: D7.
 
