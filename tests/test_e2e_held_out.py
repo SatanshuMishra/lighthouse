@@ -1,66 +1,56 @@
 import json
+import os
 import unittest
 
-from tests import e2e_harness, scratch
+from tests import e2e_harness
 
-VARIANTS = ("broken", "clean")
-RUNS = 2
-PROMPT = "/lighthouse:test --repo {repo} --core {core} --feature {feature} --results {results}"
-
-
-def checkout_state(repo):
-    return {
-        "head": scratch.run_git(repo, "rev-parse", "HEAD").strip(),
-        "branch": scratch.run_git(repo, "rev-parse", "--abbrev-ref", "HEAD").strip(),
-        "status": scratch.run_git(repo, "status", "--porcelain"),
-    }
+BASELINE = os.path.join(e2e_harness.ROOT, "tests", "held_out_baseline.json")
+SEED_TOKENS = 200000
 
 
-def entry_text(entry):
-    return entry if isinstance(entry, str) else json.dumps(entry)
+def read_baseline():
+    with open(BASELINE, encoding="utf-8") as handle:
+        return json.load(handle)
 
 
-def names_a_marker(entries, markers):
-    lowered = [marker.lower() for marker in markers]
-    return any(marker in entry_text(entry).lower() for entry in entries or [] for marker in lowered)
+def outcome(record):
+    return "{} {} run {}: verdict {}, met {}, {:.1f} minutes, ${:.2f}".format(
+        record["fixture"],
+        record["variant"],
+        record["run"],
+        e2e_harness.verdict_of(record),
+        record["met"],
+        record["minutes"],
+        record["dollars"],
+    )
+
+
+def totals(measured, baseline):
+    return [
+        "minutes {:.1f} against the baseline's {:.1f}".format(measured["minutes"], baseline["minutes"]),
+        "dollars {:.2f} against the baseline's {:.2f}".format(measured["dollars"], baseline["dollars"]),
+        "broken_green {} against the baseline's {}".format(measured["broken_green"], baseline["broken_green"]),
+        "met {} against the baseline's {}".format(json.dumps(measured["met"]), json.dumps(baseline["met"])),
+        "seed {}".format(json.dumps(measured["seed"])),
+    ]
 
 
 @unittest.skipUnless(e2e_harness.E2E, "end-to-end tests run only when LIGHTHOUSE_E2E=1")
 class HeldOutEndToEndTest(unittest.TestCase):
-    def assert_expected(self, line, expected, markers, broken, transcript):
-        self.assertIsNotNone(line, transcript)
-        verdict = line.get("verdict")
-        if broken:
-            self.assertNotEqual(verdict, "green", transcript)
-        if expected == "failures":
-            self.assertEqual(verdict, "failures", transcript)
-            self.assertTrue(names_a_marker(line.get("failures"), markers), transcript)
-        elif expected == "green":
-            self.assertEqual(verdict, "green", transcript)
-        else:
-            self.assertNotEqual(verdict, "green", transcript)
-            self.assertTrue(names_a_marker(line.get("unproven"), markers), transcript)
-
     def test_held_out_fixtures(self):
-        for fid in e2e_harness.fixture_ids():
-            fixture = e2e_harness.load(fid)
-            for variant in VARIANTS:
-                for run in range(1, RUNS + 1):
-                    with self.subTest(fixture=fid, variant=variant, run=run):
-                        built = e2e_harness.build(self, fid, variant)
-                        repo = built["repo"]
-                        before = checkout_state(repo)
-                        results = scratch.temporary_folder(self, "lh-e2e-results-")
-                        prompt = PROMPT.format(
-                            repo=repo, core=built["core"], feature=built["feature"], results=results
-                        )
-                        code, transcript = e2e_harness.run_claude(prompt, cwd=repo, env=built["env"])
-                        line = e2e_harness.last_json_line(transcript)
-                        report = "claude exit {}\n{}".format(code, transcript)
-                        self.assert_expected(
-                            line, fixture["expect"][variant], fixture["markers"], variant == "broken", report
-                        )
-                        self.assertEqual(checkout_state(repo), before, report)
+        self.assertTrue(os.path.isfile(BASELINE), "measure main first with python3 -m tests.measure_held_out")
+        baseline = read_baseline()
+        measured = e2e_harness.measured_pass(self, e2e_harness.held_out_cases())
+        for record in measured["cases"]:
+            print(outcome(record))
+        for line in totals(measured, baseline):
+            print(line)
+        for record in measured["cases"]:
+            with self.subTest(fixture=record["fixture"], variant=record["variant"], run=record["run"]):
+                self.assertIsNotNone(record["line"], record["transcript"])
+                self.assertEqual(record["after"], record["before"], record["transcript"])
+        self.assertGreaterEqual(sum(measured["seed"]["tokens"].values()), SEED_TOKENS, json.dumps(measured["seed"]))
+        self.assertEqual(e2e_harness.bar_problems(measured, baseline), [])
 
 
 if __name__ == "__main__":
