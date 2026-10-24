@@ -52,10 +52,14 @@ class MarkCall(NamedTuple):
     timestamp: datetime.datetime
 
 
-class MarkedFolder(NamedTuple):
+class MarkKey(NamedTuple):
     step: str
     build: Optional[str]
     path: Optional[str]
+
+
+class MarkedFolder(NamedTuple):
+    key: MarkKey
     folder: str
     time: datetime.datetime
 
@@ -366,7 +370,8 @@ def marked_folder(line: Dict[str, Any]) -> Optional[MarkedFolder]:
     if line.get("edge") != "start" or not isinstance(folder, str) or not isinstance(step, str) or moment is None:
         return None
     build, path = line.get("build"), line.get("path")
-    return MarkedFolder(step, build if isinstance(build, str) else None, path if isinstance(path, str) else None, folder, moment)
+    key = MarkKey(step, build if isinstance(build, str) else None, path if isinstance(path, str) else None)
+    return MarkedFolder(key, folder, moment)
 
 
 def read_marked_folders(results: str) -> List[MarkedFolder]:
@@ -385,7 +390,7 @@ def located(call: MarkCall, marked: List[MarkedFolder]) -> MarkCall:
     written = [
         folder
         for folder in marked
-        if (folder.step, folder.build, folder.path) == mark_key(call) and folder.time >= call.timestamp
+        if folder.key == mark_key(call) and folder.time >= call.timestamp
     ]
     earliest = min(written, key=lambda folder: folder.time, default=None)
     return call._replace(folder=earliest.folder if earliest is not None else None)
@@ -409,8 +414,8 @@ def span_of(key: Tuple[str, int], call: MarkCall, ended: datetime.datetime) -> S
     return Span(key, call.step, call.build, call.path, call.folder, call.timestamp, minutes)
 
 
-def mark_key(call: MarkCall) -> Tuple[str, Optional[str], Optional[str]]:
-    return call.step, call.build, call.path
+def mark_key(call: MarkCall) -> MarkKey:
+    return MarkKey(call.step, call.build, call.path)
 
 
 def read_marks(
