@@ -6,8 +6,8 @@ import shlex
 from typing import Any, Dict, Iterable, List, NamedTuple, Optional, Set, Tuple
 
 from lighthouse_tool import mark
-from lighthouse_tool.records import UnreadableLine, is_number, json_object, read_json_lines
-from lighthouse_tool.repo import Parser, Refusal, require_root
+from lighthouse_tool.records import is_number, json_object
+from lighthouse_tool.repo import Parser, Refusal, read_json_lines_or_refuse, require_root
 
 KINDS = ("input", "cache_write_5m", "cache_write_1h", "cache_read", "output")
 WRITE_KINDS = ("cache_write_5m", "cache_write_1h")
@@ -395,13 +395,7 @@ def mark_line(line: Dict[str, Any]) -> Optional[MarkLine]:
 
 def read_mark_lines(results: str) -> List[MarkLine]:
     path = os.path.join(results, mark.MARKS)
-    try:
-        lines = read_json_lines(path)
-    except OSError as error:
-        raise Refusal("cannot read {}: {}".format(path, error.strerror or error))
-    except UnreadableLine as unreadable:
-        raise Refusal("{}; repair or remove that line, then run lighthouse spend again".format(unreadable))
-    found = [mark_line(line) for line in lines]
+    found = [mark_line(line) for line in read_json_lines_or_refuse(path, "spend")]
     return [line for line in found if line is not None]
 
 

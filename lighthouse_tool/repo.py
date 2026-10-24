@@ -4,7 +4,7 @@ import os
 import subprocess
 from typing import Any, Dict, List, Optional, Tuple
 
-from lighthouse_tool.records import write_atomically
+from lighthouse_tool.records import UnreadableLine, read_json_lines, write_atomically
 
 GIT_ENVIRONMENT_OVERRIDES = {"GIT_TERMINAL_PROMPT": "0"}
 ANSWERS_FILE = "answers.json"
@@ -12,6 +12,15 @@ ANSWERS_FILE = "answers.json"
 
 class Refusal(Exception):
     pass
+
+
+def read_json_lines_or_refuse(path: str, command: str) -> List[Dict[str, Any]]:
+    try:
+        return read_json_lines(path)
+    except OSError as error:
+        raise Refusal("cannot read {}: {}".format(path, error.strerror or error))
+    except UnreadableLine as unreadable:
+        raise Refusal("{}; repair or remove that line, then run lighthouse {} again".format(unreadable, command))
 
 
 class Parser(argparse.ArgumentParser):
@@ -68,8 +77,11 @@ def ensure_state_dir(repo: str) -> Optional[str]:
     path = state_dir(repo)
     if path is None:
         return None
-    os.makedirs(path, mode=0o700, exist_ok=True)
-    os.chmod(path, 0o700)
+    try:
+        os.makedirs(path, mode=0o700, exist_ok=True)
+        os.chmod(path, 0o700)
+    except OSError as error:
+        raise Refusal("cannot create the state folder {}: {}".format(path, error.strerror or error))
     return path
 
 
