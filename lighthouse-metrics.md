@@ -1,6 +1,6 @@
 # lighthouse-metrics: Lighthouse metrics on the shared plugin-metrics store
 Status: active
-Updated: 2026-10-26T23:40:12.610Z
+Updated: 2026-10-26T23:40:15.086Z
 Next ids: c5 D1 R1 S1
 
 ## Goal
@@ -33,3 +33,5 @@ Invoke pipeline:run and carry the full lane through Stage 1, then interphase's i
 - Pipeline spec (format description until the writer lands): /Users/satanshumishra/Documents/DevLabs/pipeline/docs/specs/unified-metrics.md
 - Pipeline decisions with intent I1 to I6: /Users/satanshumishra/Documents/DevLabs/pipeline/docs/specs/unified-metrics.decisions.md
 - Run home: ~/.mitosis/lighthouse/lighthouse-metrics/
+- Spec, decisions, record, items: docs/specs/lighthouse-metrics.{md,decisions.md,record.json,items.json} in this checkout
+- Read-back note: the shared side-session notes folder, lighthouse-metrics-readback.md
