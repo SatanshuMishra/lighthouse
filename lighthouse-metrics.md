@@ -1,6 +1,6 @@
 # lighthouse-metrics: Lighthouse metrics on the shared plugin-metrics store
 Status: active
-Updated: 2026-10-26T23:41:56.440Z
+Updated: 2026-10-26T23:41:58.237Z
 Next ids: c5 D1 R1 S1
 
 ## Goal
@@ -35,3 +35,4 @@ Apply the spec reviewer's real findings, rerender and recheck, finish interphase
 - Run home: ~/.mitosis/lighthouse/lighthouse-metrics/
 - Spec, decisions, record, items: docs/specs/lighthouse-metrics.{md,decisions.md,record.json,items.json} in this checkout
 - Read-back note: the shared side-session notes folder, lighthouse-metrics-readback.md
+- Glossary and ADR: GLOSSARY.md and docs/adr/0009-the-launcher-records-each-run-in-the-shared-metrics-store.md
