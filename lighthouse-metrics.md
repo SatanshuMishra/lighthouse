@@ -1,6 +1,6 @@
 # lighthouse-metrics: Lighthouse metrics on the shared plugin-metrics store
 Status: active
-Updated: 2026-10-26T23:24:39.934Z
+Updated: 2026-10-26T23:25:05.508Z
 Next ids: c5 D1 R1 S1
 
 ## Goal
@@ -16,7 +16,7 @@ Lighthouse records metrics personalised to its purpose (proving a FEATURE branch
 
 ## Where things stand
 
-Not started.
+Stage 1 of the full lane: the checkout is current with origin/main, lighthouse readiness reports nothing open, and receipts.config.json is already committed, so no receipts set-up is needed. interphase's interview comes next, answered under the owner's delegation. The shared reference writer is not yet on origin/feat/unified-metrics or origin/main.
 
 ## Next step
 
