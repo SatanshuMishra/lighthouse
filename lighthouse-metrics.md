@@ -1,7 +1,7 @@
 # lighthouse-metrics: Lighthouse metrics on the shared plugin-metrics store
 Status: active
-Updated: 2026-10-26T23:54:49.158Z
-Next ids: c5 D2 R1 S1
+Updated: 2026-10-26T23:54:58.555Z
+Next ids: c5 D2 R3 S1
 
 ## Goal
 
@@ -9,9 +9,9 @@ Lighthouse records metrics personalised to its purpose (proving a FEATURE branch
 
 ## Done when
 
-- [ ] c1 The spec, decisions file, record and items for lighthouse-metrics are in docs/specs/ and the read-back is approved under the owner's delegation
-- [ ] c2 The FEATURE branch is pushed and the run home ~/.mitosis/lighthouse/lighthouse-metrics/ holds CHARTER.md, worker-rules.txt, dispatch.zsh and run.zsh, with accept.zsh in the repository
-- [ ] c3 run.zsh --plan-only passes with no fatal finding
+- [x] c1 The spec, decisions file, record and items for lighthouse-metrics are in docs/specs/ and the read-back is approved under the owner's delegation evidence: docs/specs/lighthouse-metrics.{md,decisions.md,record.json,items.json} exist; check_record --complete, check_spec and check_items exit 0; record status handed-off; read-back approved under the owner's delegation and recorded in the decisions file
+- [x] c2 The FEATURE branch is pushed and the run home ~/.mitosis/lighthouse/lighthouse-metrics/ holds CHARTER.md, worker-rules.txt, dispatch.zsh and run.zsh, with accept.zsh in the repository evidence: feat/lighthouse-metrics pushed to origin at e09b805; run home holds CHARTER.md, worker-rules.txt, dispatch.zsh, run.zsh, graph.json, items.json and feature.json; acceptance uses ~/.mitosis/lighthouse/accept.zsh
+- [x] c3 run.zsh --plan-only passes with no fatal finding evidence: run.zsh --plan-only exit 0 (plan-3.log): 10 Steps, 7 lanes, 3 MSPs metrics-foundation, run-records, ledger-import; lane_cycles 0, no fatal finding, empty attention list
 - [ ] c4 The build runs once the shared reference writer exists on origin/feat/unified-metrics or origin/main, and the rest of pipeline:run reaches the last pull request
 
 ## Where things stand
@@ -20,13 +20,18 @@ interphase Phase 9: the spec, record and items pass their checks (21 criteria, 8
 
 ## Next step
 
-Apply the spec reviewer's real findings, rerender and recheck, finish interphase Phase 10 (guard verify, record handed-off), copy the items file to the run home, and run ~/.mitosis/lighthouse/lighthouse-metrics/run.zsh --plan-only until it has no fatal finding.
+Once the shared writer lands, build. In /Users/satanshumishra/Documents/DevLabs/pipeline run: git fetch -q origin && git ls-tree --name-only origin/feat/unified-metrics -- pipeline_tool/metrics_writer.py metrics/metrics-writer.ts docs/metrics-format.md, and the same for origin/main. When either prints paths, set the "- Writer source:" line of ~/.mitosis/lighthouse/lighthouse-metrics/CHARTER.md to that ref (feat/unified-metrics wins when both hold them), resume_thread lighthouse-metrics, run ~/.mitosis/lighthouse/lighthouse-metrics/run.zsh, then follow pipeline:run (review, validate, fix pass, ship with SHIP=1 after the ship boundary is recorded) to the last pull request. Commit GLOSSARY.md and docs/adr/0009 with the first pull request as Ship says.
+
+Needs: D1.
 
 ## Decisions in force
 
 - D1 interphase hand-off: build lighthouse-metrics once the shared writer lands: Hand off now. The first build waits until the dependency check in the pipeline checkout prints the writer paths on origin/feat/unified-metrics or origin/main; then the CHARTER's Writer source names that ref, run.zsh runs, and pipeline:run continues to the last pull request.
 
 ## Open risks
+
+- R1 The parallel spec lighthouse-proves-changes in this checkout also owns GLOSSARY.md and docs/adr and may change suite, launch and verdict; whichever merges second must rebase the other's glossary and ADR numbering and recheck run-record's launch.py and ledger-retired's verdict.py edits. Bears on c4.
+- R2 5.18 (a fresh session answering from the store) and 5.20 (the live import, including macOS Trash access) are unproven until run by hand after merge. Bears on c4.
 
 ## Settled, do not reopen
 
