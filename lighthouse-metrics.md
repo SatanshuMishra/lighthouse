@@ -1,7 +1,7 @@
 # lighthouse-metrics: Lighthouse metrics on the shared plugin-metrics store
 Status: active
-Updated: 2026-10-26T23:41:58.237Z
-Next ids: c5 D1 R1 S1
+Updated: 2026-10-26T23:54:49.158Z
+Next ids: c5 D2 R1 S1
 
 ## Goal
 
@@ -23,6 +23,8 @@ interphase Phase 9: the spec, record and items pass their checks (21 criteria, 8
 Apply the spec reviewer's real findings, rerender and recheck, finish interphase Phase 10 (guard verify, record handed-off), copy the items file to the run home, and run ~/.mitosis/lighthouse/lighthouse-metrics/run.zsh --plan-only until it has no fatal finding.
 
 ## Decisions in force
+
+- D1 interphase hand-off: build lighthouse-metrics once the shared writer lands: Hand off now. The first build waits until the dependency check in the pipeline checkout prints the writer paths on origin/feat/unified-metrics or origin/main; then the CHARTER's Writer source names that ref, run.zsh runs, and pipeline:run continues to the last pull request.
 
 ## Open risks
 
