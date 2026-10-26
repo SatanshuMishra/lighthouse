@@ -1,6 +1,6 @@
 # lighthouse-proves-changes: Make lighthouse fast and able to prove the changes it tests
 Status: active
-Updated: 2026-10-26T23:04:21.798Z
+Updated: 2026-10-26T23:04:24.524Z
 Next ids: c1 D1 R1 S1
 
 ## Goal
@@ -27,3 +27,4 @@ Write the owner's intent-round answers to the decisions file as I1 to I4, then a
 
 - Report: /private/tmp/claude-501/-Users-satanshumishra-Documents-DevLabs-lighthouse/3d733df8-fcfb-4ce9-b615-284ae9b37216/scratchpad/lighthouse-investigation-report.md
 - Lane: full, run through pipeline:run 0.10.0
+- Interview files: docs/specs/lighthouse-proves-changes.decisions.md (intent and decisions), .record.json (seams, criteria, Steps), .guard.json (tree guard snapshot), in the lighthouse repository
