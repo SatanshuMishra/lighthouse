@@ -1,6 +1,6 @@
 # lighthouse-metrics: Lighthouse metrics on the shared plugin-metrics store
 Status: active
-Updated: 2026-10-26T23:40:15.086Z
+Updated: 2026-10-26T23:41:56.440Z
 Next ids: c5 D1 R1 S1
 
 ## Goal
@@ -16,11 +16,11 @@ Lighthouse records metrics personalised to its purpose (proving a FEATURE branch
 
 ## Where things stand
 
-interphase Phase 9: the interview is done under the owner's delegation, the read-back approved, and the spec, record and items render and pass their checks (21 criteria, 8 Steps, 3 MSPs). One spec-reviewer pass is running; Phase 10 (glossary, ADR, guard verify, hand-off) follows it. Readiness had nothing open and receipts.config.json is already committed, so Stage 2 needs no receipts commit. The shared reference writer is not yet on origin/feat/unified-metrics or origin/main.
+interphase Phase 9: the spec, record and items pass their checks (21 criteria, 8 Steps, 3 MSPs); one spec-reviewer pass is running. The glossary terms and ADR 0009 are written, uncommitted. The FEATURE branch feat/lighthouse-metrics is pushed at main's tip, and the run home holds CHARTER.md, worker-rules.txt, dispatch.zsh, run.zsh and graph.json; items.json is copied after the review fixes. No receipts commit is needed (receipts.config.json is committed). The shared reference writer is not yet on origin/feat/unified-metrics or origin/main.
 
 ## Next step
 
-Invoke pipeline:run and carry the full lane through Stage 1, then interphase's interview with the owner's delegated answers.
+Apply the spec reviewer's real findings, rerender and recheck, finish interphase Phase 10 (guard verify, record handed-off), copy the items file to the run home, and run ~/.mitosis/lighthouse/lighthouse-metrics/run.zsh --plan-only until it has no fatal finding.
 
 ## Decisions in force
 
