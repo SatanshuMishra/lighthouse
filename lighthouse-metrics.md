@@ -1,6 +1,6 @@
 # lighthouse-metrics: Lighthouse metrics on the shared plugin-metrics store
 Status: active
-Updated: 2026-10-26T23:25:09.483Z
+Updated: 2026-10-26T23:40:12.610Z
 Next ids: c5 D1 R1 S1
 
 ## Goal
@@ -16,7 +16,7 @@ Lighthouse records metrics personalised to its purpose (proving a FEATURE branch
 
 ## Where things stand
 
-Stage 1 of the full lane: the checkout is current with origin/main, lighthouse readiness reports nothing open, and receipts.config.json is already committed, so no receipts set-up is needed. interphase's interview comes next, answered under the owner's delegation. The shared reference writer is not yet on origin/feat/unified-metrics or origin/main.
+interphase Phase 9: the interview is done under the owner's delegation, the read-back approved, and the spec, record and items render and pass their checks (21 criteria, 8 Steps, 3 MSPs). One spec-reviewer pass is running; Phase 10 (glossary, ADR, guard verify, hand-off) follows it. Readiness had nothing open and receipts.config.json is already committed, so Stage 2 needs no receipts commit. The shared reference writer is not yet on origin/feat/unified-metrics or origin/main.
 
 ## Next step
 
