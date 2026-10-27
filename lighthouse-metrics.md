@@ -1,6 +1,6 @@
 # lighthouse-metrics: Lighthouse metrics on the shared plugin-metrics store
 Status: parked
-Updated: 2026-10-27T08:47:40.452Z
+Updated: 2026-10-27T08:49:38.200Z
 Next ids: c5 D3 R3 S1
 
 ## Goal
@@ -16,7 +16,7 @@ Lighthouse records metrics personalised to its purpose (proving a FEATURE branch
 
 ## Where things stand
 
-metrics-foundation is green at f2cd5d1 (glossary terms and ADR 0009 committed there) with its pull request comment written. ledger-import is green at round 2, head f5ea0ec. run-records (head 0f7588e) is in round 2 with verdict diagnose: blocker C1, kind previous results deleted (launch deletes an earlier run's evidence when --results equals --previous), has its diagnosis running; C2, the duplicated without-parent comprehension, is an advisory. No MSP has a slow check. test_launch_records_cost_and_priority fails only under a background shell at nice 5, the same on the base, so it is not a finding.
+metrics-foundation is green at f2cd5d1 (glossary terms and ADR 0009 committed there) with its pull request comment written. ledger-import is green at round 2, head f5ea0ec. run-records (head 0f7588e) is in round 2 with verdict diagnose: blocker C1, kind previous results deleted (launch deletes an earlier run's evidence when --results equals --previous), is diagnosed fixable (launch refuses that pair before clearing) and its red receipt is committed as 966b5dd; C2, the duplicated without-parent comprehension, is an advisory. No MSP has a slow check. test_launch_records_cost_and_priority fails only under a background shell at nice 5, the same on the base, so it is not a finding.
 
 ## Next step
 
