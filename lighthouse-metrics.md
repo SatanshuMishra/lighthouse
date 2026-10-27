@@ -1,6 +1,6 @@
 # lighthouse-metrics: Lighthouse metrics on the shared plugin-metrics store
 Status: parked
-Updated: 2026-10-27T10:04:15.458Z
+Updated: 2026-10-27T10:40:29.116Z
 Next ids: c5 D4 R3 S3
 
 ## Goal
@@ -16,7 +16,7 @@ Lighthouse records metrics personalised to its purpose (proving a FEATURE branch
 
 ## Where things stand
 
-Integration: every MSP is merged into feat/lighthouse-metrics (de02ffc, through the catch-up pull request #17) and pipeline integration-ready passes. Lighthouse run 1 (lighthouse launch, results in lighthouse/run-1 under the run home) is running. test_launch_records_cost_and_priority fails only under a background shell at nice 5, the same on the base, so it is not a finding.
+Integration: every MSP is merged into feat/lighthouse-metrics (de02ffc, through the catch-up pull request #17) and pipeline integration-ready passes. Lighthouse run 1 (results in lighthouse/run-1 under the run home) ended blocked with no verdict: both suites passed, then the child session ended its turn while its lighthouse:driver agents still ran in the background. That cause is recorded as integration round 1 finding U1 (kind failing test, verdict diagnose), and its diagnosis is running against the integration worktree ~/.mitosis/runs/lighthouse/lighthouse-metrics/integration at 839983e, the FEATURE tip after run 1's profile commit. test_launch_records_cost_and_priority fails only under a background shell at nice 5, the same on the base, so it is not a finding.
 
 ## Next step
 
