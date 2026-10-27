@@ -86,6 +86,7 @@ def run(argv: List[str]) -> Outcome:
     cleared = None
     try:
         if located.results is not None:
+            refuse_previous_as_results(located)
             clear_earlier_run(located.results)
             cleared = located.results
         options = parser().parse_args(argv[1:])
@@ -110,6 +111,12 @@ def refusal_reason(problem: Exception) -> str:
     if isinstance(problem, OSError):
         return "cannot use {}: {}".format(problem.filename or "the results folder", problem.strerror or problem)
     return str(problem)
+
+
+def refuse_previous_as_results(located: Located) -> None:
+    previous = located.options.previous if located.options is not None else None
+    if previous is not None and os.path.realpath(previous) == located.results:
+        raise Refusal("the --previous and --results folders must differ; give the new run its own results folder")
 
 
 def clear_earlier_run(results: str) -> None:
@@ -159,8 +166,7 @@ def launch(options: argparse.Namespace, recording: Optional[run_record.Recording
 
 
 def child_environment(results: str) -> Dict[str, str]:
-    kept = {name: value for name, value in os.environ.items() if name != metrics_writer.PARENT_VARIABLE}
-    return {**kept, metrics_writer.ROOT_VARIABLE: os.path.join(results, CHILD_STORE)}
+    return {**run_record.environment_without_parent(), metrics_writer.ROOT_VARIABLE: os.path.join(results, CHILD_STORE)}
 
 
 def test_flags(options: argparse.Namespace) -> List[str]:

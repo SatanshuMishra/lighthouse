@@ -196,6 +196,11 @@ def files_in(folder):
     return sorted(os.listdir(folder)) if os.path.isdir(folder) else []
 
 
+def read_bytes(path):
+    with open(path, "rb") as handle:
+        return handle.read()
+
+
 def read_json(path):
     with open(path, encoding="utf-8") as handle:
         return json.load(handle)
@@ -679,6 +684,32 @@ class RunRecordTest(unittest.TestCase):
         for key in ("steps", "drives", "shared"):
             with self.subTest(rerun="earlier cut marks", key=key):
                 self.assertIsNotNone(latest[key])
+
+    def test_launch_refuses_previous_naming_the_results_folder(self):
+        first = green_run(self)
+        self.assertEqual(first.code, 0, first.stderr)
+        alias = os.path.join(scratch.temporary_folder(self, "lh-alias-"), "results")
+        os.symlink(first.results, alias)
+        sources = {name: read_bytes(os.path.join(first.results, name)) for name in run_record.RESULTS_SOURCES}
+        calls = read_bytes(os.path.join(first.stubs, "claude-calls.jsonl"))
+        environment = {**scratch.environment(first.home, first.stubs), "PLUGIN_METRICS_DIR": first.store}
+        spellings = {"same path": first.results, "trailing slash": first.results + os.sep, "symlink": alias}
+        shapes = {
+            "full flags": lambda previous: launch_flags(first.repo, first.results, extra=["--previous", previous]),
+            "missing core": lambda previous: ["--repo", first.repo, "--feature", "feat/x", "--results", first.results, "--previous", previous],
+        }
+        for spelling, previous in spellings.items():
+            for shape, flags in shapes.items():
+                with self.subTest(spelling=spelling, shape=shape):
+                    code, _, stderr = scratch.run_lighthouse(["launch", *flags(previous)], environment)
+                    self.assertEqual(code, 2)
+                    self.assertIn("--previous", stderr)
+                    self.assertEqual({name: read_bytes(os.path.join(first.results, name)) for name in sources}, sources)
+                    self.assertEqual(read_bytes(os.path.join(first.stubs, "claude-calls.jsonl")), calls)
+                    latest = newest_summary(first.store)
+                    self.assertEqual(latest["verdict"], "blocked")
+                    self.assertIn("--previous", latest["reason"])
+                    self.assertIsNone(latest["child_exit"])
 
     def test_malformed_parent_is_left_out(self):
         for parent in ("<plugin>/<run>", "../../x' OR 1=1 --", "pipeline/" + "a" * 5000):
