@@ -1,6 +1,6 @@
 # lighthouse-metrics: Lighthouse metrics on the shared plugin-metrics store
 Status: parked
-Updated: 2026-10-27T11:42:22.407Z
+Updated: 2026-10-27T19:04:17.479Z
 Next ids: c5 D4 R3 S3
 
 ## Goal
@@ -16,13 +16,13 @@ Lighthouse records metrics personalised to its purpose (proving a FEATURE branch
 
 ## Where things stand
 
-Integration: every MSP is merged into feat/lighthouse-metrics (de02ffc, through the catch-up pull request #17) and pipeline integration-ready passes. Integration is green: lighthouse run 2 proved 31 paths with none failed, unproven or flaky (49 minutes, 31.50 dollars), and opened the FEATURE pull request SatanshuMishra/lighthouse#18 into main, ready and assigned, with its GitHub checks running. Lighthouse run 1 ended blocked with no verdict: both suites passed, then the child session ended its turn while its lighthouse:driver agents still ran in the background. That cause is integration round 1 finding U1 (kind failing test), diagnosed fixable: the test skill never told the child to run drivers in the foreground. The integration worktree ~/.mitosis/runs/lighthouse/lighthouse-metrics/integration holds its receipt (ce1bd3a) and fix (3643dc1), pushed to feat/lighthouse-metrics with the full suite passing (332 tests). Lighthouse run 2 (--previous run-1) is running. The pipeline runs the installed lighthouse 0.3.0, which keeps the old skill text until lighthouse is reinstalled from this branch, so run 2 may stop the same way. test_launch_records_cost_and_priority fails only under a background shell at nice 5, the same on the base, so it is not a finding.
+Clean-up is done: #18 merged into main (292bb73), the run report is saved at ~/.mitosis/lighthouse/reports/lighthouse-metrics.json, and pipeline clean removed every worktree, branch, run folder and untracked spec file, keeping nothing. The live import ran once from main: 23 runs from 11 ledgers are in the store, each passing the shared check, and the 11 ledgers are in ~/.Trash as runs.jsonl and runs 2 to 13.jsonl. It refused ~/.lighthouse/.windful-ocean/runs.jsonl, left in place, because the store rejects a repo name starting with a dot. The store has no lighthouse catalogue until a reinstalled lighthouse launch runs once.
 
 ## Next step
 
-The user starts Clean-up by saying SatanshuMishra/lighthouse#18 merged; then resume this thread and run pipeline:run's Clean-up (pipeline metrics --save, pipeline clean, close or park).
+Close this thread; the .windful-ocean ledger and the reinstall are follow-ups outside it.
 
-Needs: R1, R2.
+Needs: R1.
 
 ## Decisions in force
 
