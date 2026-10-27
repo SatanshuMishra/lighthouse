@@ -1,6 +1,6 @@
 # lighthouse-metrics: Lighthouse metrics on the shared plugin-metrics store
 Status: parked
-Updated: 2026-10-27T09:00:28.035Z
+Updated: 2026-10-27T09:00:40.244Z
 Next ids: c5 D3 R3 S1
 
 ## Goal
@@ -20,7 +20,7 @@ metrics-foundation is green at f2cd5d1 (glossary terms and ADR 0009 committed th
 
 ## Next step
 
-Check the ledger-import suite at f6cf26e, then validate and record run-records' round 3 when its reviewers finish. Then ship the three MSP pull requests in stack order per pipeline:run.
+Check the ledger-import suite at f6cf26e; when the validator finishes, record run-records' round 3 and fix what it confirms. Then ship the three MSP pull requests in stack order per pipeline:run.
 
 Needs: D2, R1.
 
