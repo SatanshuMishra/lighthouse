@@ -1,6 +1,6 @@
 # lighthouse-metrics: Lighthouse metrics on the shared plugin-metrics store
 Status: parked
-Updated: 2026-10-27T09:05:30.056Z
+Updated: 2026-10-27T09:05:31.945Z
 Next ids: c5 D4 R3 S2
 
 ## Goal
@@ -20,9 +20,9 @@ All three MSPs are green: metrics-foundation at f2cd5d1 (carries the glossary te
 
 ## Next step
 
-When the ship run ends with every MSP pushed, open the three MSP pull requests in stack order through the GitHub MCP with mitosis's title and body, assign them and post each saved comment.
+The user starts Integration by saying the MSP pull requests merged: #16 into mitosis/run-records first, then #15 into mitosis/metrics-foundation, then #14 into feat/lighthouse-metrics; then resume this thread and run pipeline:run's Integration.
 
-Needs: D3, R1.
+Needs: D3, R1, R2.
 
 ## Decisions in force
 
