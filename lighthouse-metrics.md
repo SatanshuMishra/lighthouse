@@ -1,6 +1,6 @@
 # lighthouse-metrics: Lighthouse metrics on the shared plugin-metrics store
 Status: parked
-Updated: 2026-10-27T08:47:38.202Z
+Updated: 2026-10-27T08:47:40.452Z
 Next ids: c5 D3 R3 S1
 
 ## Goal
@@ -43,3 +43,4 @@ Needs: D2, R1.
 - Spec, decisions, record, items: docs/specs/lighthouse-metrics.{md,decisions.md,record.json,items.json} in this checkout
 - Read-back note: the shared side-session notes folder, lighthouse-metrics-readback.md
 - Glossary and ADR: GLOSSARY.md and docs/adr/0009-the-launcher-records-each-run-in-the-shared-metrics-store.md
+- Review rounds (diffs, briefs, suite output, findings, verdicts, diagnoses, comments): review/ in the run home
