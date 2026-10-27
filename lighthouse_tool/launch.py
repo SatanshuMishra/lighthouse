@@ -8,22 +8,23 @@ import sys
 import time
 from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
-from lighthouse_tool import suite, verdict
-from lighthouse_tool.records import is_number, utc_now, write_atomically
-from lighthouse_tool.repo import Parser, Refusal, repository_folder, require_root, toplevel
+from lighthouse_tool import metrics_writer, run_record, suite, verdict
+from lighthouse_tool.records import is_number, write_atomically
+from lighthouse_tool.repo import Parser, Refusal, require_root, toplevel
 
 Outcome = Tuple[int, Optional[str], Optional[str]]
 PLUGIN_ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 WORK = "work"
 CHILD = "child.json"
 LAUNCH = "launch.json"
-EARLIER_RUN_FILES = (LAUNCH, CHILD)
+EARLIER_RUN_FILES = (LAUNCH, CHILD, *run_record.RESULTS_SOURCES)
 CAFFEINATE = "caffeinate"
 SYSTEMD_INHIBIT = "systemd-inhibit"
 NO_KEEP_AWAKE = "none"
 DARWIN_PROCESS_SELECTOR = 4
 KEEP_AWAKE_GRACE_SECONDS = 5
 PATH_FLAGS = ("repo", "results", "previous", "spec")
+CHILD_STORE = "plugin-metrics"
 
 
 class ChildRun(NamedTuple):
@@ -39,34 +40,37 @@ def parser() -> Parser:
         arguments.add_argument(flag, required=True)
     arguments.add_argument("--previous")
     arguments.add_argument("--spec")
+    arguments.add_argument("--parent")
     arguments.add_argument("--final", action="store_true")
     return arguments
 
 
 def located_parser() -> Parser:
     arguments = Parser(prog="lighthouse launch", add_help=False)
-    arguments.add_argument("--repo")
-    arguments.add_argument("--results")
+    for flag in ("--repo", "--core", "--feature", "--results", "--previous", "--spec", "--parent"):
+        arguments.add_argument(flag)
+    arguments.add_argument("--final", action="store_true")
     return arguments
 
 
 class Located(NamedTuple):
     root: Optional[str]
     results: Optional[str]
+    options: Optional[argparse.Namespace]
 
 
 def located_run(arguments: List[str]) -> Located:
     try:
         located, _ = located_parser().parse_known_args(arguments)
     except Refusal:
-        return Located(None, None)
+        return Located(None, None, None)
     root = toplevel(located.repo) if located.repo is not None else None
     if located.results is None:
-        return Located(root, None)
+        return Located(root, None, located)
     guarded = root if root is not None else enclosing_checkout(located.results)
     if guarded is not None and suite.is_inside(guarded, located.results):
-        return Located(root, None)
-    return Located(root, os.path.realpath(located.results))
+        return Located(root, None, located)
+    return Located(root, os.path.realpath(located.results), located)
 
 
 def enclosing_checkout(path: str) -> Optional[str]:
@@ -78,22 +82,41 @@ def enclosing_checkout(path: str) -> Optional[str]:
 
 def run(argv: List[str]) -> Outcome:
     located = located_run(argv[1:])
+    recording = run_record.begun(located.root, located.options)
+    cleared = None
     try:
         if located.results is not None:
+            refuse_previous_as_results(located)
             clear_earlier_run(located.results)
+            cleared = located.results
         options = parser().parse_args(argv[1:])
-        return launch(options)
+        return launch(options, recording)
     except (Refusal, OSError) as problem:
         reason = refusal_reason(problem)
-        if located.results is not None:
-            leave_blocked_line(located.root, located.results, reason)
-        return 2, json.dumps({"error": reason}), "lighthouse launch: {}".format(reason)
+        ending = run_record.Ending(blocked_text(reason), reason, None, None)
+        return refused(located.results, reason, run_record.finished(recording, cleared, ending))
+
+
+def refused(results: Optional[str], reason: str, warnings: Tuple[str, ...]) -> Outcome:
+    if results is not None:
+        leave_blocked_line(results, reason)
+    return 2, json.dumps({"error": reason}), with_warnings("lighthouse launch: {}".format(reason), warnings)
+
+
+def with_warnings(told: str, warnings: Tuple[str, ...]) -> str:
+    return "\n".join((told, *warnings))
 
 
 def refusal_reason(problem: Exception) -> str:
     if isinstance(problem, OSError):
         return "cannot use {}: {}".format(problem.filename or "the results folder", problem.strerror or problem)
     return str(problem)
+
+
+def refuse_previous_as_results(located: Located) -> None:
+    previous = located.options.previous if located.options is not None else None
+    if previous is not None and os.path.realpath(previous) == located.results:
+        raise Refusal("the --previous and --results folders must differ; give the new run its own results folder")
 
 
 def clear_earlier_run(results: str) -> None:
@@ -107,21 +130,15 @@ def clear_earlier_run(results: str) -> None:
             raise Refusal("cannot clear {} from an earlier run: {}".format(path, error.strerror or error))
 
 
-def leave_blocked_line(root: Optional[str], results: str, reason: str) -> None:
+def leave_blocked_line(results: str, reason: str) -> None:
     try:
         os.makedirs(results, exist_ok=True)
         write_text(os.path.join(results, LAUNCH), blocked_text(reason) + "\n")
     except (OSError, Refusal):
         pass
-    if root is not None:
-        refused = {"cost": {}, "minutes": 0, "keep_awake": NO_KEEP_AWAKE, "priority": priority()}
-        try:
-            verdict.append_ledger(root, launch_record(root, results, refused, "blocked", reason))
-        except Refusal:
-            pass
 
 
-def launch(options: argparse.Namespace) -> Outcome:
+def launch(options: argparse.Namespace, recording: Optional[run_record.Recording]) -> Outcome:
     root = require_root(options.repo)
     if suite.is_inside(root, options.results):
         raise Refusal(
@@ -131,21 +148,25 @@ def launch(options: argparse.Namespace) -> Outcome:
     os.makedirs(work, exist_ok=True)
     results = os.path.realpath(options.results)
     keep_awake = keep_awake_tool()
-    child = run_child(child_command(options), work, keep_awake)
+    child = run_child(child_command(options), work, keep_awake, child_environment(results))
     output = parsed_output(child.stdout)
     record = child_record(child, output, keep_awake)
     write_json(os.path.join(results, CHILD), record)
     line = verdict_text(output)
     reason = None if line is not None else blocked_reason(child, output)
     printed = line if line is not None else blocked_text(reason)
-    write_text(os.path.join(results, LAUNCH), printed + "\n")
+    warnings = run_record.finished(recording, results, run_record.Ending(printed, reason, child.exit, record["session_id"]))
+    try:
+        write_text(os.path.join(results, LAUNCH), printed + "\n")
+    except Refusal as problem:
+        return refused(results, str(problem), warnings)
     summary = "lighthouse launch: the child exited {}".format(child.exit)
     told = summary if reason is None else "{}; blocked: {}".format(summary, reason)
-    try:
-        verdict.append_ledger(root, launch_record(root, results, record, json.loads(printed)["verdict"], reason))
-    except Refusal as problem:
-        return 2, printed, "{}; the run is not in the ledger: {}".format(told, problem)
-    return 0, printed, told
+    return 0, printed, with_warnings(told, warnings)
+
+
+def child_environment(results: str) -> Dict[str, str]:
+    return {**run_record.environment_without_parent(), metrics_writer.ROOT_VARIABLE: os.path.join(results, CHILD_STORE)}
 
 
 def test_flags(options: argparse.Namespace) -> List[str]:
@@ -197,12 +218,13 @@ def wrapped(command: List[str], keep_awake: str) -> List[str]:
     return command
 
 
-def run_child(command: List[str], work: str, keep_awake: str) -> ChildRun:
+def run_child(command: List[str], work: str, keep_awake: str, environment: Dict[str, str]) -> ChildRun:
     started = time.monotonic()
     try:
         process = subprocess.Popen(
             wrapped(command, keep_awake),
             cwd=work,
+            env=environment,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -314,23 +336,6 @@ def blocked_reason(child: ChildRun, output: Optional[Dict[str, Any]]) -> str:
 def blocked_text(reason: str) -> str:
     _, line, _ = verdict.blocked_line(reason)
     return line or ""
-
-
-def launch_record(
-    root: str, results: str, record: Dict[str, Any], outcome: str, reason: Optional[str]
-) -> Dict[str, Any]:
-    return {
-        "run": results,
-        "kind": "launch",
-        "time": utc_now(),
-        "repo": repository_folder(root),
-        "cost": record["cost"],
-        "minutes": record["minutes"],
-        "keep_awake": record["keep_awake"],
-        "priority": record["priority"],
-        "verdict": outcome,
-        "reason": reason,
-    }
 
 
 def write_json(path: str, value: Dict[str, Any]) -> None:
