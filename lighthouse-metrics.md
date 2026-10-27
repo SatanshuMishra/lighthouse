@@ -1,6 +1,6 @@
 # lighthouse-metrics: Lighthouse metrics on the shared plugin-metrics store
 Status: parked
-Updated: 2026-10-27T10:49:33.125Z
+Updated: 2026-10-27T10:49:36.172Z
 Next ids: c5 D4 R3 S3
 
 ## Goal
@@ -20,7 +20,7 @@ Integration: every MSP is merged into feat/lighthouse-metrics (de02ffc, through 
 
 ## Next step
 
-When the integration suite passes, push feat/lighthouse-metrics from the integration worktree and start lighthouse run 2 with --previous run-1; when a blocked verdict persists after a fix round, rerun with --final so the FEATURE pull request into main opens naming what is blocked. The owner expects every pull request into main open, so never stop for the owner; message the parent session with any cause only the owner can resolve. A weekly usage limit that stops a run means park with the rerun as the next step.
+When lighthouse run 2 writes lighthouse/run-2/launch.json, read its verdict: on failures record and fix them as in round 1, then run 3 with --previous run-2; on unproven rerun once with --final; on green the FEATURE pull request opens; when a blocked verdict persists after a fix round, rerun with --final so the FEATURE pull request into main opens naming what is blocked. The owner expects every pull request into main open, so never stop for the owner; message the parent session with any cause only the owner can resolve. A weekly usage limit that stops a run means park with the rerun as the next step.
 
 Needs: R1, R2.
 
