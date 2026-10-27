@@ -1,7 +1,7 @@
 # lighthouse-metrics: Lighthouse metrics on the shared plugin-metrics store
 Status: parked
-Updated: 2026-10-27T10:03:51.634Z
-Next ids: c5 D4 R3 S2
+Updated: 2026-10-27T10:04:15.458Z
+Next ids: c5 D4 R3 S3
 
 ## Goal
 
@@ -26,7 +26,6 @@ Needs: R1, R2.
 
 ## Decisions in force
 
-- D3 ship boundary: ship the three lighthouse-metrics MSP pull requests: Ship now: SHIP=1 run.zsh --resume with --proven-head metrics-foundation=f2cd5d1 and run-records=10a4ad0, then open the three pull requests in stack order through the GitHub MCP, assign them and post the comments.
 
 ## Open risks
 
@@ -36,6 +35,7 @@ Needs: R1, R2.
 ## Settled, do not reopen
 
 - S1 The first build ran from the shared writer at a39ab11, byte-identical on the pipeline's origin/main.
+- S2 The three MSPs shipped as #14, #15 and #16 and reached feat/lighthouse-metrics through the catch-up pull request #17.
 
 ## Where the details live
 
