@@ -90,8 +90,12 @@ def well_formed_parent(parent: str) -> bool:
     )
 
 
+def environment_without_parent() -> Dict[str, str]:
+    return {name: value for name, value in os.environ.items() if name != metrics_writer.PARENT_VARIABLE}
+
+
 def writer_environment(parent: Optional[str]) -> Mapping[str, str]:
-    kept = {name: value for name, value in os.environ.items() if name != metrics_writer.PARENT_VARIABLE}
+    kept = environment_without_parent()
     return {**kept, metrics_writer.PARENT_VARIABLE: parent} if parent is not None else kept
 
 
