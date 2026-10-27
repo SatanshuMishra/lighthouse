@@ -1,6 +1,6 @@
 # lighthouse-metrics: Lighthouse metrics on the shared plugin-metrics store
 Status: parked
-Updated: 2026-10-27T09:03:34.381Z
+Updated: 2026-10-27T09:03:51.606Z
 Next ids: c5 D4 R3 S1
 
 ## Goal
@@ -16,11 +16,11 @@ Lighthouse records metrics personalised to its purpose (proving a FEATURE branch
 
 ## Where things stand
 
-metrics-foundation is green at f2cd5d1 (glossary terms and ADR 0009 committed there) with its pull request comment written. ledger-import, green at round 2, now has run-records merged in at f6cf26e, where its suite passes (331 tests). run-records is green at round 3, head 10a4ad0 (314 tests). Every MSP's pull request comment is written and promote added no kinds; the ship run (SHIP=1 run.zsh --resume, log ship-1.log in the run home) is pushing the three branches. No MSP has a slow check. test_launch_records_cost_and_priority fails only under a background shell at nice 5, the same on the base, so it is not a finding.
+All three MSPs are green: metrics-foundation at f2cd5d1 (carries the glossary terms and ADR 0009), run-records at 10a4ad0, and ledger-import at f6cf26e with run-records merged in (suite passes). Each MSP's pull request comment is in review/ in the run home. The ship run is pushing the three branches, logging to ship-1.log in the run home. test_launch_records_cost_and_priority fails only under a background shell at nice 5, the same on the base, so it is not a finding.
 
 ## Next step
 
-Run SHIP=1 ~/.mitosis/lighthouse/lighthouse-metrics/run.zsh --resume --proven-head metrics-foundation=f2cd5d1 --proven-head run-records=10a4ad0, then open the three MSP pull requests in stack order through the GitHub MCP with mitosis's title and body, assign them and post each saved comment.
+When the ship run ends with every MSP pushed, open the three MSP pull requests in stack order through the GitHub MCP with mitosis's title and body, assign them and post each saved comment.
 
 Needs: D3, R1.
 
