@@ -1,6 +1,6 @@
 # lighthouse-metrics: Lighthouse metrics on the shared plugin-metrics store
 Status: parked
-Updated: 2026-10-27T09:18:24.190Z
+Updated: 2026-10-27T09:18:26.996Z
 Next ids: c5 D4 R3 S2
 
 ## Goal
@@ -20,9 +20,9 @@ Lighthouse records metrics personalised to its purpose (proving a FEATURE branch
 
 ## Next step
 
-The user starts Integration by saying the MSP pull requests merged: #16 into mitosis/run-records first, then #15 into mitosis/metrics-foundation, then #14 into feat/lighthouse-metrics; then resume this thread and run pipeline:run's Integration.
+The user starts Integration by saying SatanshuMishra/lighthouse#17 merged into feat/lighthouse-metrics; then resume this thread and run pipeline:run's Integration on feat/lighthouse-metrics.
 
-Needs: D3, R1, R2.
+Needs: R1, R2.
 
 ## Decisions in force
 
