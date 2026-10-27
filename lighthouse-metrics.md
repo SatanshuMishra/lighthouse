@@ -1,6 +1,6 @@
 # lighthouse-metrics: Lighthouse metrics on the shared plugin-metrics store
 Status: parked
-Updated: 2026-10-27T06:27:35.843Z
+Updated: 2026-10-27T08:00:06.350Z
 Next ids: c5 D3 R3 S1
 
 ## Goal
@@ -16,7 +16,7 @@ Lighthouse records metrics personalised to its purpose (proving a FEATURE branch
 
 ## Where things stand
 
-Stage 2: the first build is running in the background, its output in build-1.log in the run home. The shared writer is on origin/feat/unified-metrics at a39ab11 (not on main), and the CHARTER's Writer source names that commit. The glossary terms and ADR 0009 are uncommitted in the checkout and ship with the first pull request.
+Stage 3 round 1: all three MSPs are built and committed (metrics-foundation 3c764ef, run-records 8fd044f, ledger-import 9730ab0, worktrees under ~/.mitosis/runs/lighthouse/lighthouse-metrics/trees); the only gate gap is test_not_a_repository_writes_nothing inert, which is not a finding. Diffs, obligations, assumptions and reviewer briefs are written under review/round-1 in the run home; the verbose full suites are running before reviewers start. The glossary terms and ADR 0009 are uncommitted in the checkout and ship with the first pull request.
 
 ## Next step
 
