@@ -1,7 +1,7 @@
 # lighthouse-metrics: Lighthouse metrics on the shared plugin-metrics store
 Status: parked
-Updated: 2026-10-27T06:26:50.646Z
-Next ids: c5 D2 R3 S1
+Updated: 2026-10-27T06:27:07.829Z
+Next ids: c5 D3 R3 S1
 
 ## Goal
 
@@ -26,7 +26,7 @@ Needs: D1, R1, R2.
 
 ## Decisions in force
 
-- D1 interphase hand-off: build lighthouse-metrics once the shared writer lands: Hand off now. The first build waits until the dependency check in the pipeline checkout prints the writer paths on origin/feat/unified-metrics or origin/main; then the CHARTER's Writer source names that ref, run.zsh runs, and pipeline:run continues to the last pull request.
+- D2 interphase hand-off: first build of lighthouse-metrics from the writer at a39ab11: Build now from origin/feat/unified-metrics at a39ab11, named in the CHARTER's Writer source, then follow pipeline:run through review to the MSP pull requests.
 
 ## Open risks
 
