@@ -78,7 +78,7 @@ class SkillsTest(unittest.TestCase):
     def test_a_stop_before_the_verdict_still_ends_in_the_verdict_line(self):
         text = scratch.skill_text("test")
         self.assertIn("Every stop before step 9", text)
-        self.assertIn("lighthouse verdict --blocked '<that reason>' --repo <repo> --results <results>", text)
+        self.assertIn("lighthouse verdict --blocked '<that reason>' --results <results>", text)
         reason = "the results folder must be outside the checkout"
         env = scratch.environment(scratch.make_home(self))
         code, stdout, stderr = scratch.run_lighthouse(["verdict", "--blocked", reason], env)
@@ -86,9 +86,8 @@ class SkillsTest(unittest.TestCase):
         line = e2e_harness.last_json_line("{}\n{}".format(reason, stdout))
         self.assertEqual(
             line,
-            {"verdict": "blocked", "failures": [], "unproven": [], "flaky": [], "tokens": 0, "minutes": 0, "pr": None},
+            {"verdict": "blocked", "failures": [], "unproven": [], "flaky": [], "tokens": 0, "minutes": 0, "pr": None, "reason": reason},
         )
-
 
     def test_test_skill_retests_with_previous(self):
         text = scratch.skill_text("test")
@@ -129,8 +128,8 @@ class SkillsTest(unittest.TestCase):
 
         self.assertIn("lighthouse spend --since <start time> --results <results> --repo <repo>", steps)
         self.assertIn("keep its tokens, minutes and dollars", steps)
-        self.assertIn("lighthouse verdict --results <results> --repo <repo>", steps)
-        self.assertIn("lighthouse verdict --blocked '<that reason>' --repo <repo> --results <results>", stopping)
+        self.assertIn("lighthouse verdict --results <results>", steps)
+        self.assertIn("lighthouse verdict --blocked '<that reason>' --results <results>", stopping)
         self.assertIn('"spend": {"tokens": <n>, "minutes": <n>, "dollars": <n or null>}', text)
 
     def test_test_skill_marks_every_path(self):
@@ -184,7 +183,7 @@ class SkillsTest(unittest.TestCase):
         self.assertIn("--child: the flag lighthouse launch passes to the child session it starts; a person never passes it", text)
         self.assertIn("Without --child, do only this", launching)
         self.assertIn(
-            "Start lighthouse launch <the flags you were given> --repo <repo> in the background, with run_in_background",
+            "Start lighthouse launch <the flags you were given> --repo <repo> --parent <plugin>/<run> in the background, with run_in_background",
             launching,
         )
         self.assertIn("Run lighthouse wait --until 'test -s <results>/launch.json' in the foreground", launching)
@@ -196,7 +195,25 @@ class SkillsTest(unittest.TestCase):
     def test_a_blocked_launch_line_is_printed_with_its_reason_and_never_ledgered_twice(self):
         launching = section(scratch.skill_text("test"), "## Launch", "## Steps")
         self.assertIn("When that line's verdict is blocked, say in one line the reason lighthouse launch printed", launching)
-        self.assertIn("lighthouse launch has already appended the run to the ledger, so never run Stopping early for it", launching)
+        self.assertIn("lighthouse launch has already recorded the run in the metrics store, so never run Stopping early for it", launching)
+
+    def test_test_skill_records_runs_in_the_store(self):
+        text = scratch.skill_text("test")
+        inputs = section(text, "## Inputs", "## Launch")
+        launching = section(text, "## Launch", "## Steps")
+        reference = scratch.read_text(scratch.skill_path("test")).split("## Command reference", 1)[1]
+        stopping = section(text, "## Stopping early", "## Cost")
+
+        self.assertIn("--parent <plugin>/<run>", inputs)
+        self.assertIn("lighthouse launch <the flags you were given> --repo <repo> --parent <plugin>/<run>", launching)
+        for command in re.findall(r"lighthouse verdict --[^,]*", text):
+            with self.subTest(command=command):
+                self.assertNotIn("--repo", command)
+        self.assertNotIn("--repo", reference_line(reference, "verdict"))
+        self.assertIn("--parent", reference_line(reference, "launch"))
+        self.assertIn('"reason":', stopping)
+        self.assertIn("metrics store", launching)
+        self.assertNotIn("ledger", text)
 
     def test_the_reference_says_a_blocked_line_has_no_dollars(self):
         reference = scratch.read_text(scratch.skill_path("test")).split("## Command reference", 1)[1]
