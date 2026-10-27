@@ -1,6 +1,6 @@
 # lighthouse-metrics: Lighthouse metrics on the shared plugin-metrics store
 Status: parked
-Updated: 2026-10-27T08:28:11.192Z
+Updated: 2026-10-27T08:28:13.289Z
 Next ids: c5 D3 R3 S1
 
 ## Goal
@@ -20,7 +20,7 @@ Round 1 fix pass: metrics-foundation is green with its advisories fixed in 9f724
 
 ## Next step
 
-When the remaining reviewers finish, merge each MSP's arrays into <msp>.findings.json, then run candidates, validate, fix, and ship the three MSP pull requests in stack order per pipeline:run.
+Once both suites pass, merge metrics-foundation into run-records and run-records into ledger-import, hold round 2 for run-records and ledger-import, then ship the three MSP pull requests in stack order per pipeline:run.
 
 Needs: D2, R1.
 
