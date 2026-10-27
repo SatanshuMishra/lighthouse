@@ -1,6 +1,6 @@
 # lighthouse-metrics: Lighthouse metrics on the shared plugin-metrics store
 Status: parked
-Updated: 2026-10-27T08:42:55.605Z
+Updated: 2026-10-27T08:43:08.299Z
 Next ids: c5 D3 R3 S1
 
 ## Goal
@@ -20,7 +20,7 @@ Round 1 fix pass: metrics-foundation is green with its advisories fixed in 9f724
 
 ## Next step
 
-Record run-records' round 2 verdicts and verdict when its validator finishes; on a confirmed --results equals --previous deletion, diagnose, fix with a receipt, merge into ledger-import and hold round 3. Validate ledger-import's round 2 when its reviewers finish, then ship the three MSP pull requests in stack order per pipeline:run.
+Record run-records' round 2 verdicts and verdict when its validator finishes; on a confirmed --results equals --previous deletion, diagnose, fix with a receipt, merge into ledger-import and hold round 3. Record ledger-import's round 2 verdicts when its validator finishes and fix what it confirms the same way, then ship the three MSP pull requests in stack order per pipeline:run.
 
 Needs: D2, R1.
 
