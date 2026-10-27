@@ -22,9 +22,16 @@ SHELL_PUNCTUATION = "();<>|&\n"
 SHELL_OPERATOR = re.compile(r"^[();<>|&\n]+$")
 ASSIGNMENT = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=(.+)$")
 FRACTION = re.compile(r"\.(\d+)")
+DATE = "date"
+DAY = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 Tokens = Dict[str, int]
 Prices = Dict[str, Dict[str, float]]
+
+
+class PriceTable(NamedTuple):
+    date: Optional[str]
+    rates: Prices
 
 
 class Row(NamedTuple):
@@ -115,7 +122,7 @@ def run(argv: List[str]) -> Tuple[int, Optional[str], Optional[str]]:
         prices = read_prices(options.prices or PRICES)
         scope, transcripts = scoped_transcripts(options)
         marked = read_mark_lines(os.path.realpath(options.results)) if options.results is not None else []
-        totals = spend_report(transcripts, since, prices, marked)
+        totals = {**spend_report(transcripts, since, prices.rates, marked), "price_date": prices.date}
         if options.repo is not None:
             write_spend(os.path.realpath(options.results), totals)
     except Refusal as refusal:
@@ -152,19 +159,23 @@ def parse_time(text: Any) -> Optional[datetime.datetime]:
     return moment
 
 
-def read_prices(path: str) -> Prices:
+def read_prices(path: str) -> PriceTable:
     try:
         with open(path, encoding="utf-8") as handle:
             table = json.load(handle)
     except (OSError, ValueError) as error:
         raise Refusal("the price table {} cannot be read: {}".format(path, error))
-    usable = isinstance(table, dict) and all(
+    models = {model: rates for model, rates in table.items() if model != DATE} if isinstance(table, dict) else None
+    usable = models is not None and all(
         isinstance(rates, dict) and all(is_number(rates.get(kind)) and rates[kind] >= 0 for kind in KINDS)
-        for rates in table.values()
+        for rates in models.values()
     )
     if not usable:
         raise Refusal("the price table {} must give every model a dollar rate for each of {}".format(path, ", ".join(KINDS)))
-    return {model: {kind: float(rates[kind]) for kind in KINDS} for model, rates in table.items()}
+    date = table.get(DATE)
+    if DATE in table and not (isinstance(date, str) and DAY.match(date)):
+        raise Refusal("the price table {} date must be YYYY-MM-DD, not {}".format(path, json.dumps(date)))
+    return PriceTable(date, {model: {kind: float(rates[kind]) for kind in KINDS} for model, rates in models.items()})
 
 
 def write_spend(results: str, totals: Dict[str, Any]) -> None:
