@@ -1,6 +1,6 @@
 # lighthouse-metrics: Lighthouse metrics on the shared plugin-metrics store
 Status: parked
-Updated: 2026-10-27T19:04:17.479Z
+Updated: 2026-10-27T19:04:19.787Z
 Next ids: c5 D4 R3 S3
 
 ## Goal
@@ -30,7 +30,6 @@ Needs: R1.
 ## Open risks
 
 - R1 The parallel spec lighthouse-proves-changes in this checkout also owns GLOSSARY.md and docs/adr and may change suite, launch and verdict; whichever merges second must rebase the other's glossary and ADR numbering and recheck run-record's launch.py and ledger-retired's verdict.py edits. Bears on c4.
-- R2 5.18 (a fresh session answering from the store) and 5.20 (the live import, including macOS Trash access) are unproven until run by hand after merge. Bears on c4.
 
 ## Settled, do not reopen
 
