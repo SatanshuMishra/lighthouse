@@ -1,6 +1,6 @@
 # lighthouse-metrics: Lighthouse metrics on the shared plugin-metrics store
 Status: parked
-Updated: 2026-10-27T08:29:28.431Z
+Updated: 2026-10-27T08:32:30.109Z
 Next ids: c5 D3 R3 S1
 
 ## Goal
@@ -16,7 +16,7 @@ Lighthouse records metrics personalised to its purpose (proving a FEATURE branch
 
 ## Where things stand
 
-Round 1 fix pass: metrics-foundation is green with its advisories fixed in 9f724a0. run-records (blockers C1 stale results folder data, C2 misstated spend scope; advisories C3 C4 C5 S1 S2 S3) and ledger-import (blockers C1 imported run inherits parent, C2 unknown carried written as false; advisories S2 S3) were diagnosed fixable; receipts and fixes are committed on run-records (c29ffe5, b244704) and ledger-import (1a1187d, 538fbe8), ledger-import's full suite passes (323 tests) and run-records' is running. Neither fix is merged up the stack yet. The glossary terms and ADR 0009 are committed on metrics-foundation (f2cd5d1), so its head is now f2cd5d1, and its pull request comment is written to review/metrics-foundation.comment.md. Round files, verdicts and diagnoses are under review/round-1 in the run home. test_launch_records_cost_and_priority fails only under a background shell at nice 5, the same on the base, so it is not a finding.
+Round 1 fix pass: metrics-foundation is green with its advisories fixed in 9f724a0. run-records (blockers C1 stale results folder data, C2 misstated spend scope; advisories C3 C4 C5 S1 S2 S3) and ledger-import (blockers C1 imported run inherits parent, C2 unknown carried written as false; advisories S2 S3) were diagnosed fixable; receipts and fixes are committed on run-records (c29ffe5, b244704) and ledger-import (1a1187d, 538fbe8), Both fixed branches passed their full suites and are merged up the stack (run-records head 0f7588e, ledger-import head f5ea0ec); round 2 diffs are written and its suites are running before the round 2 reviewers start. The glossary terms and ADR 0009 are committed on metrics-foundation (f2cd5d1), so its head is now f2cd5d1, and its pull request comment is written to review/metrics-foundation.comment.md. Round files, verdicts and diagnoses are under review/round-1 in the run home. test_launch_records_cost_and_priority fails only under a background shell at nice 5, the same on the base, so it is not a finding.
 
 ## Next step
 
