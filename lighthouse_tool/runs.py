@@ -1,14 +1,16 @@
+import glob
 import json
 import os
 import statistics
 from typing import Any, Dict, List, Optional, Tuple
 
 from lighthouse_tool.records import is_number
-from lighthouse_tool.repo import Parser, Refusal, read_json_lines_or_refuse, require_root, state_dir
+from lighthouse_tool.repo import Parser, Refusal, repository_folder, require_root
 from lighthouse_tool.spend import KINDS
 
-LEDGER = "runs.jsonl"
-LAUNCH = "launch"
+PLUGIN = "lighthouse"
+STORE_VARIABLE = "PLUGIN_METRICS_DIR"
+STORE_FOLDER = ".plugin-metrics"
 
 
 def parser() -> Parser:
@@ -20,68 +22,37 @@ def parser() -> Parser:
 def run(argv: List[str]) -> Tuple[int, Optional[str], Optional[str]]:
     try:
         options = parser().parse_args(argv[1:])
-        folder = state_dir(require_root(options.repo))
-        lines = read_ledger(os.path.join(folder, LEDGER)) if folder is not None else []
+        folder = repository_folder(require_root(options.repo))
     except Refusal as refusal:
         return 2, json.dumps({"error": str(refusal)}), "lighthouse runs: {}".format(refusal)
-    summary = summarised(merged(lines))
+    summaries = read_summaries(folder) if folder is not None else []
+    summary = summarised(summaries)
     return 0, json.dumps(summary), "lighthouse runs: {} runs".format(summary["runs"])
 
 
-def read_ledger(path: str) -> List[Dict[str, Any]]:
-    return read_json_lines_or_refuse(path, "runs")
+def store_root() -> str:
+    chosen = os.environ.get(STORE_VARIABLE, "")
+    return chosen if chosen else os.path.join(os.path.expanduser("~"), STORE_FOLDER)
 
 
-def run_key(index: int, line: Dict[str, Any]) -> str:
-    run_id = line.get("run")
-    return "run:" + run_id if isinstance(run_id, str) and run_id else "line:{}".format(index)
+def read_summary(path: str) -> Optional[Dict[str, Any]]:
+    try:
+        with open(path, encoding="utf-8") as handle:
+            line = json.loads(handle.read())
+    except (OSError, ValueError):
+        return None
+    return line if isinstance(line, dict) else None
 
 
-def merged(lines: List[Dict[str, Any]]) -> List[List[Dict[str, Any]]]:
-    groups: Dict[str, List[Dict[str, Any]]] = {}
-    for index, line in enumerate(lines):
-        key = run_key(index, line)
-        groups[key] = [*groups.get(key, []), line]
-    return list(groups.values())
+def read_summaries(folder: str) -> List[Dict[str, Any]]:
+    pattern = os.path.join(glob.escape(store_root()), "plugin=" + PLUGIN, "kind=summary", "repo=" + glob.escape(folder), "*.json")
+    read = [read_summary(path) for path in sorted(glob.glob(pattern))]
+    return [summary for summary in read if summary is not None]
 
 
-def reported_cost(cost: Any) -> Optional[float]:
-    if is_number(cost):
-        return float(cost)
-    if isinstance(cost, dict) and cost and all(is_number(value) for value in cost.values()):
-        return float(sum(cost.values()))
-    return None
-
-
-def last_spend(group: List[Dict[str, Any]]) -> Dict[str, Any]:
-    spends = [line["spend"] for line in group if line.get("kind") != LAUNCH and isinstance(line.get("spend"), dict)]
-    return spends[-1] if spends else {}
-
-
-def launches(group: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    return [line for line in group if line.get("kind") == LAUNCH]
-
-
-def run_minutes(group: List[Dict[str, Any]]) -> Optional[float]:
-    spent = last_spend(group).get("minutes")
-    if is_number(spent):
-        return spent
-    launched = [line["minutes"] for line in launches(group) if is_number(line.get("minutes"))]
-    return launched[-1] if launched else None
-
-
-def run_dollars(group: List[Dict[str, Any]]) -> Optional[float]:
-    reported = [reported_cost(line.get("cost")) for line in launches(group)]
-    known = [cost for cost in reported if cost is not None]
-    if known:
-        return known[-1]
-    table = last_spend(group).get("dollars")
-    return table if is_number(table) else None
-
-
-def number_in(record: Any, key: str) -> float:
+def number_in(record: Any, key: str) -> Optional[float]:
     value = record.get(key) if isinstance(record, dict) else None
-    return value if is_number(value) else 0
+    return value if is_number(value) else None
 
 
 def totalled(values: List[float], places: int) -> Dict[str, Optional[float]]:
@@ -91,31 +62,46 @@ def totalled(values: List[float], places: int) -> Dict[str, Optional[float]]:
     }
 
 
-def step_minutes(spends: List[Dict[str, Any]]) -> Dict[str, float]:
+def known(values: List[Optional[float]]) -> List[float]:
+    return [value for value in values if value is not None]
+
+
+def per_minute(seconds: Optional[float]) -> Optional[float]:
+    return seconds / 60 if seconds is not None else None
+
+
+def step_minutes(summaries: List[Dict[str, Any]]) -> Dict[str, float]:
     steps = [
         step
-        for spend in spends
-        for step in spend.get("steps") or []
-        if isinstance(step, dict) and isinstance(step.get("name"), str)
+        for summary in summaries
+        for step in summary.get("steps") or []
+        if isinstance(step, dict) and isinstance(step.get("step"), str)
     ]
-    names = list(dict.fromkeys(step["name"] for step in steps))
-    return {name: round(sum(number_in(step, "minutes") for step in steps if step["name"] == name), 1) for name in names}
-
-
-def summarised(groups: List[List[Dict[str, Any]]]) -> Dict[str, Any]:
-    spends = [last_spend(group) for group in groups]
-    minutes = [value for value in (run_minutes(group) for group in groups) if value is not None]
-    dollars = [value for value in (run_dollars(group) for group in groups) if value is not None]
-    token_kinds = {kind: sum(number_in(spend, kind) for spend in spends) for kind in (*KINDS, "tokens")}
+    names = list(dict.fromkeys(step["step"] for step in steps))
     return {
-        "runs": len(groups),
+        name: round(sum(known([per_minute(number_in(step, "elapsed_seconds")) for step in steps if step["step"] == name])), 1)
+        for name in names
+    }
+
+
+def token_kind_total(summaries: List[Dict[str, Any]], kind: str) -> float:
+    return sum(known([number_in(summary.get("tokens"), kind) for summary in summaries]))
+
+
+def summarised(summaries: List[Dict[str, Any]]) -> Dict[str, Any]:
+    minutes = known([per_minute(number_in(summary, "run_seconds")) for summary in summaries])
+    dollars = known([number_in(summary, "usd") for summary in summaries])
+    kinds = {kind: token_kind_total(summaries, kind) for kind in KINDS}
+    person_minutes = known([per_minute(number_in(summary.get("waiting"), "person_seconds")) for summary in summaries])
+    return {
+        "runs": len(summaries),
         "minutes": totalled(minutes, 1),
         "dollars": totalled(dollars, 6),
-        "tokens": token_kinds,
-        "steps": step_minutes(spends),
-        "waiting_on_person": round(sum(number_in(spend.get("waiting"), "person") for spend in spends), 1),
+        "tokens": {**kinds, "tokens": sum(kinds.values())},
+        "steps": step_minutes(summaries),
+        "waiting_on_person": round(sum(person_minutes), 1),
         "expired_rewrites": {
-            "count": sum(number_in(spend.get("expired_rewrites"), "count") for spend in spends),
-            "tokens": sum(number_in(spend.get("expired_rewrites"), "tokens") for spend in spends),
+            "count": sum(known([number_in(summary.get("expired_rewrites"), "count") for summary in summaries])),
+            "tokens": sum(known([number_in(summary.get("expired_rewrites"), "cache_write") for summary in summaries])),
         },
     }
