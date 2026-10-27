@@ -23,7 +23,7 @@ SHELL_OPERATOR = re.compile(r"^[();<>|&\n]+$")
 ASSIGNMENT = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=(.+)$")
 FRACTION = re.compile(r"\.(\d+)")
 DATE = "date"
-DAY = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+DAY = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 
 Tokens = Dict[str, int]
 Prices = Dict[str, Dict[str, float]]
@@ -173,7 +173,7 @@ def read_prices(path: str) -> PriceTable:
     if not usable:
         raise Refusal("the price table {} must give every model a dollar rate for each of {}".format(path, ", ".join(KINDS)))
     date = table.get(DATE)
-    if DATE in table and not (isinstance(date, str) and DAY.match(date)):
+    if DATE in table and not (isinstance(date, str) and DAY.fullmatch(date)):
         raise Refusal("the price table {} date must be YYYY-MM-DD, not {}".format(path, json.dumps(date)))
     return PriceTable(date, {model: {kind: float(rates[kind]) for kind in KINDS} for model, rates in models.items()})
 
