@@ -1,6 +1,6 @@
 # lighthouse-metrics: Lighthouse metrics on the shared plugin-metrics store
 Status: parked
-Updated: 2026-10-27T08:49:38.200Z
+Updated: 2026-10-27T08:49:39.839Z
 Next ids: c5 D3 R3 S1
 
 ## Goal
@@ -20,7 +20,7 @@ metrics-foundation is green at f2cd5d1 (glossary terms and ADR 0009 committed th
 
 ## Next step
 
-When the previous-results-deleted diagnosis finishes, record it, fix C1 with a receipt and the advisory C2 on run-records, merge into ledger-import and hold round 3. Then ship the three MSP pull requests in stack order per pipeline:run.
+Fix C1 and the advisory C2 on run-records in one commit, run the selecting check and the suite, merge into ledger-import and hold round 3. Then ship the three MSP pull requests in stack order per pipeline:run.
 
 Needs: D2, R1.
 
