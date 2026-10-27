@@ -1,6 +1,6 @@
 # lighthouse-metrics: Lighthouse metrics on the shared plugin-metrics store
 Status: parked
-Updated: 2026-10-27T06:27:08.920Z
+Updated: 2026-10-27T06:27:32.130Z
 Next ids: c5 D3 R3 S1
 
 ## Goal
@@ -16,7 +16,7 @@ Lighthouse records metrics personalised to its purpose (proving a FEATURE branch
 
 ## Where things stand
 
-Stage 2: the first build is starting. The shared writer is on origin/feat/unified-metrics at a39ab11 (not on main), and the CHARTER's Writer source names that commit. The glossary terms and ADR 0009 are uncommitted in the checkout and ship with the first pull request.
+Stage 2: the first build is running in the background, its output in build-1.log in the run home. The shared writer is on origin/feat/unified-metrics at a39ab11 (not on main), and the CHARTER's Writer source names that commit. The glossary terms and ADR 0009 are uncommitted in the checkout and ship with the first pull request.
 
 ## Next step
 
