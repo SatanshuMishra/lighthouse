@@ -279,7 +279,7 @@ class SkillsTest(unittest.TestCase):
         text = scratch.skill_text("test")
 
         self.assertIn(
-            "Hold for a condition, such as a build, a server, a VM or a driver's result, only with lighthouse wait --until '<check>'",
+            "Hold for a condition, such as a build, a server or a VM, only with lighthouse wait --until '<check>'",
             text,
         )
         self.assertIn("Never use a blind sleep", text)
