@@ -181,7 +181,7 @@
       "recheck": "read the skipUnless decorators in tests/test_e2e_held_out.py and tests/test_e2e_init_doctor.py and E2E in tests/e2e_harness.py"
     },
     "plugin_version": {
-      "value": "plugin.json says 0.3.0; an installed 0.2.0 copy lacks launch, mark, runs and wait",
+      "value": "plugin.json says 0.4.0; an installed 0.3.0 copy lacks the metrics store records and the metrics skill",
       "confirmed": true,
       "recheck": "read version in .claude-plugin/plugin.json and list ~/.claude/plugins/cache/lighthouse/lighthouse/"
     },
