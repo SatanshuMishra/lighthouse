@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Plugin metrics line",
+  "description": "One line of a plugin metrics event stream or run summary, format version 1. The envelope keys come first, in the order of required, and the plugin's own fields follow.",
+  "type": "object",
+  "required": ["v", "ts", "plugin", "plugin_version", "kind", "event", "run", "parent", "session", "repo"],
+  "properties": {
+    "v": {
+      "description": "The format version, 1.",
+      "type": "integer"
+    },
+    "ts": {
+      "description": "When the line was written, in UTC.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "plugin": {
+      "description": "The plugin that wrote the line.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "plugin_version": {
+      "description": "The writing plugin's version, or null when unknown.",
+      "type": ["string", "null"]
+    },
+    "kind": {
+      "description": "event for a line appended to a run's event stream, summary for a run's single summary line.",
+      "type": "string",
+      "enum": ["event", "summary"]
+    },
+    "event": {
+      "description": "The event's name from the plugin's catalogue; run.summary for a summary.",
+      "type": "string"
+    },
+    "run": {
+      "description": "The run id, unique per plugin per repository and never reused.",
+      "type": "string",
+      "maxLength": 120,
+      "pattern": "^[a-z0-9][a-z0-9.-]*(\\.[0-9]{8}T[0-9]{6}Z)?$"
+    },
+    "parent": {
+      "description": "<plugin>/<run id> of the run that started this one, from PLUGIN_METRICS_PARENT, or null for a run started on its own.",
+      "type": ["string", "null"]
+    },
+    "session": {
+      "description": "The Claude Code session id from CLAUDE_CODE_SESSION_ID, or null.",
+      "type": ["string", "null"]
+    },
+    "repo": {
+      "description": "The repository folder's name.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120,
+      "pattern": "^[^./=\\u0000-\\u001f][^/=\\u0000-\\u001f]*$"
+    }
+  },
+  "additionalProperties": true
+}

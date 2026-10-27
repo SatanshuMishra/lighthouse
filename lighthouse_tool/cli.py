@@ -24,6 +24,7 @@ COMMANDS = {
     "runs": "runs",
     "wait": "wait",
     "launch": "launch",
+    "metrics": "ledger_import",
 }
 
 SUBCOMMANDS = sorted([*COMMANDS, "version"])

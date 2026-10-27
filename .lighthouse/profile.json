@@ -25,7 +25,9 @@
   "suite": {
     "command": "python3 -m unittest discover tests",
     "junit": null,
-    "timeout_minutes": null
+    "timeout_minutes": null,
+    "rerun": "python3 -m unittest {tests}",
+    "isolated": true
   },
   "surfaces": [
     {

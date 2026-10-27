@@ -1,0 +1,66 @@
+{
+  "event-standalone": {
+    "files": {
+      "plugin=demo/kind=event/repo=demo/feat-a.20261001T100000Z.jsonl": "{\"v\":1,\"ts\":\"2026-10-01T10:00:00Z\",\"plugin\":\"demo\",\"plugin_version\":\"1.0.0\",\"kind\":\"event\",\"event\":\"lane.end\",\"run\":\"feat-a.20261001T100000Z\",\"parent\":null,\"session\":null,\"repo\":\"demo\",\"msp\":\"m1\",\"usd\":2,\"note\":\"café\"}\n"
+    },
+    "returns": [null]
+  },
+  "event-with-parent": {
+    "files": {
+      "plugin=demo/kind=event/repo=demo/feat-a.20261001T100000Z.jsonl": "{\"v\":1,\"ts\":\"2026-10-01T10:00:00Z\",\"plugin\":\"demo\",\"plugin_version\":\"1.0.0\",\"kind\":\"event\",\"event\":\"lane.end\",\"run\":\"feat-a.20261001T100000Z\",\"parent\":\"pipeline/feat-a.20261001T100000Z\",\"session\":\"s-1\",\"repo\":\"demo\",\"small\":0.00001,\"tiny\":1e-7,\"huge\":1e+21,\"exact\":123456789.125,\"neg\":0,\"nested\":{\"b\":1,\"a\":[1.5,null,true]}}\n"
+    },
+    "returns": [null]
+  },
+  "summary-first": {
+    "files": {
+      "plugin=demo/kind=summary/repo=demo/feat-a.20261001T100000Z.json": "{\"v\":1,\"ts\":\"2026-10-01T11:00:00Z\",\"plugin\":\"demo\",\"plugin_version\":\"1.0.0\",\"kind\":\"summary\",\"event\":\"run.summary\",\"run\":\"feat-a.20261001T100000Z\",\"parent\":null,\"session\":null,\"repo\":\"demo\",\"usd\":1,\"wall_seconds\":30,\"tokens\":{\"input\":1,\"cache_write_5m\":2,\"cache_write_1h\":3,\"cache_read\":4,\"output\":5}}\n"
+    },
+    "returns": [null]
+  },
+  "summary-replaced": {
+    "files": {
+      "plugin=demo/kind=summary/repo=demo/feat-a.20261001T100000Z.json": "{\"v\":1,\"ts\":\"2026-10-01T12:00:00Z\",\"plugin\":\"demo\",\"plugin_version\":\"1.0.0\",\"kind\":\"summary\",\"event\":\"run.summary\",\"run\":\"feat-a.20261001T100000Z\",\"parent\":null,\"session\":null,\"repo\":\"demo\",\"usd\":3}\n"
+    },
+    "returns": [null, null]
+  },
+  "catalogue": {
+    "files": {
+      "plugin=demo/catalogue.json": "{\n  \"format\": 1,\n  \"plugin\": \"demo\",\n  \"purpose\": \"p\"\n}\n"
+    },
+    "returns": [null]
+  },
+  "refusals": {
+    "files": {},
+    "returns": [
+      "metrics not written: run: ",
+      "metrics not written: plugin: ",
+      "metrics not written: repo: ",
+      "metrics not written: field 1x: ",
+      "metrics not written: key 7: "
+    ]
+  },
+  "prune-small": {
+    "files": {
+      "plugin=demo/kind=event/repo=demo/beta.20261001T100200Z.jsonl": "{\"v\":1,\"ts\":\"2026-10-01T10:02:00Z\",\"plugin\":\"demo\",\"plugin_version\":\"1.0.0\",\"kind\":\"event\",\"event\":\"run.start\",\"run\":\"beta.20261001T100200Z\",\"parent\":null,\"session\":null,\"repo\":\"demo\"}\n",
+      "plugin=demo/kind=summary/repo=demo/alpha.20261001T100100Z.json": "{\"v\":1,\"ts\":\"2026-10-01T10:03:00Z\",\"plugin\":\"demo\",\"plugin_version\":\"1.0.0\",\"kind\":\"summary\",\"event\":\"run.summary\",\"run\":\"alpha.20261001T100100Z\",\"parent\":null,\"session\":null,\"repo\":\"demo\",\"usd\":1}\n",
+      "plugin=demo/kind=summary/repo=demo/beta.20261001T100200Z.json": "{\"v\":1,\"ts\":\"2026-10-01T10:04:00Z\",\"plugin\":\"demo\",\"plugin_version\":\"1.0.0\",\"kind\":\"summary\",\"event\":\"run.summary\",\"run\":\"beta.20261001T100200Z\",\"parent\":null,\"session\":null,\"repo\":\"demo\",\"usd\":2}\n"
+    },
+    "returns": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      [
+        "plugin=demo/kind=event/repo=demo/alpha.20261001T100100Z.jsonl",
+        "plugin=demo/kind=event/repo=demo/gamma.20261001T100000Z.jsonl",
+        "plugin=demo/kind=summary/repo=demo/gamma.20261001T100000Z.json"
+      ]
+    ]
+  },
+  "run-id": {
+    "files": {},
+    "returns": ["feat-a.20261026T221832Z"]
+  }
+}

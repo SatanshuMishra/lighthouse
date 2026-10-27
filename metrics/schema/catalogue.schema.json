@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Plugin metrics catalogue",
+  "description": "A plugin's description of every event and field it writes to the metrics store, format version 1, kept at plugin=<plugin>/catalogue.json.",
+  "type": "object",
+  "required": ["format", "plugin", "purpose", "objectives", "events", "summary", "queries"],
+  "properties": {
+    "format": {
+      "description": "The format version, 1.",
+      "type": "integer"
+    },
+    "plugin": {
+      "description": "The plugin this catalogue describes.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "purpose": {
+      "description": "What the plugin is for, in plain words.",
+      "type": "string"
+    },
+    "objectives": {
+      "description": "What the plugin must achieve to serve its purpose, each with the fields that measure it.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "string"},
+          "text": {"type": "string"},
+          "measured_by": {
+            "description": "Each entry names event.field or summary.field.",
+            "type": "array",
+            "items": {"type": "string"}
+          }
+        }
+      }
+    },
+    "events": {
+      "description": "Every event the plugin writes, keyed by the event's name.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "description": {"type": "string"},
+          "writer": {"type": "string"},
+          "readers": {"type": "array", "items": {"type": "string"}},
+          "questions": {"type": "array", "items": {"type": "string"}},
+          "fields": {"$ref": "#/$defs/fields"}
+        }
+      }
+    },
+    "summary": {
+      "description": "The plugin's run summary.",
+      "type": "object",
+      "properties": {
+        "description": {"type": "string"},
+        "fields": {"$ref": "#/$defs/fields"}
+      }
+    },
+    "queries": {
+      "description": "Named SQL queries over the store's views that answer a stated question.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {"type": "string"},
+          "question": {"type": "string"},
+          "sql": {"type": "string"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "fields": {
+      "description": "Field entries keyed by the field's name.",
+      "type": "object",
+      "additionalProperties": {"$ref": "#/$defs/field"}
+    },
+    "field": {
+      "description": "One field: what it records, how it is measured, its unit and how to read it.",
+      "type": "object",
+      "required": ["type", "description", "measured_from", "unit", "includes", "excludes", "reading", "readers", "question"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["integer", "number", "string", "boolean", "enum", "object", "array"]
+        },
+        "description": {"description": "What the field records, in plain words.", "type": "string"},
+        "measured_from": {"description": "How and from what it is measured.", "type": "string"},
+        "unit": {
+          "type": "string",
+          "enum": ["seconds", "usd", "tokens", "count", "ratio", "id", "text", "timestamp", "none"]
+        },
+        "includes": {"description": "What the value counts.", "type": "string"},
+        "excludes": {"description": "What the value leaves out.", "type": "string"},
+        "reading": {"description": "How to read the value: which direction means what, and what zero or null means, describing and never judging.", "type": "string"},
+        "readers": {"description": "Who reads the field.", "type": "array", "items": {"type": "string"}},
+        "question": {"description": "What the field helps answer.", "type": "string"},
+        "values": {"description": "The allowed values of an enum.", "type": "array"},
+        "fields": {"$ref": "#/$defs/fields"},
+        "items": {"$ref": "#/$defs/field"}
+      }
+    }
+  }
+}

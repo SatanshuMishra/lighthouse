@@ -1,0 +1,1876 @@
+{
+  "format": 1,
+  "plugin": "lighthouse",
+  "purpose": "lighthouse proves a FEATURE branch works before it merges into its core branch, by running the project's suite on both branches, driving the running product, rechecking the surfaces next to the change and computing a verdict.",
+  "objectives": [
+    {
+      "id": "verdict",
+      "text": "Every run ends in a computed verdict.",
+      "measured_by": [
+        "summary.verdict",
+        "summary.reason",
+        "summary.failures",
+        "summary.unproven",
+        "summary.flaky"
+      ]
+    },
+    {
+      "id": "suite",
+      "text": "The project's suite runs on both branches.",
+      "measured_by": [
+        "summary.suite",
+        "summary.build"
+      ]
+    },
+    {
+      "id": "new-behaviour",
+      "text": "Each new behaviour is driven.",
+      "measured_by": [
+        "summary.paths"
+      ]
+    },
+    {
+      "id": "neighbours",
+      "text": "Each neighbour is rechecked on both builds.",
+      "measured_by": [
+        "summary.paths"
+      ]
+    },
+    {
+      "id": "cost",
+      "text": "What a run costs in time and money.",
+      "measured_by": [
+        "summary.run_seconds",
+        "summary.usd",
+        "summary.tokens",
+        "summary.models",
+        "summary.steps",
+        "summary.drives",
+        "summary.caller",
+        "summary.waiting",
+        "summary.expired_rewrites"
+      ]
+    }
+  ],
+  "events": {
+    "run.start": {
+      "description": "lighthouse launch began a run, written before it starts the child session.",
+      "writer": "lighthouse launch",
+      "readers": [
+        "owner",
+        "a harness reading its child runs"
+      ],
+      "questions": [
+        "When did the run start, and which run of a harness started it?",
+        "Which branches and options was the run given?",
+        "Which launches never finished?"
+      ],
+      "fields": {
+        "core": {
+          "type": "string",
+          "description": "The core branch the run compares against.",
+          "measured_from": "The --core flag lighthouse launch was given.",
+          "unit": "id",
+          "includes": "The branch name as given.",
+          "excludes": "The commit, which the summary's core_commit records.",
+          "reading": "A name identifies the branch; null means unknown.",
+          "readers": [
+            "owner"
+          ],
+          "question": "Which core branch was the run proving against?"
+        },
+        "feature": {
+          "type": "string",
+          "description": "The FEATURE branch the run proves.",
+          "measured_from": "The --feature flag lighthouse launch was given.",
+          "unit": "id",
+          "includes": "The branch name as given.",
+          "excludes": "The commit, which the summary's feature_commit records.",
+          "reading": "A name identifies the branch; null means unknown.",
+          "readers": [
+            "owner"
+          ],
+          "question": "Which FEATURE branch was the run proving?"
+        },
+        "results": {
+          "type": "string",
+          "description": "The results folder's absolute path.",
+          "measured_from": "The --results flag lighthouse launch was given, resolved.",
+          "unit": "text",
+          "includes": "The folder the child session works and writes in.",
+          "excludes": "The repository, which repo records.",
+          "reading": "A path names the folder; null means unknown.",
+          "readers": [
+            "owner"
+          ],
+          "question": "Where are the run's working files?"
+        },
+        "retest": {
+          "type": "boolean",
+          "description": "Whether the run retests from previous results.",
+          "measured_from": "Whether lighthouse launch was given --previous.",
+          "unit": "none",
+          "includes": "Runs given a previous results folder.",
+          "excludes": "Runs that start fresh.",
+          "reading": "true means a retest; false means a fresh run; null means unknown.",
+          "readers": [
+            "owner"
+          ],
+          "question": "How often does a run retest from earlier results?"
+        },
+        "final": {
+          "type": "boolean",
+          "description": "Whether the run was the final one before opening the pull request.",
+          "measured_from": "Whether lighthouse launch was given --final.",
+          "unit": "none",
+          "includes": "Runs given --final.",
+          "excludes": "Runs without --final.",
+          "reading": "true means the run was final; false means it was not; null means unknown.",
+          "readers": [
+            "owner"
+          ],
+          "question": "How often is a run the final one?"
+        },
+        "spec": {
+          "type": "boolean",
+          "description": "Whether the run was given a spec to read.",
+          "measured_from": "Whether lighthouse launch was given --spec.",
+          "unit": "none",
+          "includes": "Runs given a spec.",
+          "excludes": "Runs without a spec.",
+          "reading": "true means a spec was given; false means none was; null means unknown.",
+          "readers": [
+            "owner"
+          ],
+          "question": "How often does a run have a spec?"
+        }
+      }
+    },
+    "run.end": {
+      "description": "The run's child session ended, written by lighthouse launch before the summary.",
+      "writer": "lighthouse launch",
+      "readers": [
+        "owner",
+        "a harness reading its child runs"
+      ],
+      "questions": [
+        "How did the run end and how long did it take?",
+        "Which caller messages fall inside the run's span?"
+      ],
+      "fields": {
+        "verdict": {
+          "type": "enum",
+          "description": "The run's computed verdict.",
+          "measured_from": "The verdict line lighthouse launch prints: the child's last verdict line, or launch's own blocked line.",
+          "unit": "none",
+          "includes": "One of green, failures, blocked or unproven.",
+          "excludes": "Any opinion beyond the computed verdict.",
+          "reading": "green means proven with no failure; failures means at least one confirmed failure; blocked means the run stopped; unproven means the new behaviour was not shown; null means unknown.",
+          "readers": [
+            "owner",
+            "a harness reading its child runs"
+          ],
+          "question": "How do runs end?",
+          "values": [
+            "green",
+            "failures",
+            "blocked",
+            "unproven"
+          ]
+        },
+        "child_exit": {
+          "type": "integer",
+          "description": "The child session's exit code.",
+          "measured_from": "The exit status of the claude -p child session lighthouse launch started.",
+          "unit": "none",
+          "includes": "The code the child process returned.",
+          "excludes": "lighthouse launch's own exit code.",
+          "reading": "0 means the child exited normally; any other value is the code it gave; null means the child never started.",
+          "readers": [
+            "owner"
+          ],
+          "question": "How often does the child session exit abnormally?"
+        },
+        "run_seconds": {
+          "type": "number",
+          "description": "How long the run took from run.start to run.end.",
+          "measured_from": "The time of run.end minus the time of run.start, as launch took them.",
+          "unit": "seconds",
+          "includes": "The whole child session and launch's own work before and after it.",
+          "excludes": "The caller's work before launch started and after it ended.",
+          "reading": "Higher means longer; 0 means no time was recorded; null means unknown.",
+          "readers": [
+            "owner",
+            "a harness reading its child runs"
+          ],
+          "question": "How long does a lighthouse run take?"
+        }
+      }
+    }
+  },
+  "summary": {
+    "description": "One line per lighthouse run: its verdict, the suite on both builds, every product path, the build result and lighthouse's own spend, priced at write time. Order runs and state periods by started, never the envelope ts, which for an imported summary is the import's time.",
+    "fields": {
+      "started": {
+        "type": "string",
+        "description": "When the run started.",
+        "measured_from": "The time lighthouse launch took when it appended run.start.",
+        "unit": "timestamp",
+        "includes": "A UTC time as YYYY-MM-DDTHH:MM:SSZ.",
+        "excludes": "Fractions of a second.",
+        "reading": "A later time means later; order runs and state periods by started, never the envelope ts; null means unknown.",
+        "readers": [
+          "owner",
+          "a harness reading its child runs"
+        ],
+        "question": "When did the run start, and which runs fall in a period?"
+      },
+      "ended": {
+        "type": "string",
+        "description": "When the run ended.",
+        "measured_from": "The time lighthouse launch took when it appended run.end, after the child session ended.",
+        "unit": "timestamp",
+        "includes": "A UTC time as YYYY-MM-DDTHH:MM:SSZ.",
+        "excludes": "Fractions of a second.",
+        "reading": "A later time means later; order runs and state periods by started, never the envelope ts; null means unknown.",
+        "readers": [
+          "owner",
+          "a harness reading its child runs"
+        ],
+        "question": "When did the run end?"
+      },
+      "run_seconds": {
+        "type": "number",
+        "description": "How long the run took from run.start to run.end.",
+        "measured_from": "The time of run.end minus the time of run.start, as launch took them.",
+        "unit": "seconds",
+        "includes": "The whole child session and launch's own work before and after it.",
+        "excludes": "The caller's work before launch started and after it ended.",
+        "reading": "Higher means longer; 0 means no time was recorded; null means unknown.",
+        "readers": [
+          "owner",
+          "a harness reading its child runs"
+        ],
+        "question": "How long does a lighthouse run take?"
+      },
+      "verdict": {
+        "type": "enum",
+        "description": "The run's computed verdict.",
+        "measured_from": "The verdict line lighthouse launch prints: the child's last verdict line, or launch's own blocked line.",
+        "unit": "none",
+        "includes": "One of green, failures, blocked or unproven.",
+        "excludes": "Any opinion beyond the computed verdict.",
+        "reading": "green means proven with no failure; failures means at least one confirmed failure; blocked means the run stopped; unproven means the new behaviour was not shown; null means unknown.",
+        "readers": [
+          "owner",
+          "a harness reading its child runs"
+        ],
+        "question": "How do runs end?",
+        "values": [
+          "green",
+          "failures",
+          "blocked",
+          "unproven"
+        ]
+      },
+      "reason": {
+        "type": "string",
+        "description": "Why the run was blocked.",
+        "measured_from": "The reason in the child's blocked verdict line, or launch's own reason when the child printed no verdict line or launch refused.",
+        "unit": "text",
+        "includes": "The stop's reason text.",
+        "excludes": "Reasons for runs that were not blocked.",
+        "reading": "A text names why the run stopped; null means the run was not blocked or no reason was given.",
+        "readers": [
+          "owner",
+          "a harness reading its child runs"
+        ],
+        "question": "Why are runs blocked?"
+      },
+      "core": {
+        "type": "string",
+        "description": "The core branch the run compares against.",
+        "measured_from": "The --core flag lighthouse launch was given.",
+        "unit": "id",
+        "includes": "The branch name as given.",
+        "excludes": "The commit, which the summary's core_commit records.",
+        "reading": "A name identifies the branch; null means unknown.",
+        "readers": [
+          "owner"
+        ],
+        "question": "Which core branch was the run proving against?"
+      },
+      "feature": {
+        "type": "string",
+        "description": "The FEATURE branch the run proves.",
+        "measured_from": "The --feature flag lighthouse launch was given.",
+        "unit": "id",
+        "includes": "The branch name as given.",
+        "excludes": "The commit, which the summary's feature_commit records.",
+        "reading": "A name identifies the branch; null means unknown.",
+        "readers": [
+          "owner"
+        ],
+        "question": "Which FEATURE branch was the run proving?"
+      },
+      "core_commit": {
+        "type": "string",
+        "description": "The core branch's commit the run tested.",
+        "measured_from": "The results folder's commits.json core entry.",
+        "unit": "id",
+        "includes": "The full commit id.",
+        "excludes": "The branch name.",
+        "reading": "An id names the commit; null means commits.json is missing, unreadable or holds no entry.",
+        "readers": [
+          "owner"
+        ],
+        "question": "Which core commit was tested?"
+      },
+      "feature_commit": {
+        "type": "string",
+        "description": "The FEATURE branch's commit the run tested.",
+        "measured_from": "The results folder's commits.json feature entry.",
+        "unit": "id",
+        "includes": "The full commit id.",
+        "excludes": "The branch name.",
+        "reading": "An id names the commit; null means commits.json is missing, unreadable or holds no entry.",
+        "readers": [
+          "owner"
+        ],
+        "question": "Which FEATURE commit was tested?"
+      },
+      "retest": {
+        "type": "boolean",
+        "description": "Whether the run retests from previous results.",
+        "measured_from": "Whether lighthouse launch was given --previous.",
+        "unit": "none",
+        "includes": "Runs given a previous results folder.",
+        "excludes": "Runs that start fresh.",
+        "reading": "true means a retest; false means a fresh run; null means unknown.",
+        "readers": [
+          "owner"
+        ],
+        "question": "How often does a run retest from earlier results?"
+      },
+      "final": {
+        "type": "boolean",
+        "description": "Whether the run was the final one before opening the pull request.",
+        "measured_from": "Whether lighthouse launch was given --final.",
+        "unit": "none",
+        "includes": "Runs given --final.",
+        "excludes": "Runs without --final.",
+        "reading": "true means the run was final; false means it was not; null means unknown.",
+        "readers": [
+          "owner"
+        ],
+        "question": "How often is a run the final one?"
+      },
+      "spec": {
+        "type": "boolean",
+        "description": "Whether the run was given a spec to read.",
+        "measured_from": "Whether lighthouse launch was given --spec.",
+        "unit": "none",
+        "includes": "Runs given a spec.",
+        "excludes": "Runs without a spec.",
+        "reading": "true means a spec was given; false means none was; null means unknown.",
+        "readers": [
+          "owner"
+        ],
+        "question": "How often does a run have a spec?"
+      },
+      "failures": {
+        "type": "integer",
+        "description": "How many confirmed failures the verdict line lists.",
+        "measured_from": "The length of the failures list in the verdict line lighthouse launch prints.",
+        "unit": "count",
+        "includes": "Every entry of the line's failures list.",
+        "excludes": "Unproven and flaky entries.",
+        "reading": "Higher means more confirmed failures; 0 means none; null means unknown.",
+        "readers": [
+          "owner"
+        ],
+        "question": "How many confirmed failures does a run report?"
+      },
+      "unproven": {
+        "type": "integer",
+        "description": "How many unproven paths the verdict line lists.",
+        "measured_from": "The length of the unproven list in the verdict line lighthouse launch prints.",
+        "unit": "count",
+        "includes": "Every entry of the line's unproven list.",
+        "excludes": "Failures and flaky entries.",
+        "reading": "Higher means more unproven paths; 0 means none; null means unknown.",
+        "readers": [
+          "owner"
+        ],
+        "question": "How many unproven paths does a run report?"
+      },
+      "flaky": {
+        "type": "integer",
+        "description": "How many flaky tests and paths the verdict line lists.",
+        "measured_from": "The length of the flaky list in the verdict line lighthouse launch prints.",
+        "unit": "count",
+        "includes": "Every entry of the line's flaky list.",
+        "excludes": "Failures and unproven entries.",
+        "reading": "Higher means more flaky tests and paths; 0 means none; null means unknown.",
+        "readers": [
+          "owner"
+        ],
+        "question": "How many flaky tests and paths does a run report?"
+      },
+      "build": {
+        "type": "object",
+        "description": "Whether FEATURE built for product testing.",
+        "measured_from": "The results folder's findings.json build.",
+        "unit": "none",
+        "includes": "The build result and its reason.",
+        "excludes": "The suite's own builds, which suite records.",
+        "reading": "Each key reads as its own entry describes; null means findings.json is missing or unreadable.",
+        "readers": [
+          "owner"
+        ],
+        "question": "How often does FEATURE fail to build for product testing?",
+        "fields": {
+          "result": {
+            "type": "enum",
+            "description": "The FEATURE build's result.",
+            "measured_from": "The results folder's findings.json build.result.",
+            "unit": "none",
+            "includes": "ok or blocked.",
+            "excludes": "The suite result.",
+            "reading": "ok means it built; blocked means it did not; null means unknown.",
+            "readers": [
+              "owner"
+            ],
+            "question": "Did FEATURE build for product testing?",
+            "values": [
+              "ok",
+              "blocked"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why the FEATURE build was blocked.",
+            "measured_from": "The results folder's findings.json build.reason.",
+            "unit": "text",
+            "includes": "The reason text the child session gave.",
+            "excludes": "Suite reasons.",
+            "reading": "A text names the cause; null means none was given or it is unknown.",
+            "readers": [
+              "owner"
+            ],
+            "question": "Why does FEATURE fail to build?"
+          }
+        }
+      },
+      "suite": {
+        "type": "object",
+        "description": "The project's own suite run on both builds.",
+        "measured_from": "The results folder's suite.json, written by lighthouse suite.",
+        "unit": "none",
+        "includes": "The suite's result and reason, the counts of its failures, pre-existing failures and flaky tests, and each build's timings.",
+        "excludes": "The test ids, logs and the suite command.",
+        "reading": "Each key reads as its own entry describes; null means suite.json is missing or unreadable.",
+        "readers": [
+          "owner"
+        ],
+        "question": "Did the project's suite run on both branches, and what did it find?",
+        "fields": {
+          "result": {
+            "type": "enum",
+            "description": "The suite comparison's result.",
+            "measured_from": "The results folder's suite.json result.",
+            "unit": "none",
+            "includes": "One of passed, failures or blocked.",
+            "excludes": "The product paths, which paths records.",
+            "reading": "passed means no FEATURE failure; failures means at least one confirmed failure; blocked means the suite could not run; null means unknown.",
+            "readers": [
+              "owner"
+            ],
+            "question": "How often does the suite pass, fail or stop?",
+            "values": [
+              "passed",
+              "failures",
+              "blocked"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why the suite stopped or has no core baseline.",
+            "measured_from": "The results folder's suite.json reason.",
+            "unit": "text",
+            "includes": "The text lighthouse suite gave.",
+            "excludes": "Reasons from any other step.",
+            "reading": "A text names the cause; null means none was given or it is unknown.",
+            "readers": [
+              "owner"
+            ],
+            "question": "Why does the suite stop or run without a baseline?"
+          },
+          "failures": {
+            "type": "integer",
+            "description": "How many tests failed on FEATURE and were confirmed as failures.",
+            "measured_from": "The length of the results folder's suite.json failures list.",
+            "unit": "count",
+            "includes": "Tests that failed on FEATURE twice and did not fail on core.",
+            "excludes": "Pre-existing and flaky tests.",
+            "reading": "Higher means more confirmed suite failures; 0 means none; null means unknown.",
+            "readers": [
+              "owner"
+            ],
+            "question": "How many suite failures does a FEATURE branch carry?"
+          },
+          "pre_existing": {
+            "type": "integer",
+            "description": "How many tests failed on both builds.",
+            "measured_from": "The length of the results folder's suite.json pre_existing list.",
+            "unit": "count",
+            "includes": "Tests that failed on FEATURE and also on core.",
+            "excludes": "Confirmed failures and flaky tests.",
+            "reading": "Higher means more failures the core branch already had; 0 means none; null means unknown.",
+            "readers": [
+              "owner"
+            ],
+            "question": "How many failures come from the core branch rather than the change?"
+          },
+          "flaky": {
+            "type": "integer",
+            "description": "How many tests failed once and passed on their rerun.",
+            "measured_from": "The length of the results folder's suite.json flaky list.",
+            "unit": "count",
+            "includes": "Tests whose FEATURE result changed between the first run and the rerun.",
+            "excludes": "Confirmed failures and pre-existing failures.",
+            "reading": "Higher means more tests changed result between runs; 0 means none; null means unknown.",
+            "readers": [
+              "owner"
+            ],
+            "question": "How flaky is the project's suite?"
+          },
+          "core": {
+            "type": "object",
+            "description": "The suite timings of the core build.",
+            "measured_from": "The results folder's suite.json entry for the core build, its minutes times 60.",
+            "unit": "none",
+            "includes": "Preparation, first run and rerun seconds, and whether the result was reused.",
+            "excludes": "The test ids and the suite log.",
+            "reading": "Each key reads as its own entry describes; null means suite.json holds no entry for this build.",
+            "readers": [
+              "owner"
+            ],
+            "question": "Where does the suite spend its time on the core build?",
+            "fields": {
+              "prepare_seconds": {
+                "type": "number",
+                "description": "How long preparing the build took before its suite ran.",
+                "measured_from": "The results folder's suite.json prepare_minutes for the build, times 60.",
+                "unit": "seconds",
+                "includes": "Setup and build commands the profile names for that build.",
+                "excludes": "The suite run itself and any rerun.",
+                "reading": "Higher means longer; 0 means no time was recorded; null means unknown.",
+                "readers": [
+                  "owner"
+                ],
+                "question": "How long does preparing each build take?"
+              },
+              "suite_seconds": {
+                "type": "number",
+                "description": "How long the build's first suite run took.",
+                "measured_from": "The results folder's suite.json suite_minutes for the build, times 60.",
+                "unit": "seconds",
+                "includes": "The first run of the project's own suite on that build.",
+                "excludes": "Preparation and any rerun of failed tests.",
+                "reading": "Higher means longer; 0 means no time was recorded; null means unknown.",
+                "readers": [
+                  "owner"
+                ],
+                "question": "How long does the project's suite take on each build?"
+              },
+              "rerun_seconds": {
+                "type": "number",
+                "description": "How long rerunning the build's failed tests took.",
+                "measured_from": "The results folder's suite.json rerun_minutes for the build, times 60.",
+                "unit": "seconds",
+                "includes": "The rerun of tests that failed on the first run.",
+                "excludes": "Preparation and the first run.",
+                "reading": "Higher means longer; 0 means no time was recorded; null means unknown.",
+                "readers": [
+                  "owner"
+                ],
+                "question": "How much time do reruns of failed tests add?"
+              },
+              "reused": {
+                "type": "boolean",
+                "description": "Whether the build's stored suite result was reused instead of running the suite again.",
+                "measured_from": "The results folder's suite.json reused flag for the build.",
+                "unit": "none",
+                "includes": "A core result stored by an earlier run at the same commit and suite settings.",
+                "excludes": "A FEATURE build, which is never reused.",
+                "reading": "true means the stored result was reused and no suite ran; false means the suite ran; null means unknown.",
+                "readers": [
+                  "owner"
+                ],
+                "question": "How often does a run reuse core's stored suite result?"
+              }
+            }
+          },
+          "feature": {
+            "type": "object",
+            "description": "The suite timings of the FEATURE build.",
+            "measured_from": "The results folder's suite.json entry for the FEATURE build, its minutes times 60.",
+            "unit": "none",
+            "includes": "Preparation, first run and rerun seconds, and whether the result was reused.",
+            "excludes": "The test ids and the suite log.",
+            "reading": "Each key reads as its own entry describes; null means suite.json holds no entry for this build.",
+            "readers": [
+              "owner"
+            ],
+            "question": "Where does the suite spend its time on the FEATURE build?",
+            "fields": {
+              "prepare_seconds": {
+                "type": "number",
+                "description": "How long preparing the build took before its suite ran.",
+                "measured_from": "The results folder's suite.json prepare_minutes for the build, times 60.",
+                "unit": "seconds",
+                "includes": "Setup and build commands the profile names for that build.",
+                "excludes": "The suite run itself and any rerun.",
+                "reading": "Higher means longer; 0 means no time was recorded; null means unknown.",
+                "readers": [
+                  "owner"
+                ],
+                "question": "How long does preparing each build take?"
+              },
+              "suite_seconds": {
+                "type": "number",
+                "description": "How long the build's first suite run took.",
+                "measured_from": "The results folder's suite.json suite_minutes for the build, times 60.",
+                "unit": "seconds",
+                "includes": "The first run of the project's own suite on that build.",
+                "excludes": "Preparation and any rerun of failed tests.",
+                "reading": "Higher means longer; 0 means no time was recorded; null means unknown.",
+                "readers": [
+                  "owner"
+                ],
+                "question": "How long does the project's suite take on each build?"
+              },
+              "rerun_seconds": {
+                "type": "number",
+                "description": "How long rerunning the build's failed tests took.",
+                "measured_from": "The results folder's suite.json rerun_minutes for the build, times 60.",
+                "unit": "seconds",
+                "includes": "The rerun of tests that failed on the first run.",
+                "excludes": "Preparation and the first run.",
+                "reading": "Higher means longer; 0 means no time was recorded; null means unknown.",
+                "readers": [
+                  "owner"
+                ],
+                "question": "How much time do reruns of failed tests add?"
+              },
+              "reused": {
+                "type": "boolean",
+                "description": "Whether the build's stored suite result was reused instead of running the suite again.",
+                "measured_from": "The results folder's suite.json reused flag for the build.",
+                "unit": "none",
+                "includes": "A core result stored by an earlier run at the same commit and suite settings.",
+                "excludes": "A FEATURE build, which is never reused.",
+                "reading": "true means the stored result was reused and no suite ran; false means the suite ran; null means unknown.",
+                "readers": [
+                  "owner"
+                ],
+                "question": "How often does a run reuse core's stored suite result?"
+              }
+            }
+          }
+        }
+      },
+      "paths": {
+        "type": "array",
+        "description": "The product paths the run checked.",
+        "measured_from": "The results folder's findings.json paths, with carried from retest.json carried_paths.",
+        "unit": "none",
+        "includes": "Every new behaviour and neighbour path in findings.json.",
+        "excludes": "Suite tests, which suite records.",
+        "reading": "Each item reads as its entries describe; an empty list means no path was checked; null means findings.json is missing or unreadable.",
+        "readers": [
+          "owner"
+        ],
+        "question": "Which product paths were driven or rechecked, and how did each end?",
+        "items": {
+          "type": "object",
+          "description": "One product path the run checked.",
+          "measured_from": "One entry of the results folder's findings.json paths.",
+          "unit": "none",
+          "includes": "The path's name, kind, status, check, retry and whether it was carried.",
+          "excludes": "The path's evidence, surface and expected behaviour.",
+          "reading": "Each key reads as its own entry describes.",
+          "readers": [
+            "owner"
+          ],
+          "question": "What happened to each product path?",
+          "fields": {
+            "name": {
+              "type": "string",
+              "description": "The product path's name.",
+              "measured_from": "The path's name in findings.json.",
+              "unit": "id",
+              "includes": "The name the run gave the path.",
+              "excludes": "The surface the path belongs to.",
+              "reading": "A name identifies the path within the run; null means unknown.",
+              "readers": [
+                "owner"
+              ],
+              "question": "Which product path is this?"
+            },
+            "kind": {
+              "type": "enum",
+              "description": "Whether the path is new behaviour or a neighbour of the change.",
+              "measured_from": "The path's kind in findings.json.",
+              "unit": "none",
+              "includes": "new for behaviour the change adds, neighbour for a surface next to the change.",
+              "excludes": "Suite tests, which suite records.",
+              "reading": "new means the change adds this behaviour; neighbour means it is rechecked beside the change; null means unknown.",
+              "readers": [
+                "owner"
+              ],
+              "question": "How many new behaviours and neighbours does a run check?",
+              "values": [
+                "new",
+                "neighbour"
+              ]
+            },
+            "status": {
+              "type": "enum",
+              "description": "The path's result on FEATURE.",
+              "measured_from": "The path's status in findings.json.",
+              "unit": "none",
+              "includes": "passed, failed or unproven on the FEATURE build.",
+              "excludes": "The retry and the core result.",
+              "reading": "passed means it behaved as expected; failed means it did not; unproven means it was not shown either way; null means unknown.",
+              "readers": [
+                "owner"
+              ],
+              "question": "How often are product paths proven?",
+              "values": [
+                "passed",
+                "failed",
+                "unproven"
+              ]
+            },
+            "check": {
+              "type": "enum",
+              "description": "How the path was checked.",
+              "measured_from": "The kind of the path's check in findings.json.",
+              "unit": "none",
+              "includes": "suite for an existing test, direct for a direct call, drive for driving the running product.",
+              "excludes": "The reason the check was chosen.",
+              "reading": "suite, direct and drive name the check used; null means the path carries no check, such as a carried path.",
+              "readers": [
+                "owner"
+              ],
+              "question": "How are product paths checked?",
+              "values": [
+                "suite",
+                "direct",
+                "drive"
+              ]
+            },
+            "retry": {
+              "type": "enum",
+              "description": "The result of the path's retry after a failure.",
+              "measured_from": "The path's retry in findings.json.",
+              "unit": "none",
+              "includes": "passed or failed on the retry.",
+              "excludes": "The first attempt, which status records.",
+              "reading": "passed means the retry passed; failed means it failed again; null means there was no retry or it is unknown.",
+              "readers": [
+                "owner"
+              ],
+              "question": "How often does a failed path pass on retry?",
+              "values": [
+                "passed",
+                "failed"
+              ]
+            },
+            "carried": {
+              "type": "boolean",
+              "description": "Whether the path was carried from previous results rather than checked again.",
+              "measured_from": "Whether the path is among the results folder's retest.json carried_paths.",
+              "unit": "none",
+              "includes": "Paths a retest carried over unchanged.",
+              "excludes": "Paths driven again in this run.",
+              "reading": "true means the result was carried from an earlier run; false means it was checked in this run; null means unknown.",
+              "readers": [
+                "owner"
+              ],
+              "question": "How much of a retest is carried rather than checked again?"
+            }
+          }
+        }
+      },
+      "usd": {
+        "type": "number",
+        "description": "The US dollars of the run's own spend, priced at write time.",
+        "measured_from": "Every assistant message of the transcripts under the results folder and the caller's transcript inside the run's span, counted once by message id, priced by exact model id with lighthouse_tool/prices.json read when launch writes the summary.",
+        "unit": "usd",
+        "includes": "Every counted message of the run's own spend in all five token kinds.",
+        "excludes": "Any message outside the run's own spend.",
+        "reading": "Higher means more dollars spent; 0 means no counted tokens; null means a counted model has no price or the spend is unknown. It is lighthouse's own spend only, every message of the run counted once; a whole pipeline run's cost is the sum of usd over its run tree.",
+        "readers": [
+          "owner",
+          "a harness reading its child runs"
+        ],
+        "question": "What did the run's own spend cost?"
+      },
+      "price_date": {
+        "type": "string",
+        "description": "The date of the price table the run was priced from.",
+        "measured_from": "The date of lighthouse_tool/prices.json when launch wrote the summary.",
+        "unit": "timestamp",
+        "includes": "A date as YYYY-MM-DD.",
+        "excludes": "Times of day.",
+        "reading": "A later date means a newer price table; null means the table carried no date or the run was imported.",
+        "readers": [
+          "owner",
+          "a harness reading its child runs"
+        ],
+        "question": "Which prices produced usd?"
+      },
+      "tokens": {
+        "type": "object",
+        "description": "The tokens of the run's own spend in the five kinds.",
+        "measured_from": "Summed over every counted message of the transcripts under the results folder and the caller's transcript inside the run's span from each message's usage block, by kind.",
+        "unit": "tokens",
+        "includes": "The five token kinds input, cache_write_5m, cache_write_1h, cache_read and output.",
+        "excludes": "Any token a message's usage block does not report.",
+        "reading": "Each kind is a count of tokens; higher means more tokens of that kind; all zero means no counted message; null means unknown.",
+        "readers": [
+          "owner",
+          "a harness reading its child runs"
+        ],
+        "question": "Which kinds of tokens make up the run's own spend?",
+        "fields": {
+          "input": {
+            "type": "integer",
+            "description": "The fresh input tokens, read without a cache of the run's own spend.",
+            "measured_from": "Summed over every counted message of the transcripts under the results folder and the caller's transcript inside the run's span from each message's usage block.",
+            "unit": "tokens",
+            "includes": "Every fresh input tokens, read without a cache counted in the run's own spend.",
+            "excludes": "Every other token kind, which has its own key.",
+            "reading": "A higher count means more fresh input tokens, read without a cache; 0 means none were counted; null means unknown.",
+            "readers": [
+              "owner",
+              "a harness reading its child runs"
+            ],
+            "question": "How many fresh input tokens, read without a cache did the run's own spend take?"
+          },
+          "cache_write_5m": {
+            "type": "integer",
+            "description": "The input tokens written to a cache kept five minutes of the run's own spend.",
+            "measured_from": "Summed over every counted message of the transcripts under the results folder and the caller's transcript inside the run's span from each message's usage block.",
+            "unit": "tokens",
+            "includes": "Every input tokens written to a cache kept five minutes counted in the run's own spend.",
+            "excludes": "Every other token kind, which has its own key.",
+            "reading": "A higher count means more input tokens written to a cache kept five minutes; 0 means none were counted; null means unknown.",
+            "readers": [
+              "owner",
+              "a harness reading its child runs"
+            ],
+            "question": "How many input tokens written to a cache kept five minutes did the run's own spend take?"
+          },
+          "cache_write_1h": {
+            "type": "integer",
+            "description": "The input tokens written to a cache kept one hour of the run's own spend.",
+            "measured_from": "Summed over every counted message of the transcripts under the results folder and the caller's transcript inside the run's span from each message's usage block.",
+            "unit": "tokens",
+            "includes": "Every input tokens written to a cache kept one hour counted in the run's own spend.",
+            "excludes": "Every other token kind, which has its own key.",
+            "reading": "A higher count means more input tokens written to a cache kept one hour; 0 means none were counted; null means unknown.",
+            "readers": [
+              "owner",
+              "a harness reading its child runs"
+            ],
+            "question": "How many input tokens written to a cache kept one hour did the run's own spend take?"
+          },
+          "cache_read": {
+            "type": "integer",
+            "description": "The input tokens read from a cache of the run's own spend.",
+            "measured_from": "Summed over every counted message of the transcripts under the results folder and the caller's transcript inside the run's span from each message's usage block.",
+            "unit": "tokens",
+            "includes": "Every input tokens read from a cache counted in the run's own spend.",
+            "excludes": "Every other token kind, which has its own key.",
+            "reading": "A higher count means more input tokens read from a cache; 0 means none were counted; null means unknown.",
+            "readers": [
+              "owner",
+              "a harness reading its child runs"
+            ],
+            "question": "How many input tokens read from a cache did the run's own spend take?"
+          },
+          "output": {
+            "type": "integer",
+            "description": "The output tokens the model wrote of the run's own spend.",
+            "measured_from": "Summed over every counted message of the transcripts under the results folder and the caller's transcript inside the run's span from each message's usage block.",
+            "unit": "tokens",
+            "includes": "Every output tokens the model wrote counted in the run's own spend.",
+            "excludes": "Every other token kind, which has its own key.",
+            "reading": "A higher count means more output tokens the model wrote; 0 means none were counted; null means unknown.",
+            "readers": [
+              "owner",
+              "a harness reading its child runs"
+            ],
+            "question": "How many output tokens the model wrote did the run's own spend take?"
+          }
+        }
+      },
+      "messages": {
+        "type": "integer",
+        "description": "How many assistant messages the run counted.",
+        "measured_from": "The assistant messages of the transcripts under the results folder and the caller's transcript inside the run's span, counted once by message id.",
+        "unit": "count",
+        "includes": "Messages of the child session, its drivers, its trial sessions and the caller inside the span.",
+        "excludes": "Messages before run.start, caller messages after run.end and repeated message ids.",
+        "reading": "Higher means more model turns; 0 means none were found; null means unknown.",
+        "readers": [
+          "owner",
+          "a harness reading its child runs"
+        ],
+        "question": "How many model turns does a run take?"
+      },
+      "models": {
+        "type": "array",
+        "description": "The run's spend by exact model id.",
+        "measured_from": "The counted messages of the transcripts under the results folder and the caller's transcript inside the run's span, grouped by model.",
+        "unit": "none",
+        "includes": "One item per model seen in the counted messages.",
+        "excludes": "Models no counted message used.",
+        "reading": "Each item reads as its entries describe; an empty list means no message was counted; null means unknown.",
+        "readers": [
+          "owner",
+          "a harness reading its child runs"
+        ],
+        "question": "Which models does a run use?",
+        "items": {
+          "type": "object",
+          "description": "One model's share of the run's spend.",
+          "measured_from": "The counted messages of the transcripts under the results folder and the caller's transcript inside the run's span grouped by exact model id.",
+          "unit": "none",
+          "includes": "The model id, its tokens and its dollars.",
+          "excludes": "Other models, which have their own entries.",
+          "reading": "Each key reads as its own entry describes.",
+          "readers": [
+            "owner",
+            "a harness reading its child runs"
+          ],
+          "question": "Which models does a run use, and what does each cost?",
+          "fields": {
+            "model": {
+              "type": "string",
+              "description": "The exact model id.",
+              "measured_from": "The model of each counted message.",
+              "unit": "id",
+              "includes": "The id as the transcript records it.",
+              "excludes": "Family names, which are never used.",
+              "reading": "An id names one model; unknown names messages without a model; null means unknown.",
+              "readers": [
+                "owner",
+                "a harness reading its child runs"
+              ],
+              "question": "Which model is this?"
+            },
+            "tokens": {
+              "type": "object",
+              "description": "The tokens of the model's messages in the five kinds.",
+              "measured_from": "Summed over the counted messages of that model from each message's usage block, by kind.",
+              "unit": "tokens",
+              "includes": "The five token kinds input, cache_write_5m, cache_write_1h, cache_read and output.",
+              "excludes": "Any token a message's usage block does not report.",
+              "reading": "Each kind is a count of tokens; higher means more tokens of that kind; all zero means no counted message; null means unknown.",
+              "readers": [
+                "owner",
+                "a harness reading its child runs"
+              ],
+              "question": "Which kinds of tokens make up the model's messages?",
+              "fields": {
+                "input": {
+                  "type": "integer",
+                  "description": "The fresh input tokens, read without a cache of the model's messages.",
+                  "measured_from": "Summed over the counted messages of that model from each message's usage block.",
+                  "unit": "tokens",
+                  "includes": "Every fresh input tokens, read without a cache counted in the model's messages.",
+                  "excludes": "Every other token kind, which has its own key.",
+                  "reading": "A higher count means more fresh input tokens, read without a cache; 0 means none were counted; null means unknown.",
+                  "readers": [
+                    "owner",
+                    "a harness reading its child runs"
+                  ],
+                  "question": "How many fresh input tokens, read without a cache did the model's messages take?"
+                },
+                "cache_write_5m": {
+                  "type": "integer",
+                  "description": "The input tokens written to a cache kept five minutes of the model's messages.",
+                  "measured_from": "Summed over the counted messages of that model from each message's usage block.",
+                  "unit": "tokens",
+                  "includes": "Every input tokens written to a cache kept five minutes counted in the model's messages.",
+                  "excludes": "Every other token kind, which has its own key.",
+                  "reading": "A higher count means more input tokens written to a cache kept five minutes; 0 means none were counted; null means unknown.",
+                  "readers": [
+                    "owner",
+                    "a harness reading its child runs"
+                  ],
+                  "question": "How many input tokens written to a cache kept five minutes did the model's messages take?"
+                },
+                "cache_write_1h": {
+                  "type": "integer",
+                  "description": "The input tokens written to a cache kept one hour of the model's messages.",
+                  "measured_from": "Summed over the counted messages of that model from each message's usage block.",
+                  "unit": "tokens",
+                  "includes": "Every input tokens written to a cache kept one hour counted in the model's messages.",
+                  "excludes": "Every other token kind, which has its own key.",
+                  "reading": "A higher count means more input tokens written to a cache kept one hour; 0 means none were counted; null means unknown.",
+                  "readers": [
+                    "owner",
+                    "a harness reading its child runs"
+                  ],
+                  "question": "How many input tokens written to a cache kept one hour did the model's messages take?"
+                },
+                "cache_read": {
+                  "type": "integer",
+                  "description": "The input tokens read from a cache of the model's messages.",
+                  "measured_from": "Summed over the counted messages of that model from each message's usage block.",
+                  "unit": "tokens",
+                  "includes": "Every input tokens read from a cache counted in the model's messages.",
+                  "excludes": "Every other token kind, which has its own key.",
+                  "reading": "A higher count means more input tokens read from a cache; 0 means none were counted; null means unknown.",
+                  "readers": [
+                    "owner",
+                    "a harness reading its child runs"
+                  ],
+                  "question": "How many input tokens read from a cache did the model's messages take?"
+                },
+                "output": {
+                  "type": "integer",
+                  "description": "The output tokens the model wrote of the model's messages.",
+                  "measured_from": "Summed over the counted messages of that model from each message's usage block.",
+                  "unit": "tokens",
+                  "includes": "Every output tokens the model wrote counted in the model's messages.",
+                  "excludes": "Every other token kind, which has its own key.",
+                  "reading": "A higher count means more output tokens the model wrote; 0 means none were counted; null means unknown.",
+                  "readers": [
+                    "owner",
+                    "a harness reading its child runs"
+                  ],
+                  "question": "How many output tokens the model wrote did the model's messages take?"
+                }
+              }
+            },
+            "usd": {
+              "type": "number",
+              "description": "The US dollars of the model's messages, priced at write time.",
+              "measured_from": "The counted messages of that model, priced by exact model id with lighthouse_tool/prices.json read when launch writes the summary.",
+              "unit": "usd",
+              "includes": "Every counted message of the model's messages in all five token kinds.",
+              "excludes": "Any message outside the model's messages.",
+              "reading": "Higher means more dollars spent; 0 means no counted tokens; null means a counted model has no price or the spend is unknown.",
+              "readers": [
+                "owner",
+                "a harness reading its child runs"
+              ],
+              "question": "What did the model's messages cost?"
+            }
+          }
+        }
+      },
+      "unpriced": {
+        "type": "array",
+        "description": "The models the price table has no rates for.",
+        "measured_from": "The counted models missing from lighthouse_tool/prices.json.",
+        "unit": "id",
+        "includes": "Every counted model id with tokens and no price.",
+        "excludes": "Priced models and models with no tokens.",
+        "reading": "Each item is a model id; an empty list means every model was priced; null means unknown.",
+        "readers": [
+          "owner",
+          "a harness reading its child runs"
+        ],
+        "question": "Why is usd null?",
+        "items": {
+          "type": "string",
+          "description": "One unpriced model id.",
+          "measured_from": "The model of a counted message missing from the price table.",
+          "unit": "id",
+          "includes": "The exact model id.",
+          "excludes": "Priced models.",
+          "reading": "An id names the model; null means unknown.",
+          "readers": [
+            "owner",
+            "a harness reading its child runs"
+          ],
+          "question": "Which model has no price?"
+        }
+      },
+      "steps": {
+        "type": "array",
+        "description": "The run's time and spend by marked step and build.",
+        "measured_from": "lighthouse spend's steps over the transcripts' lighthouse mark calls, refined by the results folder's marks.jsonl, minutes times 60.",
+        "unit": "none",
+        "includes": "One item per marked step and build.",
+        "excludes": "Messages outside any mark, which shared records.",
+        "reading": "Each item reads as its entries describe; an empty list means nothing was marked; null means marks.jsonl was unreadable or the spend is unknown.",
+        "readers": [
+          "owner"
+        ],
+        "question": "Where does a run spend by step?",
+        "items": {
+          "type": "object",
+          "description": "One marked step of the run on one build.",
+          "measured_from": "One step span from the lighthouse mark start and end calls in the transcripts, refined by the results folder's marks.jsonl.",
+          "unit": "none",
+          "includes": "The step's name, build, elapsed seconds, dollars and tokens.",
+          "excludes": "Driven paths, which drives records.",
+          "reading": "Each key reads as its own entry describes.",
+          "readers": [
+            "owner"
+          ],
+          "question": "Where does a run spend its time and money by step?",
+          "fields": {
+            "step": {
+              "type": "string",
+              "description": "The marked step's name.",
+              "measured_from": "The --step of the lighthouse mark calls.",
+              "unit": "id",
+              "includes": "The name the child session marked.",
+              "excludes": "The build, which build records.",
+              "reading": "A name identifies the step; null means unknown.",
+              "readers": [
+                "owner"
+              ],
+              "question": "Which step is this?"
+            },
+            "build": {
+              "type": "enum",
+              "description": "The build the step ran on.",
+              "measured_from": "The --build of the lighthouse mark calls.",
+              "unit": "none",
+              "includes": "core or feature.",
+              "excludes": "The step's name.",
+              "reading": "core or feature names the build; null means the step was not marked with a build.",
+              "readers": [
+                "owner"
+              ],
+              "question": "Which build did the step run on?",
+              "values": [
+                "core",
+                "feature"
+              ]
+            },
+            "elapsed_seconds": {
+              "type": "number",
+              "description": "How long the step took.",
+              "measured_from": "The step's spans from lighthouse spend in minutes, times 60, to a resolution of 6 seconds.",
+              "unit": "seconds",
+              "includes": "Time between the step's start and end marks.",
+              "excludes": "Time spent in driven paths, which drives records.",
+              "reading": "Higher means longer; 0 means no time was recorded; null means unknown.",
+              "readers": [
+                "owner"
+              ],
+              "question": "How long does each step take?"
+            },
+            "usd": {
+              "type": "number",
+              "description": "The US dollars of the step's messages, priced at write time.",
+              "measured_from": "The messages marked inside the step, priced by exact model id with lighthouse_tool/prices.json read when launch writes the summary.",
+              "unit": "usd",
+              "includes": "Every counted message of the step's messages in all five token kinds.",
+              "excludes": "Any message outside the step's messages.",
+              "reading": "Higher means more dollars spent; 0 means no counted tokens; null means a counted model has no price or the spend is unknown.",
+              "readers": [
+                "owner"
+              ],
+              "question": "What did the step's messages cost?"
+            },
+            "tokens": {
+              "type": "object",
+              "description": "The tokens of the step's messages in the five kinds.",
+              "measured_from": "Summed over the messages marked inside the step from each message's usage block, by kind.",
+              "unit": "tokens",
+              "includes": "The five token kinds input, cache_write_5m, cache_write_1h, cache_read and output.",
+              "excludes": "Any token a message's usage block does not report.",
+              "reading": "Each kind is a count of tokens; higher means more tokens of that kind; all zero means no counted message; null means unknown.",
+              "readers": [
+                "owner"
+              ],
+              "question": "Which kinds of tokens make up the step's messages?",
+              "fields": {
+                "input": {
+                  "type": "integer",
+                  "description": "The fresh input tokens, read without a cache of the step's messages.",
+                  "measured_from": "Summed over the messages marked inside the step from each message's usage block.",
+                  "unit": "tokens",
+                  "includes": "Every fresh input tokens, read without a cache counted in the step's messages.",
+                  "excludes": "Every other token kind, which has its own key.",
+                  "reading": "A higher count means more fresh input tokens, read without a cache; 0 means none were counted; null means unknown.",
+                  "readers": [
+                    "owner"
+                  ],
+                  "question": "How many fresh input tokens, read without a cache did the step's messages take?"
+                },
+                "cache_write_5m": {
+                  "type": "integer",
+                  "description": "The input tokens written to a cache kept five minutes of the step's messages.",
+                  "measured_from": "Summed over the messages marked inside the step from each message's usage block.",
+                  "unit": "tokens",
+                  "includes": "Every input tokens written to a cache kept five minutes counted in the step's messages.",
+                  "excludes": "Every other token kind, which has its own key.",
+                  "reading": "A higher count means more input tokens written to a cache kept five minutes; 0 means none were counted; null means unknown.",
+                  "readers": [
+                    "owner"
+                  ],
+                  "question": "How many input tokens written to a cache kept five minutes did the step's messages take?"
+                },
+                "cache_write_1h": {
+                  "type": "integer",
+                  "description": "The input tokens written to a cache kept one hour of the step's messages.",
+                  "measured_from": "Summed over the messages marked inside the step from each message's usage block.",
+                  "unit": "tokens",
+                  "includes": "Every input tokens written to a cache kept one hour counted in the step's messages.",
+                  "excludes": "Every other token kind, which has its own key.",
+                  "reading": "A higher count means more input tokens written to a cache kept one hour; 0 means none were counted; null means unknown.",
+                  "readers": [
+                    "owner"
+                  ],
+                  "question": "How many input tokens written to a cache kept one hour did the step's messages take?"
+                },
+                "cache_read": {
+                  "type": "integer",
+                  "description": "The input tokens read from a cache of the step's messages.",
+                  "measured_from": "Summed over the messages marked inside the step from each message's usage block.",
+                  "unit": "tokens",
+                  "includes": "Every input tokens read from a cache counted in the step's messages.",
+                  "excludes": "Every other token kind, which has its own key.",
+                  "reading": "A higher count means more input tokens read from a cache; 0 means none were counted; null means unknown.",
+                  "readers": [
+                    "owner"
+                  ],
+                  "question": "How many input tokens read from a cache did the step's messages take?"
+                },
+                "output": {
+                  "type": "integer",
+                  "description": "The output tokens the model wrote of the step's messages.",
+                  "measured_from": "Summed over the messages marked inside the step from each message's usage block.",
+                  "unit": "tokens",
+                  "includes": "Every output tokens the model wrote counted in the step's messages.",
+                  "excludes": "Every other token kind, which has its own key.",
+                  "reading": "A higher count means more output tokens the model wrote; 0 means none were counted; null means unknown.",
+                  "readers": [
+                    "owner"
+                  ],
+                  "question": "How many output tokens the model wrote did the step's messages take?"
+                }
+              }
+            }
+          }
+        }
+      },
+      "drives": {
+        "type": "array",
+        "description": "The run's time and spend by driven path and build.",
+        "measured_from": "lighthouse spend's paths over the transcripts' lighthouse mark calls with --path, refined by the results folder's marks.jsonl, minutes times 60.",
+        "unit": "none",
+        "includes": "One item per marked path and build.",
+        "excludes": "Steps without a path.",
+        "reading": "Each item reads as its entries describe; an empty list means no path was marked; null means marks.jsonl was unreadable or the spend is unknown.",
+        "readers": [
+          "owner"
+        ],
+        "question": "Where does a run spend by driven path?",
+        "items": {
+          "type": "object",
+          "description": "One driven product path on one build.",
+          "measured_from": "One path span from the lighthouse mark start and end calls with --path in the transcripts, refined by the results folder's marks.jsonl.",
+          "unit": "none",
+          "includes": "The path's name, build, elapsed seconds, dollars and tokens.",
+          "excludes": "Steps without a path, which steps records.",
+          "reading": "Each key reads as its own entry describes.",
+          "readers": [
+            "owner"
+          ],
+          "question": "Where does a run spend its time and money by driven path?",
+          "fields": {
+            "path": {
+              "type": "string",
+              "description": "The driven path's name.",
+              "measured_from": "The --path of the lighthouse mark calls.",
+              "unit": "id",
+              "includes": "The name the child session marked.",
+              "excludes": "The build, which build records.",
+              "reading": "A name identifies the path; null means unknown.",
+              "readers": [
+                "owner"
+              ],
+              "question": "Which driven path is this?"
+            },
+            "build": {
+              "type": "enum",
+              "description": "The build the path was driven on.",
+              "measured_from": "The --build of the lighthouse mark calls.",
+              "unit": "none",
+              "includes": "core or feature.",
+              "excludes": "The path's name.",
+              "reading": "core or feature names the build; null means the path was not marked with a build.",
+              "readers": [
+                "owner"
+              ],
+              "question": "Which build was the path driven on?",
+              "values": [
+                "core",
+                "feature"
+              ]
+            },
+            "elapsed_seconds": {
+              "type": "number",
+              "description": "How long driving the path took.",
+              "measured_from": "The path's spans from lighthouse spend in minutes, times 60, to a resolution of 6 seconds.",
+              "unit": "seconds",
+              "includes": "Time between the path's start and end marks.",
+              "excludes": "Time outside the path's marks.",
+              "reading": "Higher means longer; 0 means no time was recorded; null means unknown.",
+              "readers": [
+                "owner"
+              ],
+              "question": "How long does driving each path take?"
+            },
+            "usd": {
+              "type": "number",
+              "description": "The US dollars of the driven path's messages, priced at write time.",
+              "measured_from": "The messages marked inside the path, including trial sessions in its folder, priced by exact model id with lighthouse_tool/prices.json read when launch writes the summary.",
+              "unit": "usd",
+              "includes": "Every counted message of the driven path's messages in all five token kinds.",
+              "excludes": "Any message outside the driven path's messages.",
+              "reading": "Higher means more dollars spent; 0 means no counted tokens; null means a counted model has no price or the spend is unknown.",
+              "readers": [
+                "owner"
+              ],
+              "question": "What did the driven path's messages cost?"
+            },
+            "tokens": {
+              "type": "object",
+              "description": "The tokens of the driven path's messages in the five kinds.",
+              "measured_from": "Summed over the messages marked inside the path, including trial sessions in its folder from each message's usage block, by kind.",
+              "unit": "tokens",
+              "includes": "The five token kinds input, cache_write_5m, cache_write_1h, cache_read and output.",
+              "excludes": "Any token a message's usage block does not report.",
+              "reading": "Each kind is a count of tokens; higher means more tokens of that kind; all zero means no counted message; null means unknown.",
+              "readers": [
+                "owner"
+              ],
+              "question": "Which kinds of tokens make up the driven path's messages?",
+              "fields": {
+                "input": {
+                  "type": "integer",
+                  "description": "The fresh input tokens, read without a cache of the driven path's messages.",
+                  "measured_from": "Summed over the messages marked inside the path, including trial sessions in its folder from each message's usage block.",
+                  "unit": "tokens",
+                  "includes": "Every fresh input tokens, read without a cache counted in the driven path's messages.",
+                  "excludes": "Every other token kind, which has its own key.",
+                  "reading": "A higher count means more fresh input tokens, read without a cache; 0 means none were counted; null means unknown.",
+                  "readers": [
+                    "owner"
+                  ],
+                  "question": "How many fresh input tokens, read without a cache did the driven path's messages take?"
+                },
+                "cache_write_5m": {
+                  "type": "integer",
+                  "description": "The input tokens written to a cache kept five minutes of the driven path's messages.",
+                  "measured_from": "Summed over the messages marked inside the path, including trial sessions in its folder from each message's usage block.",
+                  "unit": "tokens",
+                  "includes": "Every input tokens written to a cache kept five minutes counted in the driven path's messages.",
+                  "excludes": "Every other token kind, which has its own key.",
+                  "reading": "A higher count means more input tokens written to a cache kept five minutes; 0 means none were counted; null means unknown.",
+                  "readers": [
+                    "owner"
+                  ],
+                  "question": "How many input tokens written to a cache kept five minutes did the driven path's messages take?"
+                },
+                "cache_write_1h": {
+                  "type": "integer",
+                  "description": "The input tokens written to a cache kept one hour of the driven path's messages.",
+                  "measured_from": "Summed over the messages marked inside the path, including trial sessions in its folder from each message's usage block.",
+                  "unit": "tokens",
+                  "includes": "Every input tokens written to a cache kept one hour counted in the driven path's messages.",
+                  "excludes": "Every other token kind, which has its own key.",
+                  "reading": "A higher count means more input tokens written to a cache kept one hour; 0 means none were counted; null means unknown.",
+                  "readers": [
+                    "owner"
+                  ],
+                  "question": "How many input tokens written to a cache kept one hour did the driven path's messages take?"
+                },
+                "cache_read": {
+                  "type": "integer",
+                  "description": "The input tokens read from a cache of the driven path's messages.",
+                  "measured_from": "Summed over the messages marked inside the path, including trial sessions in its folder from each message's usage block.",
+                  "unit": "tokens",
+                  "includes": "Every input tokens read from a cache counted in the driven path's messages.",
+                  "excludes": "Every other token kind, which has its own key.",
+                  "reading": "A higher count means more input tokens read from a cache; 0 means none were counted; null means unknown.",
+                  "readers": [
+                    "owner"
+                  ],
+                  "question": "How many input tokens read from a cache did the driven path's messages take?"
+                },
+                "output": {
+                  "type": "integer",
+                  "description": "The output tokens the model wrote of the driven path's messages.",
+                  "measured_from": "Summed over the messages marked inside the path, including trial sessions in its folder from each message's usage block.",
+                  "unit": "tokens",
+                  "includes": "Every output tokens the model wrote counted in the driven path's messages.",
+                  "excludes": "Every other token kind, which has its own key.",
+                  "reading": "A higher count means more output tokens the model wrote; 0 means none were counted; null means unknown.",
+                  "readers": [
+                    "owner"
+                  ],
+                  "question": "How many output tokens the model wrote did the driven path's messages take?"
+                }
+              }
+            }
+          }
+        }
+      },
+      "shared": {
+        "type": "object",
+        "description": "The spend of counted messages outside any mark.",
+        "measured_from": "The counted messages of the transcripts under the results folder and the caller's transcript inside the run's span that no step or path mark owns.",
+        "unit": "none",
+        "includes": "Dollars and tokens of unmarked messages.",
+        "excludes": "Messages any mark owns.",
+        "reading": "Each key reads as its own entry describes; null means marks.jsonl was unreadable or the spend is unknown.",
+        "readers": [
+          "owner"
+        ],
+        "question": "How much of a run's spend sits outside its marks?",
+        "fields": {
+          "usd": {
+            "type": "number",
+            "description": "The US dollars of the unmarked messages, priced at write time.",
+            "measured_from": "The counted messages no mark owns, priced by exact model id with lighthouse_tool/prices.json read when launch writes the summary.",
+            "unit": "usd",
+            "includes": "Every counted message of the unmarked messages in all five token kinds.",
+            "excludes": "Any message outside the unmarked messages.",
+            "reading": "Higher means more dollars spent; 0 means no counted tokens; null means a counted model has no price or the spend is unknown.",
+            "readers": [
+              "owner"
+            ],
+            "question": "What did the unmarked messages cost?"
+          },
+          "tokens": {
+            "type": "object",
+            "description": "The tokens of the unmarked messages in the five kinds.",
+            "measured_from": "Summed over the counted messages no mark owns from each message's usage block, by kind.",
+            "unit": "tokens",
+            "includes": "The five token kinds input, cache_write_5m, cache_write_1h, cache_read and output.",
+            "excludes": "Any token a message's usage block does not report.",
+            "reading": "Each kind is a count of tokens; higher means more tokens of that kind; all zero means no counted message; null means unknown.",
+            "readers": [
+              "owner"
+            ],
+            "question": "Which kinds of tokens make up the unmarked messages?",
+            "fields": {
+              "input": {
+                "type": "integer",
+                "description": "The fresh input tokens, read without a cache of the unmarked messages.",
+                "measured_from": "Summed over the counted messages no mark owns from each message's usage block.",
+                "unit": "tokens",
+                "includes": "Every fresh input tokens, read without a cache counted in the unmarked messages.",
+                "excludes": "Every other token kind, which has its own key.",
+                "reading": "A higher count means more fresh input tokens, read without a cache; 0 means none were counted; null means unknown.",
+                "readers": [
+                  "owner"
+                ],
+                "question": "How many fresh input tokens, read without a cache did the unmarked messages take?"
+              },
+              "cache_write_5m": {
+                "type": "integer",
+                "description": "The input tokens written to a cache kept five minutes of the unmarked messages.",
+                "measured_from": "Summed over the counted messages no mark owns from each message's usage block.",
+                "unit": "tokens",
+                "includes": "Every input tokens written to a cache kept five minutes counted in the unmarked messages.",
+                "excludes": "Every other token kind, which has its own key.",
+                "reading": "A higher count means more input tokens written to a cache kept five minutes; 0 means none were counted; null means unknown.",
+                "readers": [
+                  "owner"
+                ],
+                "question": "How many input tokens written to a cache kept five minutes did the unmarked messages take?"
+              },
+              "cache_write_1h": {
+                "type": "integer",
+                "description": "The input tokens written to a cache kept one hour of the unmarked messages.",
+                "measured_from": "Summed over the counted messages no mark owns from each message's usage block.",
+                "unit": "tokens",
+                "includes": "Every input tokens written to a cache kept one hour counted in the unmarked messages.",
+                "excludes": "Every other token kind, which has its own key.",
+                "reading": "A higher count means more input tokens written to a cache kept one hour; 0 means none were counted; null means unknown.",
+                "readers": [
+                  "owner"
+                ],
+                "question": "How many input tokens written to a cache kept one hour did the unmarked messages take?"
+              },
+              "cache_read": {
+                "type": "integer",
+                "description": "The input tokens read from a cache of the unmarked messages.",
+                "measured_from": "Summed over the counted messages no mark owns from each message's usage block.",
+                "unit": "tokens",
+                "includes": "Every input tokens read from a cache counted in the unmarked messages.",
+                "excludes": "Every other token kind, which has its own key.",
+                "reading": "A higher count means more input tokens read from a cache; 0 means none were counted; null means unknown.",
+                "readers": [
+                  "owner"
+                ],
+                "question": "How many input tokens read from a cache did the unmarked messages take?"
+              },
+              "output": {
+                "type": "integer",
+                "description": "The output tokens the model wrote of the unmarked messages.",
+                "measured_from": "Summed over the counted messages no mark owns from each message's usage block.",
+                "unit": "tokens",
+                "includes": "Every output tokens the model wrote counted in the unmarked messages.",
+                "excludes": "Every other token kind, which has its own key.",
+                "reading": "A higher count means more output tokens the model wrote; 0 means none were counted; null means unknown.",
+                "readers": [
+                  "owner"
+                ],
+                "question": "How many output tokens the model wrote did the unmarked messages take?"
+              }
+            }
+          }
+        }
+      },
+      "caller": {
+        "type": "object",
+        "description": "The caller's own spend inside the run's span.",
+        "measured_from": "The caller's transcript, <CLAUDE_CODE_SESSION_ID>.jsonl under $HOME/.claude/projects, between run.start and run.end.",
+        "unit": "none",
+        "includes": "Dollars, tokens and messages of the caller's assistant messages inside the span.",
+        "excludes": "Caller messages before run.start or after run.end.",
+        "reading": "Each key reads as its own entry describes; zero messages means no caller session; null means the caller's transcript was not found.",
+        "readers": [
+          "owner",
+          "a harness reading its child runs"
+        ],
+        "question": "How much does the caller spend while a run is open?",
+        "fields": {
+          "usd": {
+            "type": "number",
+            "description": "The US dollars of the caller's messages inside the span, priced at write time.",
+            "measured_from": "The caller's assistant messages between run.start and run.end, priced by exact model id with lighthouse_tool/prices.json read when launch writes the summary.",
+            "unit": "usd",
+            "includes": "Every counted message of the caller's messages inside the span in all five token kinds.",
+            "excludes": "Any message outside the caller's messages inside the span.",
+            "reading": "Higher means more dollars spent; 0 means no counted tokens; null means a counted model has no price or the spend is unknown.",
+            "readers": [
+              "owner",
+              "a harness reading its child runs"
+            ],
+            "question": "What did the caller's messages inside the span cost?"
+          },
+          "tokens": {
+            "type": "object",
+            "description": "The tokens of the caller's messages inside the span in the five kinds.",
+            "measured_from": "Summed over the caller's assistant messages between run.start and run.end from each message's usage block, by kind.",
+            "unit": "tokens",
+            "includes": "The five token kinds input, cache_write_5m, cache_write_1h, cache_read and output.",
+            "excludes": "Any token a message's usage block does not report.",
+            "reading": "Each kind is a count of tokens; higher means more tokens of that kind; all zero means no counted message; null means unknown.",
+            "readers": [
+              "owner",
+              "a harness reading its child runs"
+            ],
+            "question": "Which kinds of tokens make up the caller's messages inside the span?",
+            "fields": {
+              "input": {
+                "type": "integer",
+                "description": "The fresh input tokens, read without a cache of the caller's messages inside the span.",
+                "measured_from": "Summed over the caller's assistant messages between run.start and run.end from each message's usage block.",
+                "unit": "tokens",
+                "includes": "Every fresh input tokens, read without a cache counted in the caller's messages inside the span.",
+                "excludes": "Every other token kind, which has its own key.",
+                "reading": "A higher count means more fresh input tokens, read without a cache; 0 means none were counted; null means unknown.",
+                "readers": [
+                  "owner",
+                  "a harness reading its child runs"
+                ],
+                "question": "How many fresh input tokens, read without a cache did the caller's messages inside the span take?"
+              },
+              "cache_write_5m": {
+                "type": "integer",
+                "description": "The input tokens written to a cache kept five minutes of the caller's messages inside the span.",
+                "measured_from": "Summed over the caller's assistant messages between run.start and run.end from each message's usage block.",
+                "unit": "tokens",
+                "includes": "Every input tokens written to a cache kept five minutes counted in the caller's messages inside the span.",
+                "excludes": "Every other token kind, which has its own key.",
+                "reading": "A higher count means more input tokens written to a cache kept five minutes; 0 means none were counted; null means unknown.",
+                "readers": [
+                  "owner",
+                  "a harness reading its child runs"
+                ],
+                "question": "How many input tokens written to a cache kept five minutes did the caller's messages inside the span take?"
+              },
+              "cache_write_1h": {
+                "type": "integer",
+                "description": "The input tokens written to a cache kept one hour of the caller's messages inside the span.",
+                "measured_from": "Summed over the caller's assistant messages between run.start and run.end from each message's usage block.",
+                "unit": "tokens",
+                "includes": "Every input tokens written to a cache kept one hour counted in the caller's messages inside the span.",
+                "excludes": "Every other token kind, which has its own key.",
+                "reading": "A higher count means more input tokens written to a cache kept one hour; 0 means none were counted; null means unknown.",
+                "readers": [
+                  "owner",
+                  "a harness reading its child runs"
+                ],
+                "question": "How many input tokens written to a cache kept one hour did the caller's messages inside the span take?"
+              },
+              "cache_read": {
+                "type": "integer",
+                "description": "The input tokens read from a cache of the caller's messages inside the span.",
+                "measured_from": "Summed over the caller's assistant messages between run.start and run.end from each message's usage block.",
+                "unit": "tokens",
+                "includes": "Every input tokens read from a cache counted in the caller's messages inside the span.",
+                "excludes": "Every other token kind, which has its own key.",
+                "reading": "A higher count means more input tokens read from a cache; 0 means none were counted; null means unknown.",
+                "readers": [
+                  "owner",
+                  "a harness reading its child runs"
+                ],
+                "question": "How many input tokens read from a cache did the caller's messages inside the span take?"
+              },
+              "output": {
+                "type": "integer",
+                "description": "The output tokens the model wrote of the caller's messages inside the span.",
+                "measured_from": "Summed over the caller's assistant messages between run.start and run.end from each message's usage block.",
+                "unit": "tokens",
+                "includes": "Every output tokens the model wrote counted in the caller's messages inside the span.",
+                "excludes": "Every other token kind, which has its own key.",
+                "reading": "A higher count means more output tokens the model wrote; 0 means none were counted; null means unknown.",
+                "readers": [
+                  "owner",
+                  "a harness reading its child runs"
+                ],
+                "question": "How many output tokens the model wrote did the caller's messages inside the span take?"
+              }
+            }
+          },
+          "messages": {
+            "type": "integer",
+            "description": "How many caller messages were counted.",
+            "measured_from": "The caller's assistant messages between run.start and run.end, once by message id.",
+            "unit": "count",
+            "includes": "Caller messages inside the span.",
+            "excludes": "Caller messages outside the span.",
+            "reading": "Higher means more caller turns; 0 means none or no caller session; null means unknown.",
+            "readers": [
+              "owner",
+              "a harness reading its child runs"
+            ],
+            "question": "How many caller turns fall inside a run?"
+          }
+        }
+      },
+      "waiting": {
+        "type": "object",
+        "description": "Who the run's sessions waited on.",
+        "measured_from": "lighthouse spend's waiting over the transcripts under the results folder and the caller's transcript inside the run's span, minutes times 60.",
+        "unit": "none",
+        "includes": "Seconds waiting on a person, a tool and the model.",
+        "excludes": "Time outside the transcripts.",
+        "reading": "Each key reads as its own entry describes; null means unknown.",
+        "readers": [
+          "owner"
+        ],
+        "question": "Where do a run's sessions wait?",
+        "fields": {
+          "person_seconds": {
+            "type": "number",
+            "description": "How long the sessions waited on a person.",
+            "measured_from": "Time between turns while a question was open or a turn had ended, minutes times 60.",
+            "unit": "seconds",
+            "includes": "Waits on AskUserQuestion and on a typed prompt.",
+            "excludes": "Tool and model time.",
+            "reading": "Higher means longer; 0 means no time was recorded; null means unknown.",
+            "readers": [
+              "owner"
+            ],
+            "question": "How long do runs wait on a person?"
+          },
+          "tool_seconds": {
+            "type": "number",
+            "description": "How long the sessions waited on tools.",
+            "measured_from": "Time between a tool call and its result, minutes times 60.",
+            "unit": "seconds",
+            "includes": "Every open tool call other than a question to a person.",
+            "excludes": "Person and model time.",
+            "reading": "Higher means longer; 0 means no time was recorded; null means unknown.",
+            "readers": [
+              "owner"
+            ],
+            "question": "How long do runs wait on tools?"
+          },
+          "model_seconds": {
+            "type": "number",
+            "description": "How long the sessions waited on the model.",
+            "measured_from": "Time between turns with no tool call open and no turn ended, minutes times 60.",
+            "unit": "seconds",
+            "includes": "Model thinking and writing time.",
+            "excludes": "Person and tool time.",
+            "reading": "Higher means longer; 0 means no time was recorded; null means unknown.",
+            "readers": [
+              "owner"
+            ],
+            "question": "How long do runs wait on the model?"
+          }
+        }
+      },
+      "expired_rewrites": {
+        "type": "object",
+        "description": "Cache writes made again after the cache expired.",
+        "measured_from": "lighthouse spend's expired_rewrites over the transcripts under the results folder and the caller's transcript inside the run's span.",
+        "unit": "none",
+        "includes": "The count of rewrites and their cache-write tokens.",
+        "excludes": "Cache writes within the cache's lifetime.",
+        "reading": "Each key reads as its own entry describes; null means unknown.",
+        "readers": [
+          "owner",
+          "a harness reading its child runs"
+        ],
+        "question": "How much does a run spend rewriting expired caches?",
+        "fields": {
+          "count": {
+            "type": "integer",
+            "description": "How many messages rewrote an expired cache.",
+            "measured_from": "Messages writing a cache after a gap longer than the cache's lifetime.",
+            "unit": "count",
+            "includes": "Every such message.",
+            "excludes": "Cache writes within the lifetime.",
+            "reading": "Higher means more expired rewrites; 0 means none; null means unknown.",
+            "readers": [
+              "owner",
+              "a harness reading its child runs"
+            ],
+            "question": "How often does a cache expire mid-run?"
+          },
+          "cache_write": {
+            "type": "integer",
+            "description": "The cache-write tokens the expired rewrites spent.",
+            "measured_from": "The cache_write_5m and cache_write_1h tokens of each expired rewrite.",
+            "unit": "tokens",
+            "includes": "Both cache-write kinds.",
+            "excludes": "Input, cache-read and output tokens.",
+            "reading": "Higher means more tokens spent on rewrites; 0 means none; null means unknown.",
+            "readers": [
+              "owner",
+              "a harness reading its child runs"
+            ],
+            "question": "How many tokens do expired caches cost?"
+          }
+        }
+      },
+      "child_exit": {
+        "type": "integer",
+        "description": "The child session's exit code.",
+        "measured_from": "The exit status of the claude -p child session lighthouse launch started.",
+        "unit": "none",
+        "includes": "The code the child process returned.",
+        "excludes": "lighthouse launch's own exit code.",
+        "reading": "0 means the child exited normally; any other value is the code it gave; null means the child never started.",
+        "readers": [
+          "owner"
+        ],
+        "question": "How often does the child session exit abnormally?"
+      },
+      "child_session": {
+        "type": "string",
+        "description": "The child session's id.",
+        "measured_from": "The session_id in the child session's JSON output.",
+        "unit": "id",
+        "includes": "The id Claude Code gave the child session.",
+        "excludes": "The caller's session, which the envelope's session records.",
+        "reading": "An id names the child session; null means the child never started or gave no id.",
+        "readers": [
+          "owner"
+        ],
+        "question": "Which session ran the child?"
+      },
+      "results": {
+        "type": "string",
+        "description": "The results folder's absolute path.",
+        "measured_from": "The --results flag lighthouse launch was given, resolved.",
+        "unit": "text",
+        "includes": "The folder the child session works and writes in.",
+        "excludes": "The repository, which repo records.",
+        "reading": "A path names the folder; null means unknown.",
+        "readers": [
+          "owner"
+        ],
+        "question": "Where are the run's working files?"
+      },
+      "spend_scope": {
+        "type": "enum",
+        "description": "What the run's spend counts.",
+        "measured_from": "Set by the writer: own for a run lighthouse launch recorded, results for a run imported from the old ledger.",
+        "unit": "none",
+        "includes": "own or results.",
+        "excludes": "Nothing else.",
+        "reading": "own means every message of the run counted once, the caller's span included; results means only the results folder's transcripts up to the spend step; null means unknown.",
+        "readers": [
+          "owner",
+          "a harness reading its child runs"
+        ],
+        "question": "Can two runs' spend be compared directly?",
+        "values": [
+          "own",
+          "results"
+        ]
+      },
+      "imported": {
+        "type": "boolean",
+        "description": "Whether the summary was imported from the old ledger.",
+        "measured_from": "Set by the writer: false for lighthouse launch, true for lighthouse metrics import.",
+        "unit": "none",
+        "includes": "Imported runs.",
+        "excludes": "Runs launch recorded.",
+        "reading": "true means imported from runs.jsonl, whose envelope ts is the import's time; false means recorded by launch; null means unknown.",
+        "readers": [
+          "owner"
+        ],
+        "question": "Which summaries came from the old ledger?"
+      }
+    }
+  },
+  "queries": [
+    {
+      "name": "verdicts",
+      "question": "How do lighthouse runs end?",
+      "sql": "SELECT verdict, count(*) AS runs FROM summaries WHERE plugin = 'lighthouse' GROUP BY verdict ORDER BY runs DESC, verdict"
+    },
+    {
+      "name": "spend",
+      "question": "What does each lighthouse run cost in money and time, newest first?",
+      "sql": "SELECT run, usd, run_seconds FROM summaries WHERE plugin = 'lighthouse' ORDER BY started DESC, run"
+    },
+    {
+      "name": "steps",
+      "question": "Where do lighthouse runs spend time and money by step?",
+      "sql": "SELECT s.step AS step, sum(s.elapsed_seconds) AS elapsed_seconds, sum(s.usd) AS usd FROM (SELECT unnest(from_json(to_json(steps), '[{\"step\":\"VARCHAR\",\"build\":\"VARCHAR\",\"elapsed_seconds\":\"DOUBLE\",\"usd\":\"DOUBLE\"}]')) AS s FROM summaries WHERE plugin = 'lighthouse') GROUP BY s.step ORDER BY elapsed_seconds DESC NULLS LAST, step"
+    },
+    {
+      "name": "paths",
+      "question": "How do the product paths lighthouse checks end, by kind and check?",
+      "sql": "SELECT p.kind AS kind, p.status AS status, p.\"check\" AS \"check\", count(*) AS paths FROM (SELECT unnest(from_json(to_json(paths), '[{\"kind\":\"VARCHAR\",\"status\":\"VARCHAR\",\"check\":\"VARCHAR\"}]')) AS p FROM summaries WHERE plugin = 'lighthouse') GROUP BY p.kind, p.status, p.\"check\" ORDER BY paths DESC, kind, status, \"check\""
+    },
+    {
+      "name": "suite",
+      "question": "How long does the project's suite take on each build of each run, and was core's result reused?",
+      "sql": "SELECT run, build, suite_seconds, reused FROM (SELECT run, started, 'core' AS build, from_json(to_json(suite), '{\"core\":{\"suite_seconds\":\"DOUBLE\",\"reused\":\"BOOLEAN\"},\"feature\":{\"suite_seconds\":\"DOUBLE\",\"reused\":\"BOOLEAN\"}}').core.suite_seconds AS suite_seconds, from_json(to_json(suite), '{\"core\":{\"suite_seconds\":\"DOUBLE\",\"reused\":\"BOOLEAN\"},\"feature\":{\"suite_seconds\":\"DOUBLE\",\"reused\":\"BOOLEAN\"}}').core.reused AS reused FROM summaries WHERE plugin = 'lighthouse' UNION ALL SELECT run, started, 'feature' AS build, from_json(to_json(suite), '{\"core\":{\"suite_seconds\":\"DOUBLE\",\"reused\":\"BOOLEAN\"},\"feature\":{\"suite_seconds\":\"DOUBLE\",\"reused\":\"BOOLEAN\"}}').feature.suite_seconds AS suite_seconds, from_json(to_json(suite), '{\"core\":{\"suite_seconds\":\"DOUBLE\",\"reused\":\"BOOLEAN\"},\"feature\":{\"suite_seconds\":\"DOUBLE\",\"reused\":\"BOOLEAN\"}}').feature.reused AS reused FROM summaries WHERE plugin = 'lighthouse') ORDER BY started DESC, run, build"
+    },
+    {
+      "name": "blocked",
+      "question": "Why are lighthouse runs blocked?",
+      "sql": "SELECT reason, count(*) AS runs FROM summaries WHERE plugin = 'lighthouse' AND verdict = 'blocked' GROUP BY reason ORDER BY runs DESC, reason"
+    }
+  ]
+}

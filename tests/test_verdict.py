@@ -1,6 +1,5 @@
 import json
 import os
-import shutil
 import unittest
 
 from tests import scratch
@@ -64,7 +63,7 @@ def retest_findings(evidence):
     }
 
 
-def ledger_findings(spend):
+def spend_findings(spend):
     return {
         "version": 1,
         "suite": {"result": "passed", "reason": None, "failures": [], "pre_existing": [], "flaky": [], "core": None, "feature": None},
@@ -81,90 +80,38 @@ def write_json(folder, name, value):
         handle.write(json.dumps(value) + "\n")
 
 
-def ledger_lines(home):
-    path = os.path.join(home, ".lighthouse", "work", "runs.jsonl")
-    with open(path, encoding="utf-8") as handle:
-        return [json.loads(line) for line in handle.read().splitlines()]
-
-
-def verdict_with_repo(test, results, home, repo, findings):
-    write_json(results, "findings.json", findings)
-    env = scratch.environment(home)
-    code, stdout, stderr = scratch.run_lighthouse(["verdict", "--results", results, "--repo", repo], env)
-    test.assertEqual(code, 0, stderr)
-    return json.loads(stdout.strip().splitlines()[-1])
-
-
-class LedgerTest(unittest.TestCase):
-    def test_a_blocked_stop_with_its_results_folder_records_that_run(self):
-        home = scratch.make_home(self)
+class LedgerRetiredTest(unittest.TestCase):
+    def test_verdict_refuses_repo(self):
         repo, _ = scratch.make_repo(self)
+        results = results_folder(self, ["evidence/export.txt"])
+        write_json(results, "findings.json", spend_findings({"tokens": 6000, "minutes": 2}))
+        code, stdout, stderr = scratch.run_lighthouse(
+            ["verdict", "--results", results, "--repo", repo], scratch.environment(scratch.make_home(self))
+        )
+        self.assertEqual(code, 2, stderr)
+        self.assertIn("--repo", json.loads(stdout.strip().splitlines()[-1])["error"])
+
+    def test_blocked_line_carries_reason(self):
+        home = scratch.make_home(self)
         results = scratch.temporary_folder(self, "lh-results-")
         code, stdout, stderr = scratch.run_lighthouse(
-            ["verdict", "--blocked", "the profile is broken", "--results", results, "--repo", repo], scratch.environment(home)
+            ["verdict", "--blocked", "worktrees: no core branch", "--results", results], scratch.environment(home)
         )
         self.assertEqual(code, 0, stderr)
-        self.assertEqual(json.loads(stdout.strip().splitlines()[-1])["verdict"], "blocked")
-        self.assertEqual([(line["run"], line["reason"]) for line in ledger_lines(home)], [(results, "the profile is broken")])
+        line = json.loads(stdout.strip().splitlines()[-1])
+        self.assertEqual(line["reason"], "worktrees: no core branch")
+        self.assertEqual(line["verdict"], "blocked")
+        self.assertEqual(
+            sorted(line), ["failures", "flaky", "minutes", "pr", "reason", "tokens", "unproven", "verdict"]
+        )
         self.assertEqual(os.listdir(results), [])
+        self.assertFalse(os.path.exists(os.path.join(home, ".lighthouse")))
 
-    def test_an_append_after_a_torn_ledger_line_starts_its_own_line(self):
-        home = scratch.make_home(self)
-        repo, _ = scratch.make_repo(self)
-        folder = os.path.join(home, ".lighthouse", "work")
-        os.makedirs(folder)
-        with open(os.path.join(folder, "runs.jsonl"), "w", encoding="utf-8") as handle:
-            handle.write('{"run": "/results/one", "kind": "verd')
-        code, _, stderr = scratch.run_lighthouse(["verdict", "--blocked", "stopped", "--repo", repo], scratch.environment(home))
-        self.assertEqual(code, 0, stderr)
-        with open(os.path.join(folder, "runs.jsonl"), encoding="utf-8") as handle:
-            lines = handle.read().splitlines()
-        self.assertEqual(lines[0], '{"run": "/results/one", "kind": "verd')
-        self.assertEqual(json.loads(lines[1])["reason"], "stopped")
 
-    def test_verdict_appends_one_ledger_line(self):
-        home = scratch.make_home(self)
-        repo, _ = scratch.make_repo(self)
-        results = results_folder(self, ["evidence/export.txt"])
-        spend = {"tokens": 6000, "minutes": 2, "dollars": 0.75, "input": 6000}
-        write_json(results, "spend.json", spend)
-        write_json(results, "commits.json", {"core": "a" * 40, "feature": "b" * 40})
-        verdict_with_repo(self, results, home, repo, ledger_findings({"tokens": 6000, "minutes": 2}))
-        lines = ledger_lines(home)
-        self.assertEqual(len(lines), 1)
-        line = lines[0]
-        self.assertEqual(line["verdict"], "green")
-        self.assertEqual(line["commits"], {"core": "a" * 40, "feature": "b" * 40})
-        self.assertEqual(line["spend"], spend)
-        self.assertEqual(line["paths"], [{"name": "export writes a csv", "kind": "new", "status": "passed", "check": DIRECT_CHECK}])
-        self.assertEqual(line["run"], results)
-
-    def test_ledger_survives_removing_the_results_folder(self):
-        home = scratch.make_home(self)
-        repo, _ = scratch.make_repo(self)
-        results = results_folder(self, ["evidence/export.txt"])
-        verdict_with_repo(self, results, home, repo, ledger_findings({"tokens": 6000, "minutes": 2}))
-        shutil.rmtree(results)
-        lines = ledger_lines(home)
-        self.assertEqual(len(lines), 1)
-        self.assertEqual(lines[0]["run"], results)
-
-    def test_blocked_verdict_appends_a_ledger_line(self):
-        home = scratch.make_home(self)
-        repo, _ = scratch.make_repo(self)
-        env = scratch.environment(home)
-        code, stdout, stderr = scratch.run_lighthouse(["verdict", "--blocked", "profile", "--repo", repo], env)
-        self.assertEqual(code, 0, stderr)
-        self.assertEqual(json.loads(stdout.strip().splitlines()[-1])["verdict"], "blocked")
-        lines = ledger_lines(home)
-        self.assertEqual(len(lines), 1)
-        self.assertEqual(lines[0]["verdict"], "blocked")
-        self.assertEqual(lines[0]["reason"], "profile")
-        self.assertIsNone(lines[0]["run"])
-
+class SpendTest(unittest.TestCase):
     def test_verdict_line_adds_dollars_and_keeps_every_key(self):
         code, stdout, stderr, results = lighthouse_verdict(
-            self, ledger_findings({"tokens": 10, "minutes": 2, "dollars": 0.5}), files=["evidence/export.txt"]
+            self, spend_findings({"tokens": 10, "minutes": 2, "dollars": 0.5}), files=["evidence/export.txt"]
         )
         self.assertEqual(code, 0, stderr)
         line = json.loads(stdout.strip().splitlines()[-1])
@@ -174,34 +121,16 @@ class LedgerTest(unittest.TestCase):
 
     def test_findings_without_dollars_still_judged(self):
         code, stdout, stderr, results = lighthouse_verdict(
-            self, ledger_findings({"tokens": 10, "minutes": 2}), files=["evidence/export.txt"]
+            self, spend_findings({"tokens": 10, "minutes": 2}), files=["evidence/export.txt"]
         )
         self.assertEqual(code, 0, stderr)
         line, _ = verdict_line(self, stdout, results)
         self.assertEqual(line["verdict"], "green")
         self.assertIsNone(line["dollars"])
 
-    def test_ledger_line_carries_suite_phase_minutes(self):
-        home = scratch.make_home(self)
-        repo, _ = scratch.make_repo(self)
-        results = results_folder(self, ["evidence/export.txt"])
-        write_json(
-            results,
-            "suite.json",
-            {
-                "result": "passed",
-                "core": {"exit": 0, "log": "suite-core.log", "prepare_minutes": 3, "suite_minutes": 10},
-                "feature": {"exit": 0, "log": "suite-feature.log", "prepare_minutes": 2, "suite_minutes": 9, "rerun_minutes": None},
-            },
-        )
-        verdict_with_repo(self, results, home, repo, ledger_findings({"tokens": 6000, "minutes": 2}))
-        line = ledger_lines(home)[0]
-        self.assertEqual(line["suite"]["core"]["prepare_minutes"], 3)
-        self.assertEqual(line["suite"]["core"]["suite_minutes"], 10)
-
     def test_refuses_negative_dollars(self):
         code, stdout, _, _ = lighthouse_verdict(
-            self, ledger_findings({"tokens": 10, "minutes": 2, "dollars": -1}), files=["evidence/export.txt"]
+            self, spend_findings({"tokens": 10, "minutes": 2, "dollars": -1}), files=["evidence/export.txt"]
         )
         self.assertEqual(code, 2)
         self.assertEqual(json.loads(stdout)["key"], "spend.dollars")
@@ -402,7 +331,16 @@ class VerdictTest(unittest.TestCase):
         self.assertEqual(code, 0, stderr)
         self.assertEqual(
             json.loads(stdout.strip().splitlines()[-1]),
-            {"verdict": "blocked", "failures": [], "unproven": [], "flaky": [], "tokens": 0, "minutes": 0, "pr": None},
+            {
+                "verdict": "blocked",
+                "failures": [],
+                "unproven": [],
+                "flaky": [],
+                "tokens": 0,
+                "minutes": 0,
+                "pr": None,
+                "reason": "the results folder is inside the checkout",
+            },
         )
         self.assertIn("the results folder is inside the checkout", stderr)
 
