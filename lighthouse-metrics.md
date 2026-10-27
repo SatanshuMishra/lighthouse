@@ -1,6 +1,6 @@
 # lighthouse-metrics: Lighthouse metrics on the shared plugin-metrics store
 Status: parked
-Updated: 2026-10-27T09:03:20.525Z
+Updated: 2026-10-27T09:03:23.421Z
 Next ids: c5 D4 R3 S1
 
 ## Goal
@@ -20,9 +20,9 @@ metrics-foundation is green at f2cd5d1 (glossary terms and ADR 0009 committed th
 
 ## Next step
 
-When the validator finishes, record run-records' round 3 and fix what it confirms. Then ship the three MSP pull requests in stack order per pipeline:run.
+Run SHIP=1 ~/.mitosis/lighthouse/lighthouse-metrics/run.zsh --resume --proven-head metrics-foundation=f2cd5d1 --proven-head run-records=10a4ad0, then open the three MSP pull requests in stack order through the GitHub MCP with mitosis's title and body, assign them and post each saved comment.
 
-Needs: D2, R1.
+Needs: D3, R1.
 
 ## Decisions in force
 
