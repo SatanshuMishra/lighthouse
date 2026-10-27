@@ -75,8 +75,18 @@ How a product path's expected outcome is observed: suite (named project tests th
 **Mark**:
 A timed start or end line a session writes with lighthouse mark around a step, build or path, so its minutes and tokens can be attributed to it.
 
-**Ledger**:
-The append-only file runs.jsonl in the state folder holding one line per lighthouse:test run with its verdict, commits, time and spend, kept after the results folder is deleted.
+**Metrics store**:
+The folder tree shared by the pipeline and its plugins, ~/.plugin-metrics or PLUGIN_METRICS_DIR, where lighthouse launch records every lighthouse:test run as two events and one run summary.
+_Avoid_: ledger, runs.jsonl
+
+**Run summary**:
+The one line per lighthouse:test run in the metrics store holding its verdict, suite, product paths and own spend, replaced whole when written again.
+
+**Parent run**:
+The run that started a lighthouse:test run, named as <plugin>/<run id>, such as the pipeline run whose Integration called it; empty when lighthouse runs alone.
+
+**Own spend**:
+What one lighthouse:test run cost: every message of its child session, driver agents and trial sessions, and of the caller's own turns between its start and end, counted once and priced when the run summary is written.
 
 **Expired rewrite**:
 A model turn that writes its whole context to the prompt cache again because the gap since its previous turn outlived the cache.
