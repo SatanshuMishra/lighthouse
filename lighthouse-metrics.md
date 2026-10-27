@@ -1,6 +1,6 @@
 # lighthouse-metrics: Lighthouse metrics on the shared plugin-metrics store
 Status: parked
-Updated: 2026-10-27T09:18:26.996Z
+Updated: 2026-10-27T10:03:50.261Z
 Next ids: c5 D4 R3 S2
 
 ## Goal
@@ -16,7 +16,7 @@ Lighthouse records metrics personalised to its purpose (proving a FEATURE branch
 
 ## Where things stand
 
-#14 merged into feat/lighthouse-metrics (f7afd83) before #15 and #16 merged into their stacked branches, so the run-records and ledger-import work sits only on mitosis/run-records (97d4c27). The catch-up pull request SatanshuMishra/lighthouse#17 (head mitosis/run-records, base feat/lighthouse-metrics) is open, ready for review and assigned; its trial merge is clean and its merged tree equals ledger-import's proven head f6cf26e (tree f99bfc4). test_launch_records_cost_and_priority fails only under a background shell at nice 5, the same on the base, so it is not a finding.
+Integration: every MSP is merged into feat/lighthouse-metrics (de02ffc, through the catch-up pull request #17) and pipeline integration-ready passes. Lighthouse run 1 (lighthouse launch, results in lighthouse/run-1 under the run home) is running. test_launch_records_cost_and_priority fails only under a background shell at nice 5, the same on the base, so it is not a finding.
 
 ## Next step
 
