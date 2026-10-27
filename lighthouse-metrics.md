@@ -1,6 +1,6 @@
 # lighthouse-metrics: Lighthouse metrics on the shared plugin-metrics store
 Status: parked
-Updated: 2026-10-27T06:26:49.190Z
+Updated: 2026-10-27T06:26:50.646Z
 Next ids: c5 D2 R3 S1
 
 ## Goal
@@ -37,7 +37,7 @@ Needs: D1, R1, R2.
 
 ## Where the details live
 
-- Pipeline spec (format description until the writer lands): /Users/satanshumishra/Documents/DevLabs/pipeline/docs/specs/unified-metrics.md
+- Shared writer and format: origin/feat/unified-metrics of the pipeline checkout /Users/satanshumishra/Documents/DevLabs/pipeline
 - Pipeline decisions with intent I1 to I6: /Users/satanshumishra/Documents/DevLabs/pipeline/docs/specs/unified-metrics.decisions.md
 - Run home: ~/.mitosis/lighthouse/lighthouse-metrics/
 - Spec, decisions, record, items: docs/specs/lighthouse-metrics.{md,decisions.md,record.json,items.json} in this checkout
