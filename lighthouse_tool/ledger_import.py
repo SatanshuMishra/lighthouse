@@ -1,13 +1,16 @@
+import collections
 import datetime
+import errno
 import itertools
 import json
 import os
-from typing import Any, Dict, List, NamedTuple, Optional, Tuple
+from typing import Any, Callable, Dict, Iterator, List, Mapping, NamedTuple, Optional, Tuple
 
 from lighthouse_tool import metrics_writer, run_record, verdict
 from lighthouse_tool.records import is_number, json_object
 
 LEDGER = "runs.jsonl"
+CLAIM_SUFFIX = ".importing"
 STATE_FOLDER = ".lighthouse"
 TRASH_FOLDER = ".Trash"
 USAGE = "usage: lighthouse metrics import"
@@ -36,10 +39,20 @@ def run(argv: List[str]) -> Tuple[int, Optional[str], Optional[str]]:
         return 2, json.dumps({"error": reason}), "lighthouse metrics: {}; {}".format(reason, USAGE)
     home = os.path.expanduser("~")
     version = run_record.plugin_version()
-    handled = [handle_ledger(ledger, version, os.path.join(home, TRASH_FOLDER)) for ledger in ledgers(home)]
+    environ = without_parent(os.environ)
+    trash = os.path.join(home, TRASH_FOLDER)
+    handled = [handle_ledger(ledger, version, trash, environ) for ledger in ledgers(home)]
     lines = [line for outcome in handled for line in outcome.lines]
     code = 1 if any(outcome.failed for outcome in handled) else 0
     return code, "\n".join(lines) if lines else None, None
+
+
+def without_parent(environ: Mapping[str, str]) -> Dict[str, str]:
+    return {name: value for name, value in environ.items() if name != metrics_writer.PARENT_VARIABLE}
+
+
+def claimed_path(ledger: Ledger) -> str:
+    return ledger.path + CLAIM_SUFFIX
 
 
 def ledgers(home: str) -> List[Ledger]:
@@ -52,13 +65,45 @@ def ledgers(home: str) -> List[Ledger]:
     return [
         Ledger(os.path.basename(folder), os.path.join(folder, LEDGER))
         for folder in folders
-        if os.path.isdir(folder) and os.path.isfile(os.path.join(folder, LEDGER))
+        if os.path.isdir(folder)
+        and any(os.path.isfile(os.path.join(folder, LEDGER + suffix)) for suffix in ("", CLAIM_SUFFIX))
     ]
 
 
-def handle_ledger(ledger: Ledger, version: Optional[str], trash: str) -> Handled:
+def moved_without_replacing(source: str, destination: str) -> None:
+    os.link(source, destination)
     try:
-        with open(ledger.path, encoding="utf-8") as handle:
+        os.unlink(source)
+    except OSError:
+        os.unlink(destination)
+        raise
+
+
+def claimed(ledger: Ledger) -> str:
+    claim = claimed_path(ledger)
+    if not os.path.lexists(claim):
+        moved_without_replacing(ledger.path, claim)
+    return claim
+
+
+def released(ledger: Ledger, claim: str, handled: Handled) -> Handled:
+    try:
+        moved_without_replacing(claim, ledger.path)
+    except OSError as error:
+        kept = "kept the claimed ledger {}: {}".format(claim, error.strerror or error)
+        return Handled(handled.lines + (kept,), True)
+    return handled
+
+
+def clashes(groups: List[Group]) -> List[Tuple[str, int]]:
+    counts = collections.Counter(run_id for run_id in map(group_run_id, groups) if run_id is not None)
+    return sorted((run_id, count) for run_id, count in counts.items() if count > 1)
+
+
+def handle_ledger(ledger: Ledger, version: Optional[str], trash: str, environ: Mapping[str, str]) -> Handled:
+    try:
+        claim = claimed(ledger)
+        with open(claim, encoding="utf-8") as handle:
             text_lines = handle.read().splitlines()
     except (OSError, ValueError) as error:
         return Handled(("not imported {}: {}".format(ledger.path, error),), True)
@@ -68,12 +113,19 @@ def handle_ledger(ledger: Ledger, version: Optional[str], trash: str) -> Handled
         "skipped {} line {}: not a JSON object".format(ledger.path, number) for number, line in parsed if line is None
     )
     groups = grouped([line for _, line in parsed if line is not None])
-    imported = [import_group(ledger, group, version) for group in groups]
+    clashing = tuple(
+        "not imported {}: {} runs share the run id {}".format(ledger.path, count, run_id)
+        for run_id, count in clashes(groups)
+    )
+    if clashing:
+        return released(ledger, claim, Handled(skipped + clashing, True))
+    imported = [import_group(ledger, group, version, environ) for group in groups]
     import_lines = tuple(line for line, _ in imported)
     if any(failed for _, failed in imported):
-        return Handled(skipped + import_lines, True)
-    moved = trash_ledger(ledger, trash)
-    return Handled(skipped + import_lines + moved.lines, moved.failed)
+        return released(ledger, claim, Handled(skipped + import_lines, True))
+    moved = trash_ledger(ledger, claim, trash)
+    handled = Handled(skipped + import_lines + moved.lines, moved.failed)
+    return released(ledger, claim, handled) if os.path.lexists(claim) else handled
 
 
 def run_key(line: Dict[str, Any]) -> Optional[str]:
@@ -106,17 +158,26 @@ def run_name(key: Optional[str]) -> str:
     return run_record.run_name(os.path.basename(key.rstrip("/")) if key is not None else None)
 
 
-def import_group(ledger: Ledger, group: Group, version: Optional[str]) -> Tuple[str, bool]:
-    times = [moment for moment in map(line_time, group.lines) if moment is not None]
+def group_times(group: Group) -> List[datetime.datetime]:
+    return [moment for moment in map(line_time, group.lines) if moment is not None]
+
+
+def group_run_id(group: Group) -> Optional[str]:
+    times = group_times(group)
+    return metrics_writer.run_id(run_name(group.key), min(times)) if times else None
+
+
+def import_group(ledger: Ledger, group: Group, version: Optional[str], environ: Mapping[str, str]) -> Tuple[str, bool]:
+    times = group_times(group)
+    run_id = group_run_id(group)
     label = group.key if group.key is not None else "without a run"
-    if not times:
+    if run_id is None:
         return "not imported {} run {}: no line holds a readable time".format(ledger.path, label), True
-    run_id = metrics_writer.run_id(run_name(group.key), min(times))
-    root = metrics_writer.store_root(os.environ)
+    root = metrics_writer.store_root(environ)
     if os.path.lexists(metrics_writer.summary_path(root, run_record.PLUGIN, ledger.folder, run_id)):
         return "already in the store {} {}".format(ledger.folder, run_id), False
     fields = summary_fields(group, min(times), max(times))
-    warning = metrics_writer.write_summary(run_record.PLUGIN, version, ledger.folder, run_id, fields)
+    warning = metrics_writer.write_summary(run_record.PLUGIN, version, ledger.folder, run_id, fields, environ=environ)
     if warning is not None:
         return "not imported {} run {}: {}".format(ledger.path, label, warning), True
     return "imported {} {}".format(ledger.folder, run_id), False
@@ -190,7 +251,7 @@ def paths_summary(paths: Any) -> Optional[List[Dict[str, Any]]]:
             "status": run_record.choice(path.get("status"), verdict.PATH_STATUSES),
             "check": check_kind(path.get("check")),
             "retry": None,
-            "carried": False,
+            "carried": None,
         }
         for path in paths
         if isinstance(path, dict)
@@ -300,34 +361,55 @@ def summary_fields(group: Group, start: datetime.datetime, end: datetime.datetim
     }
 
 
-def free_name(folder: str, name: str) -> str:
+def trash_names(name: str) -> Iterator[str]:
     stem, extension = os.path.splitext(name)
     copies = ("{} {}{}".format(stem, count, extension) for count in itertools.count(FIRST_COPY))
-    candidates = (os.path.join(folder, candidate) for candidate in itertools.chain([name], copies))
-    return next(candidate for candidate in candidates if not os.path.lexists(candidate))
+    return itertools.chain([name], copies)
 
 
-def moved_to_trash(source: str, trash: str) -> Tuple[str, bool]:
+def placed_at(destination: str, place: Callable[[str], None]) -> Optional[str]:
     try:
-        os.makedirs(trash, mode=0o700, exist_ok=True)
-        destination = free_name(trash, os.path.basename(source))
-        os.rename(source, destination)
+        place(destination)
+    except FileExistsError:
+        return None
+    return destination
+
+
+def placed_in_trash(trash: str, name: str, place: Callable[[str], None]) -> str:
+    os.makedirs(trash, mode=0o700, exist_ok=True)
+    attempts = (placed_at(os.path.join(trash, candidate), place) for candidate in trash_names(name))
+    return next(destination for destination in attempts if destination is not None)
+
+
+def moved_to_trash(ledger: Ledger, claim: str, trash: str) -> Tuple[str, bool]:
+    try:
+        destination = placed_in_trash(trash, LEDGER, lambda target: moved_without_replacing(claim, target))
     except OSError as error:
-        return "not moved to the Trash {}: {}".format(source, error.strerror or error), True
-    return "moved to the Trash {} -> {}".format(source, destination), False
+        return "not moved to the Trash {}: {}".format(ledger.path, error.strerror or error), True
+    return "moved to the Trash {} -> {}".format(ledger.path, destination), False
 
 
-def folder_is_empty(folder: str) -> bool:
+def folder_moved_to_trash(folder: str, trash: str) -> Optional[Tuple[str, bool]]:
     try:
-        return not os.listdir(folder)
-    except OSError:
-        return False
+        destination = placed_in_trash(trash, os.path.basename(folder), lambda target: os.mkdir(target, 0o700))
+    except OSError as error:
+        return "not moved to the Trash {}: {}".format(folder, error.strerror or error), True
+    try:
+        os.rmdir(folder)
+    except OSError as error:
+        os.rmdir(destination)
+        if error.errno in (errno.ENOTEMPTY, errno.EEXIST):
+            return None
+        return "not moved to the Trash {}: {}".format(folder, error.strerror or error), True
+    return "moved to the Trash {} -> {}".format(folder, destination), False
 
 
-def trash_ledger(ledger: Ledger, trash: str) -> Handled:
-    line, failed = moved_to_trash(ledger.path, trash)
-    folder = os.path.dirname(ledger.path)
-    if failed or not folder_is_empty(folder):
+def trash_ledger(ledger: Ledger, claim: str, trash: str) -> Handled:
+    line, failed = moved_to_trash(ledger, claim, trash)
+    if failed:
         return Handled((line,), failed)
-    folder_line, folder_failed = moved_to_trash(folder, trash)
+    folder_outcome = folder_moved_to_trash(os.path.dirname(claim), trash)
+    if folder_outcome is None:
+        return Handled((line,), False)
+    folder_line, folder_failed = folder_outcome
     return Handled((line, folder_line), folder_failed)

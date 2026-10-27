@@ -394,7 +394,11 @@ class MetricsImportRaceTest(unittest.TestCase):
         place = Scratch(self, {os.path.join("pipeline", "runs.jsonl"): RUN_A_LINE + "\n", os.path.join("pipeline", "answers.json"): "{}\n"})
         os.makedirs(place.trash)
         earlier = os.path.join(place.trash, "runs.jsonl")
-        with mock.patch("os.path.lexists", side_effect=appending(earlier, "an earlier ledger\n", lambda path: False)):
+        def earlier_ledger_appears(path):
+            write_text(earlier, "an earlier ledger\n")
+            return False
+
+        with mock.patch("os.path.lexists", side_effect=earlier_ledger_appears):
             code, _, _ = place.imported()
         self.assertEqual(code, 0)
         self.assertEqual(read_bytes(earlier), b"an earlier ledger\n")
