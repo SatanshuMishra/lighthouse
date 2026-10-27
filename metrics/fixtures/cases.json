@@ -1,0 +1,276 @@
+[
+  {
+    "name": "event-standalone",
+    "environ": {"PLUGIN_METRICS_DIR": "<root>", "HOME": "<home>"},
+    "calls": [
+      {
+        "fn": "append_event",
+        "args": {
+          "plugin": "demo",
+          "plugin_version": "1.0.0",
+          "repo": "demo",
+          "run": "feat-a.20261001T100000Z",
+          "event": "lane.end",
+          "fields": {"msp": "m1", "usd": 2.0, "note": "café"}
+        },
+        "now": "2026-10-01T10:00:00Z"
+      }
+    ]
+  },
+  {
+    "name": "event-with-parent",
+    "environ": {
+      "PLUGIN_METRICS_DIR": "<root>",
+      "HOME": "<home>",
+      "PLUGIN_METRICS_PARENT": "pipeline/feat-a.20261001T100000Z",
+      "CLAUDE_CODE_SESSION_ID": "s-1"
+    },
+    "calls": [
+      {
+        "fn": "append_event",
+        "args": {
+          "plugin": "demo",
+          "plugin_version": "1.0.0",
+          "repo": "demo",
+          "run": "feat-a.20261001T100000Z",
+          "event": "lane.end",
+          "fields": {
+            "small": 0.00001,
+            "tiny": 1e-7,
+            "huge": 1e21,
+            "exact": 123456789.125,
+            "neg": -0.0,
+            "nested": {"b": 1, "a": [1.5, null, true]}
+          }
+        },
+        "now": "2026-10-01T10:00:00Z"
+      }
+    ]
+  },
+  {
+    "name": "summary-first",
+    "environ": {"PLUGIN_METRICS_DIR": "<root>", "HOME": "<home>"},
+    "calls": [
+      {
+        "fn": "write_summary",
+        "args": {
+          "plugin": "demo",
+          "plugin_version": "1.0.0",
+          "repo": "demo",
+          "run": "feat-a.20261001T100000Z",
+          "fields": {
+            "usd": 1,
+            "wall_seconds": 30,
+            "tokens": {"input": 1, "cache_write_5m": 2, "cache_write_1h": 3, "cache_read": 4, "output": 5}
+          }
+        },
+        "now": "2026-10-01T11:00:00Z"
+      }
+    ]
+  },
+  {
+    "name": "summary-replaced",
+    "environ": {"PLUGIN_METRICS_DIR": "<root>", "HOME": "<home>"},
+    "calls": [
+      {
+        "fn": "write_summary",
+        "args": {
+          "plugin": "demo",
+          "plugin_version": "1.0.0",
+          "repo": "demo",
+          "run": "feat-a.20261001T100000Z",
+          "fields": {"usd": 1}
+        },
+        "now": "2026-10-01T11:00:00Z"
+      },
+      {
+        "fn": "write_summary",
+        "args": {
+          "plugin": "demo",
+          "plugin_version": "1.0.0",
+          "repo": "demo",
+          "run": "feat-a.20261001T100000Z",
+          "fields": {"usd": 3}
+        },
+        "now": "2026-10-01T12:00:00Z"
+      }
+    ]
+  },
+  {
+    "name": "catalogue",
+    "environ": {"PLUGIN_METRICS_DIR": "<root>", "HOME": "<home>"},
+    "calls": [
+      {
+        "fn": "write_catalogue",
+        "args": {
+          "plugin": "demo",
+          "catalogue": {"format": 1, "plugin": "demo", "purpose": "p"}
+        },
+        "now": "2026-10-01T10:00:00Z"
+      }
+    ]
+  },
+  {
+    "name": "refusals",
+    "environ": {"PLUGIN_METRICS_DIR": "<root>", "HOME": "<home>"},
+    "calls": [
+      {
+        "fn": "append_event",
+        "args": {
+          "plugin": "demo",
+          "plugin_version": "1.0.0",
+          "repo": "demo",
+          "run": "Run-1",
+          "event": "lane.end",
+          "fields": {"msp": "m1"}
+        },
+        "now": "2026-10-01T10:00:00Z"
+      },
+      {
+        "fn": "append_event",
+        "args": {
+          "plugin": "a=b",
+          "plugin_version": "1.0.0",
+          "repo": "demo",
+          "run": "feat-a.20261001T100000Z",
+          "event": "lane.end",
+          "fields": {"msp": "m1"}
+        },
+        "now": "2026-10-01T10:00:00Z"
+      },
+      {
+        "fn": "append_event",
+        "args": {
+          "plugin": "demo",
+          "plugin_version": "1.0.0",
+          "repo": "a/b",
+          "run": "feat-a.20261001T100000Z",
+          "event": "lane.end",
+          "fields": {"msp": "m1"}
+        },
+        "now": "2026-10-01T10:00:00Z"
+      },
+      {
+        "fn": "append_event",
+        "args": {
+          "plugin": "demo",
+          "plugin_version": "1.0.0",
+          "repo": "demo",
+          "run": "feat-a.20261001T100000Z",
+          "event": "lane.end",
+          "fields": {"1x": "m1"}
+        },
+        "now": "2026-10-01T10:00:00Z"
+      },
+      {
+        "fn": "append_event",
+        "args": {
+          "plugin": "demo",
+          "plugin_version": "1.0.0",
+          "repo": "demo",
+          "run": "feat-a.20261001T100000Z",
+          "event": "lane.end",
+          "fields": {"nested": {"7": "m1"}}
+        },
+        "now": "2026-10-01T10:00:00Z"
+      }
+    ]
+  },
+  {
+    "name": "prune-small",
+    "environ": {"PLUGIN_METRICS_DIR": "<root>", "HOME": "<home>"},
+    "calls": [
+      {
+        "fn": "append_event",
+        "args": {
+          "plugin": "demo",
+          "plugin_version": "1.0.0",
+          "repo": "demo",
+          "run": "gamma.20261001T100000Z",
+          "event": "run.start",
+          "fields": {}
+        },
+        "now": "2026-10-01T10:00:00Z"
+      },
+      {
+        "fn": "append_event",
+        "args": {
+          "plugin": "demo",
+          "plugin_version": "1.0.0",
+          "repo": "demo",
+          "run": "alpha.20261001T100100Z",
+          "event": "run.start",
+          "fields": {}
+        },
+        "now": "2026-10-01T10:01:00Z"
+      },
+      {
+        "fn": "append_event",
+        "args": {
+          "plugin": "demo",
+          "plugin_version": "1.0.0",
+          "repo": "demo",
+          "run": "beta.20261001T100200Z",
+          "event": "run.start",
+          "fields": {}
+        },
+        "now": "2026-10-01T10:02:00Z"
+      },
+      {
+        "fn": "write_summary",
+        "args": {
+          "plugin": "demo",
+          "plugin_version": "1.0.0",
+          "repo": "demo",
+          "run": "alpha.20261001T100100Z",
+          "fields": {"usd": 1}
+        },
+        "now": "2026-10-01T10:03:00Z"
+      },
+      {
+        "fn": "write_summary",
+        "args": {
+          "plugin": "demo",
+          "plugin_version": "1.0.0",
+          "repo": "demo",
+          "run": "beta.20261001T100200Z",
+          "fields": {"usd": 2}
+        },
+        "now": "2026-10-01T10:04:00Z"
+      },
+      {
+        "fn": "write_summary",
+        "args": {
+          "plugin": "demo",
+          "plugin_version": "1.0.0",
+          "repo": "demo",
+          "run": "gamma.20261001T100000Z",
+          "fields": {"usd": 3}
+        },
+        "now": "2026-10-01T10:05:00Z"
+      },
+      {
+        "fn": "prune",
+        "args": {
+          "root": "<root>",
+          "plugin": "demo",
+          "repo": "demo",
+          "keep_events": 1,
+          "keep_summaries": 2
+        },
+        "now": "2026-10-01T10:06:00Z"
+      }
+    ]
+  },
+  {
+    "name": "run-id",
+    "environ": {"PLUGIN_METRICS_DIR": "<root>", "HOME": "<home>"},
+    "calls": [
+      {
+        "fn": "run_id",
+        "args": {"name": "feat-a", "start": "2026-10-26T22:18:32Z"},
+        "now": "2026-10-26T22:18:32Z"
+      }
+    ]
+  }
+]

@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LIGHTHOUSE = os.path.join(ROOT, "bin", "lighthouse")
-WITHHELD_VARIABLES = ("CLAUDE_CODE_SESSION_ID", "SHIP")
+WITHHELD_VARIABLES = ("CLAUDE_CODE_SESSION_ID", "SHIP", "PLUGIN_METRICS_DIR", "PLUGIN_METRICS_PARENT")
 
 
 def base_environment() -> Dict[str, str]:
