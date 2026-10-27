@@ -1,7 +1,7 @@
 # lighthouse-metrics: Lighthouse metrics on the shared plugin-metrics store
 Status: parked
-Updated: 2026-10-27T09:03:51.606Z
-Next ids: c5 D4 R3 S1
+Updated: 2026-10-27T09:04:00.756Z
+Next ids: c5 D4 R3 S2
 
 ## Goal
 
@@ -26,7 +26,6 @@ Needs: D3, R1.
 
 ## Decisions in force
 
-- D2 interphase hand-off: first build of lighthouse-metrics from the writer at a39ab11: Build now from origin/feat/unified-metrics at a39ab11, named in the CHARTER's Writer source, then follow pipeline:run through review to the MSP pull requests.
 - D3 ship boundary: ship the three lighthouse-metrics MSP pull requests: Ship now: SHIP=1 run.zsh --resume with --proven-head metrics-foundation=f2cd5d1 and run-records=10a4ad0, then open the three pull requests in stack order through the GitHub MCP, assign them and post the comments.
 
 ## Open risks
@@ -35,6 +34,8 @@ Needs: D3, R1.
 - R2 5.18 (a fresh session answering from the store) and 5.20 (the live import, including macOS Trash access) are unproven until run by hand after merge. Bears on c4.
 
 ## Settled, do not reopen
+
+- S1 The first build ran from the shared writer at a39ab11, byte-identical on the pipeline's origin/main.
 
 ## Where the details live
 
