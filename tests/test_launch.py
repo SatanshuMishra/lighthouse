@@ -138,8 +138,12 @@ def read_json(path):
         return json.load(handle)
 
 
+def ledger_path(home):
+    return os.path.join(home, ".lighthouse", "work", "runs.jsonl")
+
+
 def ledger_lines(home):
-    with open(os.path.join(home, ".lighthouse", "work", "runs.jsonl"), encoding="utf-8") as handle:
+    with open(ledger_path(home), encoding="utf-8") as handle:
         return [json.loads(line) for line in handle.read().splitlines()]
 
 
@@ -207,7 +211,6 @@ class LaunchTest(unittest.TestCase):
         line = json.loads(ran["stdout"].strip().splitlines()[-1])
         self.assertEqual(line["verdict"], "blocked")
         self.assertIn("exited 1", ran["stderr"])
-        self.assertIn("exited 1", ledger_lines(ran["home"])[-1]["reason"])
 
     def test_launch_prints_a_blocked_line_when_the_output_is_not_json(self):
         ran = launch(self, "not json at all", exit_code=1)
@@ -261,17 +264,15 @@ class LaunchTest(unittest.TestCase):
         else:
             self.assertIsNone(child["priority"]["background"])
 
-    def test_launch_appends_a_ledger_line_when_the_child_gives_no_verdict(self):
+    def test_launch_writes_no_ledger(self):
+        green = launch(self, claude_output(GREEN_LINE))
+        self.assertEqual(green["code"], 0, green["stderr"])
+        self.assertFalse(os.path.exists(ledger_path(green["home"])))
         ran = launch(self, claude_output("The run stopped.", cost=0.8), exit_code=1)
         self.assertEqual(ran["code"], 0, ran["stderr"])
-        lines = [line for line in ledger_lines(ran["home"]) if line["kind"] == "launch"]
-        self.assertEqual(len(lines), 1)
-        self.assertEqual(lines[0]["verdict"], "blocked")
-        self.assertEqual(lines[0]["cost"], {"claude-opus-5-5": 0.8})
-        self.assertEqual(lines[0]["run"], os.path.realpath(ran["results"]))
-        self.assertIn("keep_awake", lines[0])
-        self.assertIn("priority", lines[0])
+        self.assertFalse(os.path.exists(ledger_path(ran["home"])))
         printed = ran["stdout"].strip().splitlines()[-1]
+        self.assertEqual(json.loads(printed)["verdict"], "blocked")
         with open(os.path.join(ran["results"], "launch.json"), encoding="utf-8") as handle:
             self.assertEqual(handle.read().strip(), printed)
 
@@ -301,19 +302,6 @@ class LaunchTest(unittest.TestCase):
                 self.assertFalse(os.path.exists(os.path.join(results, "child.json")))
         self.assertEqual(calls_of(stubs, "claude"), [])
 
-    def test_a_refused_launch_appends_a_ledger_line_with_its_reason(self):
-        repo, _ = scratch.make_repo(self)
-        home = scratch.make_home(self)
-        results = os.path.join(scratch.temporary_folder(self, "lh-results-"), "results")
-        env = scratch.environment(home, stub_folder(self, claude_output(GREEN_LINE)))
-        flags = [flag for flag in launch_flags(repo, results) if flag not in ("--core", "main")]
-        code, _, stderr = scratch.run_lighthouse(["launch", *flags], env)
-        self.assertEqual(code, 2, stderr)
-        self.assertEqual(read_json(os.path.join(results, "launch.json"))["verdict"], "blocked")
-        lines = ledger_lines(home)
-        self.assertEqual([(line["run"], line["kind"], line["verdict"]) for line in lines], [(os.path.realpath(results), "launch", "blocked")])
-        self.assertIn("--core", lines[0]["reason"])
-
     def test_a_refused_launch_leaves_a_checkout_it_cannot_judge_untouched(self):
         repo, _ = scratch.make_repo(self)
         user = os.path.join(scratch.temporary_folder(self, "lh-user-"), "checkout")
@@ -341,18 +329,6 @@ class LaunchTest(unittest.TestCase):
                     )
                     self.assertEqual(status.stdout, "")
         self.assertEqual(calls_of(stubs, "claude"), [])
-
-    def test_a_ledger_that_cannot_be_appended_keeps_the_childs_verdict_line(self):
-        repo, _ = scratch.make_repo(self)
-        home = scratch.make_home(self)
-        os.makedirs(os.path.join(home, ".lighthouse", "work", "runs.jsonl"))
-        results = os.path.join(scratch.temporary_folder(self, "lh-results-"), "results")
-        env = scratch.environment(home, stub_folder(self, claude_output(GREEN_LINE)))
-        code, stdout, stderr = scratch.run_lighthouse(["launch", *launch_flags(repo, results)], env)
-        self.assertEqual(code, 2, stderr)
-        self.assertEqual(json.loads(stdout.strip().splitlines()[-1]), json.loads(GREEN_LINE))
-        self.assertEqual(read_json(os.path.join(results, "launch.json")), json.loads(GREEN_LINE))
-        self.assertIn("runs.jsonl", stderr)
 
     def test_launch_refuses_a_results_path_that_is_a_file_without_a_traceback(self):
         repo, _ = scratch.make_repo(self)
@@ -394,9 +370,8 @@ class UncreatableStateFolderTest(unittest.TestCase):
 
     def test_a_launch_with_an_uncreatable_state_folder_keeps_the_childs_verdict_line(self):
         code, stdout, stderr = scratch.run_lighthouse(["launch", *launch_flags(self.repo, self.results)], self.env)
-        self.assertEqual(code, 2, stderr)
+        self.assertEqual(code, 0, stderr)
         self.assertNotIn("Traceback", stderr)
-        self.assertIn("the run is not in the ledger", stderr)
         self.assertEqual(json.loads(stdout.strip().splitlines()[-1]), json.loads(GREEN_LINE))
         self.assertEqual(read_json(os.path.join(self.results, "launch.json")), json.loads(GREEN_LINE))
 
