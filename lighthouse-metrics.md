@@ -1,6 +1,6 @@
 # lighthouse-metrics: Lighthouse metrics on the shared plugin-metrics store
 Status: parked
-Updated: 2026-10-27T06:27:07.829Z
+Updated: 2026-10-27T06:27:08.920Z
 Next ids: c5 D3 R3 S1
 
 ## Goal
@@ -20,9 +20,9 @@ Stage 2: the first build is starting. The shared writer is on origin/feat/unifie
 
 ## Next step
 
-Once the shared writer lands, build. In /Users/satanshumishra/Documents/DevLabs/pipeline run: git fetch -q origin && git ls-tree --name-only origin/feat/unified-metrics -- pipeline_tool/metrics_writer.py metrics/metrics-writer.ts docs/metrics-format.md, and the same for origin/main. When either prints paths, set the "- Writer source:" line of ~/.mitosis/lighthouse/lighthouse-metrics/CHARTER.md to that ref (feat/unified-metrics wins when both hold them), resume_thread lighthouse-metrics, run ~/.mitosis/lighthouse/lighthouse-metrics/run.zsh, then follow pipeline:run (review, validate, fix pass, ship with SHIP=1 after the ship boundary is recorded) to the last pull request. Commit GLOSSARY.md and docs/adr/0009 with the first pull request as Ship says.
+Run ~/.mitosis/lighthouse/lighthouse-metrics/run.zsh for the first build, then review every MSP from Stage 3 of pipeline:run, validate, fix, and ship the three MSP pull requests in stack order.
 
-Needs: D1, R1, R2.
+Needs: D2, R1.
 
 ## Decisions in force
 
