@@ -216,8 +216,8 @@ class SkillsTest(unittest.TestCase):
         self.assertNotIn("ledger", text)
 
     def test_test_skill_passes_only_a_parent_it_was_given(self):
-        launching = " ".join(section(scratch.skill_text("test"), "## Launch", "## Steps").split())
-        self.assertIn("only when you were given `--parent`", launching)
+        launching = section(scratch.skill_text("test"), "## Launch", "## Steps")
+        self.assertIn("passing --parent only when you were given --parent", launching)
 
     def test_the_reference_names_the_blocked_reason(self):
         reference = scratch.read_text(scratch.skill_path("test")).split("## Command reference", 1)[1]

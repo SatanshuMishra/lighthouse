@@ -4,13 +4,11 @@ import os
 import statistics
 from typing import Any, Dict, List, Optional, Tuple
 
+from lighthouse_tool import metrics_writer
 from lighthouse_tool.records import is_number
 from lighthouse_tool.repo import Parser, Refusal, repository_folder, require_root
+from lighthouse_tool.run_record import PLUGIN
 from lighthouse_tool.spend import KINDS
-
-PLUGIN = "lighthouse"
-STORE_VARIABLE = "PLUGIN_METRICS_DIR"
-STORE_FOLDER = ".plugin-metrics"
 
 
 def parser() -> Parser:
@@ -30,11 +28,6 @@ def run(argv: List[str]) -> Tuple[int, Optional[str], Optional[str]]:
     return 0, json.dumps(summary), "lighthouse runs: {} runs".format(summary["runs"])
 
 
-def store_root() -> str:
-    chosen = os.environ.get(STORE_VARIABLE, "")
-    return chosen if chosen else os.path.join(os.path.expanduser("~"), STORE_FOLDER)
-
-
 def read_summary(path: str) -> Optional[Dict[str, Any]]:
     try:
         with open(path, encoding="utf-8") as handle:
@@ -45,7 +38,7 @@ def read_summary(path: str) -> Optional[Dict[str, Any]]:
 
 
 def read_summaries(folder: str) -> List[Dict[str, Any]]:
-    pattern = os.path.join(glob.escape(store_root()), "plugin=" + PLUGIN, "kind=summary", "repo=" + glob.escape(folder), "*.json")
+    pattern = os.path.join(glob.escape(metrics_writer.store_root(os.environ)), "plugin=" + PLUGIN, "kind=summary", "repo=" + glob.escape(folder), "*.json")
     read = [read_summary(path) for path in sorted(glob.glob(pattern))]
     return [summary for summary in read if summary is not None]
 

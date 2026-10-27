@@ -17,7 +17,7 @@ PLUGIN_ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 WORK = "work"
 CHILD = "child.json"
 LAUNCH = "launch.json"
-EARLIER_RUN_FILES = (LAUNCH, CHILD)
+EARLIER_RUN_FILES = (LAUNCH, CHILD, *run_record.RESULTS_SOURCES)
 CAFFEINATE = "caffeinate"
 SYSTEMD_INHIBIT = "systemd-inhibit"
 NO_KEEP_AWAKE = "none"
@@ -83,15 +83,17 @@ def enclosing_checkout(path: str) -> Optional[str]:
 def run(argv: List[str]) -> Outcome:
     located = located_run(argv[1:])
     recording = run_record.begun(located.root, located.options)
+    cleared = None
     try:
         if located.results is not None:
             clear_earlier_run(located.results)
+            cleared = located.results
         options = parser().parse_args(argv[1:])
         return launch(options, recording)
     except (Refusal, OSError) as problem:
         reason = refusal_reason(problem)
         ending = run_record.Ending(blocked_text(reason), reason, None, None)
-        return refused(located.results, reason, run_record.finished(recording, located.results, ending))
+        return refused(located.results, reason, run_record.finished(recording, cleared, ending))
 
 
 def refused(results: Optional[str], reason: str, warnings: Tuple[str, ...]) -> Outcome:
