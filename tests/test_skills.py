@@ -215,6 +215,16 @@ class SkillsTest(unittest.TestCase):
         self.assertIn("metrics store", launching)
         self.assertNotIn("ledger", text)
 
+    def test_test_skill_passes_only_a_parent_it_was_given(self):
+        launching = section(scratch.skill_text("test"), "## Launch", "## Steps")
+        self.assertIn("passing --parent only when you were given --parent", launching)
+
+    def test_the_reference_names_the_blocked_reason(self):
+        reference = scratch.read_text(scratch.skill_path("test")).split("## Command reference", 1)[1]
+        for subcommand in ("launch", "verdict"):
+            with self.subTest(subcommand=subcommand):
+                self.assertIn("a blocked line has no `dollars` and adds `reason`", reference_line(reference, subcommand))
+
     def test_the_reference_says_a_blocked_line_has_no_dollars(self):
         reference = scratch.read_text(scratch.skill_path("test")).split("## Command reference", 1)[1]
         for subcommand in ("launch", "verdict"):

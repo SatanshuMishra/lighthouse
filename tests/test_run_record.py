@@ -3,7 +3,9 @@ import json
 import os
 import re
 import unittest
+from unittest import mock
 
+from lighthouse_tool import run_record
 from tests import scratch
 from tests.test_launch import CAFFEINATE_STUB, GREEN_LINE, SYSTEMD_INHIBIT_STUB, claude_output, write_stub
 from tests.test_spend import assistant, bash, tool_result
@@ -643,6 +645,67 @@ class RunRecordTest(unittest.TestCase):
         self.assertNotIn(summaries[0][: -len(".json")], earlier)
         with open(other_path, "rb") as handle:
             self.assertEqual(handle.read(), other_bytes)
+
+    def test_rerun_into_same_folder_drops_earlier_sources(self):
+        first = green_run(self)
+        self.assertEqual(first.code, 0, first.stderr)
+        earlier_sources = ("core_commit", "feature_commit", "build", "suite", "paths")
+
+        stopped = Launched(
+            self, {"output": claude_output("I could not finish."), "exit": 1}, results=first.results, repo=first.repo, store=first.store
+        )
+        self.assertEqual(stopped.code, 0, stopped.stderr)
+        latest = newest_summary(first.store)
+        self.assertEqual(latest["verdict"], "blocked")
+        for key in earlier_sources:
+            with self.subTest(rerun="child stops early", key=key):
+                self.assertIsNone(latest[key])
+
+        second = green_run(self)
+        environment = {**scratch.environment(second.home, second.stubs), "PLUGIN_METRICS_DIR": second.store}
+        code, _, _ = scratch.run_lighthouse(["launch", "--repo", second.repo, "--feature", "feat/x", "--results", second.results], environment)
+        self.assertEqual(code, 2)
+        latest = newest_summary(second.store)
+        self.assertEqual(latest["verdict"], "blocked")
+        self.assertIsNone(latest["child_exit"])
+        for key in earlier_sources:
+            with self.subTest(rerun="refused", key=key):
+                self.assertIsNone(latest[key])
+
+        cut = mark_entry("suite", "start", "2026-10-16T10:00:00Z") + "\n" + '{"step": "suite", "edge": "en'
+        marked = Launched(self, {"files": {"marks.jsonl": cut}, "output": claude_output(GREEN_LINE)})
+        Launched(self, {"output": claude_output(GREEN_LINE)}, results=marked.results, repo=marked.repo, store=marked.store)
+        latest = newest_summary(marked.store)
+        for key in ("steps", "drives", "shared"):
+            with self.subTest(rerun="earlier cut marks", key=key):
+                self.assertIsNotNone(latest[key])
+
+    def test_malformed_parent_is_left_out(self):
+        for parent in ("<plugin>/<run>", "../../x' OR 1=1 --", "pipeline/" + "a" * 5000):
+            with self.subTest(parent=parent[:40]):
+                ran = Launched(self, {"output": claude_output(GREEN_LINE)}, extra=["--parent", parent])
+                self.assertEqual(ran.code, 0, ran.stderr)
+                self.assertEqual([line["parent"] for line in ran.lines()], [None, None, None])
+                self.assertIn("--parent", ran.stderr)
+
+    def test_session_id_outside_the_projects_folder_is_not_read(self):
+        home = scratch.make_home(self)
+        projects = os.path.join(home, ".claude", "projects", "-caller-project")
+        os.makedirs(projects)
+        outside = os.path.join(scratch.temporary_folder(self, "lh-outside-"), "s")
+        with open(outside + ".jsonl", "w", encoding="utf-8") as handle:
+            handle.write("{}\n")
+        with open(os.path.join(home, "s.jsonl"), "w", encoding="utf-8") as handle:
+            handle.write("{}\n")
+        with mock.patch.dict(os.environ, {"HOME": home}):
+            for session in (outside, "../../s", ".."):
+                with self.subTest(session=session):
+                    self.assertIsNone(run_record.caller_transcript(session))
+
+
+def newest_summary(store):
+    folder = store_folder(store, "summary")
+    return max((read_lines(os.path.join(folder, name))[0] for name in files_in(folder)), key=lambda line: line["started"])
 
 
 if __name__ == "__main__":

@@ -5,15 +5,12 @@ import unittest
 
 from tests import scratch
 
-WITHHELD = ("CLAUDE_CODE_SESSION_ID", "SHIP", "PIPELINE_EVENTS", "PLUGIN_METRICS_DIR", "PLUGIN_METRICS_PARENT")
 OPUS = {"input": 4.0, "cache_write_5m": 5.0, "cache_write_1h": 8.0, "cache_read": 0.2, "output": 20.0}
 SHIPPED = os.path.join(scratch.ROOT, "lighthouse_tool", "prices.json")
 
 
 def child_environment(test):
-    base = scratch.environment(scratch.make_home(test))
-    kept = {name: value for name, value in base.items() if name not in WITHHELD}
-    return {**kept, "PLUGIN_METRICS_DIR": scratch.temporary_folder(test, "lh-metrics-")}
+    return {**scratch.environment(scratch.make_home(test)), "PLUGIN_METRICS_DIR": scratch.temporary_folder(test, "lh-metrics-")}
 
 
 def write_prices(test, table):
@@ -70,9 +67,11 @@ class SpendPriceDateTest(unittest.TestCase):
         self.assertIsNone(spend["price_date"])
 
     def test_bad_date_refused(self):
-        code, stdout, stderr = spend_with(self, write_prices(self, {"date": "October", "claude-opus-5-5": OPUS}))
-        self.assertEqual(code, 2, stderr)
-        self.assertIn("date", printed(stdout)["error"])
+        for date in ("October", "2026-10-24\n", "\uff12\uff10\uff12\uff16-10-24"):
+            with self.subTest(date=date):
+                code, stdout, stderr = spend_with(self, write_prices(self, {"date": date, "claude-opus-5-5": OPUS}))
+                self.assertEqual(code, 2, stderr)
+                self.assertIn("date", printed(stdout)["error"])
 
     def test_shipped_table_is_dated(self):
         with open(SHIPPED, encoding="utf-8") as handle:

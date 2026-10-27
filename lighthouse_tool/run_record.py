@@ -21,6 +21,8 @@ VERDICTS = ("green", "failures", "blocked", "unproven")
 SUITE_RESULTS = ("passed", "failures", "blocked")
 RETRY_OUTCOMES = ("passed", "failed")
 OWN_SPEND = "own"
+RESULTS_SOURCES = (verdict.COMMITS, verdict.FINDINGS, verdict.SUITE, verdict.RETEST, mark.MARKS)
+PARENT_PROBLEM = "lighthouse launch: --parent or PLUGIN_METRICS_PARENT is not <plugin>/<run id>, so the run records no parent"
 SECONDS_DIGITS = 3
 SPEND_FIELDS = (
     "usd",
@@ -74,8 +76,23 @@ def read_catalogue() -> Optional[Dict[str, Any]]:
         return None
 
 
+def chosen_parent(flag: Optional[str]) -> Optional[str]:
+    return flag if flag else os.environ.get(metrics_writer.PARENT_VARIABLE) or None
+
+
+def well_formed_parent(parent: str) -> bool:
+    plugin, _, run = parent.partition("/")
+    return (
+        len(plugin) <= metrics_writer.NAME_LIMIT
+        and metrics_writer.PLUGIN_PATTERN.fullmatch(plugin) is not None
+        and len(run) <= metrics_writer.NAME_LIMIT
+        and metrics_writer.RUN_PATTERN.fullmatch(run) is not None
+    )
+
+
 def writer_environment(parent: Optional[str]) -> Mapping[str, str]:
-    return {**os.environ, metrics_writer.PARENT_VARIABLE: parent} if parent else dict(os.environ)
+    kept = {name: value for name, value in os.environ.items() if name != metrics_writer.PARENT_VARIABLE}
+    return {**kept, metrics_writer.PARENT_VARIABLE: parent} if parent is not None else kept
 
 
 def start_fields(options: argparse.Namespace) -> Dict[str, Any]:
@@ -100,11 +117,14 @@ def begun(root: Optional[str], options: Optional[argparse.Namespace]) -> Optiona
     start = datetime.datetime.now(datetime.timezone.utc)
     run = metrics_writer.run_id(run_name(options.feature), start)
     version = plugin_version()
-    environ = writer_environment(options.parent)
+    parent = chosen_parent(options.parent)
+    accepted = parent if parent is not None and well_formed_parent(parent) else None
+    environ = writer_environment(accepted)
     fields = start_fields(options)
     catalogue = read_catalogue()
     warnings = present(
         (
+            PARENT_PROBLEM if parent is not None and accepted is None else None,
             metrics_writer.append_event(PLUGIN, version, repo, run, RUN_START, fields, environ=environ, now=start),
             metrics_writer.write_catalogue(PLUGIN, catalogue, environ=environ)
             if catalogue is not None
@@ -262,6 +282,8 @@ def paths_summary(paths: Any, carried: Optional[FrozenSet[str]]) -> Optional[Lis
 
 
 def caller_transcript(session: str) -> Optional[str]:
+    if os.path.basename(session) != session or session in (os.curdir, os.pardir):
+        return None
     base = spend.claude_projects()
     found = [os.path.join(base, name, session + ".jsonl") for name in spend.listed(base)]
     return next((path for path in found if os.path.isfile(path)), None)
