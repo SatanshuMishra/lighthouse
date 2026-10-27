@@ -1,6 +1,6 @@
 # lighthouse-metrics: Lighthouse metrics on the shared plugin-metrics store
 Status: parked
-Updated: 2026-10-27T08:06:26.530Z
+Updated: 2026-10-27T08:06:28.262Z
 Next ids: c5 D3 R3 S1
 
 ## Goal
@@ -20,7 +20,7 @@ Stage 3 round 1: all three MSPs are built and committed (metrics-foundation 3c76
 
 ## Next step
 
-When the suites finish, dispatch round 1's reviewers with the rendered briefs (code-reviewer and conformance-auditor on every MSP, security-reviewer on run-records and ledger-import), collect findings, then validate, fix, and ship the three MSP pull requests in stack order per pipeline:run.
+When the remaining reviewers finish, merge each MSP's arrays into <msp>.findings.json, then run candidates, validate, fix, and ship the three MSP pull requests in stack order per pipeline:run.
 
 Needs: D2, R1.
 
