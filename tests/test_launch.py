@@ -70,10 +70,9 @@ import subprocess
 import sys
 
 words = shlex.split(sys.argv[2])
-repo = words[words.index("--repo") + 1]
 results = words[words.index("--results") + 1]
 stopped = subprocess.run(
-    [sys.executable, {lighthouse!r}, "verdict", "--blocked", "the profile is broken", "--results", results, "--repo", repo],
+    [sys.executable, {lighthouse!r}, "verdict", "--blocked", "the profile is broken", "--results", results],
     capture_output=True,
     text=True,
 )
@@ -142,9 +141,13 @@ def ledger_path(home):
     return os.path.join(home, ".lighthouse", "work", "runs.jsonl")
 
 
-def ledger_lines(home):
-    with open(ledger_path(home), encoding="utf-8") as handle:
-        return [json.loads(line) for line in handle.read().splitlines()]
+def summary_files(store, repo):
+    folder = os.path.join(store, "plugin=lighthouse", "kind=summary", "repo=" + os.path.basename(repo))
+    return sorted(os.path.join(folder, name) for name in os.listdir(folder)) if os.path.isdir(folder) else []
+
+
+def launch_environment(test, home, stubs):
+    return {**scratch.environment(home, stubs), "PLUGIN_METRICS_DIR": scratch.temporary_folder(test, "lh-store-")}
 
 
 def launch_flags(repo, results):
@@ -154,12 +157,13 @@ def launch_flags(repo, results):
 def launch(test, output, exit_code=0, nice=None, earlier=False, claude=CLAUDE_STUB):
     repo, _ = scratch.make_repo(test)
     home = scratch.make_home(test)
+    store = scratch.temporary_folder(test, "lh-store-")
     results = os.path.join(scratch.temporary_folder(test, "lh-results-"), "results")
     if earlier:
         seed_earlier_run(results)
     stubs = stub_folder(test, output, exit_code)
     write_stub(stubs, "claude", claude)
-    env = scratch.environment(home, stubs)
+    env = {**scratch.environment(home, stubs), "PLUGIN_METRICS_DIR": store}
     prefix = ["nice", "-n", str(nice)] if nice is not None else []
     completed = subprocess.run(
         [*prefix, sys.executable, scratch.LIGHTHOUSE, "launch", *launch_flags(repo, results)],
@@ -174,6 +178,7 @@ def launch(test, output, exit_code=0, nice=None, earlier=False, claude=CLAUDE_ST
         "stderr": completed.stderr,
         "repo": repo,
         "home": home,
+        "store": store,
         "results": results,
         "stubs": stubs,
     }
@@ -222,7 +227,7 @@ class LaunchTest(unittest.TestCase):
         repo, _ = scratch.make_repo(self)
         stubs = stub_folder(self, claude_output(GREEN_LINE))
         results = os.path.join(repo, "results")
-        env = scratch.environment(scratch.make_home(self), stubs)
+        env = launch_environment(self, scratch.make_home(self), stubs)
         code, stdout, _ = scratch.run_lighthouse(["launch", *launch_flags(repo, results)], env)
         self.assertEqual(code, 2)
         self.assertIn("error", json.loads(stdout))
@@ -286,7 +291,7 @@ class LaunchTest(unittest.TestCase):
         repo, _ = scratch.make_repo(self)
         plain = scratch.temporary_folder(self, "lh-plain-")
         stubs = stub_folder(self, claude_output(GREEN_LINE))
-        env = scratch.environment(scratch.make_home(self), stubs)
+        env = launch_environment(self, scratch.make_home(self), stubs)
         refusals = {
             "not a git repository": lambda results: launch_flags(plain, results),
             "a flag is missing": lambda results: [flag for flag in launch_flags(repo, results) if flag not in ("--core", "main")],
@@ -314,7 +319,7 @@ class LaunchTest(unittest.TestCase):
         scratch.run_git(user, "-c", "user.name=u", "-c", "user.email=u@example.invalid", "commit", "-qm", "init")
         plain = scratch.temporary_folder(self, "lh-plain-")
         stubs = stub_folder(self, claude_output(GREEN_LINE))
-        env = scratch.environment(scratch.make_home(self), stubs)
+        env = launch_environment(self, scratch.make_home(self), stubs)
         unjudged = {
             "repo omitted": lambda results: [flag for flag in launch_flags(repo, results) if flag not in ("--repo", repo)],
             "repo not a git repository": lambda results: launch_flags(plain, results),
@@ -335,7 +340,7 @@ class LaunchTest(unittest.TestCase):
         results = os.path.join(scratch.temporary_folder(self, "lh-results-"), "results")
         with open(results, "w", encoding="utf-8") as handle:
             handle.write("not a folder\n")
-        env = scratch.environment(scratch.make_home(self), stub_folder(self, claude_output(GREEN_LINE)))
+        env = launch_environment(self, scratch.make_home(self), stub_folder(self, claude_output(GREEN_LINE)))
         code, stdout, stderr = scratch.run_lighthouse(["launch", *launch_flags(repo, results)], env)
         self.assertEqual(code, 2, stderr)
         self.assertIn("error", json.loads(stdout.strip().splitlines()[-1]))
@@ -344,12 +349,14 @@ class LaunchTest(unittest.TestCase):
     def test_a_blocked_child_and_its_launch_count_as_one_run(self):
         ran = launch(self, "", claude=BLOCKING_CLAUDE_STUB)
         self.assertEqual(ran["code"], 0, ran["stderr"])
-        results = os.path.realpath(ran["results"])
-        stopped = [line for line in ledger_lines(ran["home"]) if line["kind"] == "verdict"]
-        self.assertEqual([(line["run"], line["reason"]) for line in stopped], [(results, "the profile is broken")])
-        code, stdout, stderr = scratch.run_lighthouse(["runs", "--repo", ran["repo"]], scratch.environment(ran["home"]))
-        self.assertEqual(code, 0, stderr)
-        self.assertEqual(json.loads(stdout.strip().splitlines()[-1])["runs"], 1)
+        printed = json.loads(ran["stdout"].strip().splitlines()[-1])
+        self.assertEqual((printed["verdict"], printed["reason"]), ("blocked", "the profile is broken"))
+        summaries = summary_files(ran["store"], ran["repo"])
+        self.assertEqual(len(summaries), 1)
+        summary = read_json(summaries[0])
+        self.assertEqual((summary["verdict"], summary["reason"]), ("blocked", "the profile is broken"))
+        self.assertEqual(summary["results"], os.path.realpath(ran["results"]))
+        self.assertFalse(os.path.exists(ledger_path(ran["home"])))
 
 
 class UncreatableStateFolderTest(unittest.TestCase):
@@ -358,7 +365,7 @@ class UncreatableStateFolderTest(unittest.TestCase):
         self.home = scratch.make_home(self)
         open(os.path.join(self.home, ".lighthouse"), "w").close()
         self.results = os.path.join(scratch.temporary_folder(self, "lh-results-"), "results")
-        self.env = scratch.environment(self.home, stub_folder(self, claude_output(GREEN_LINE)))
+        self.env = launch_environment(self, self.home, stub_folder(self, claude_output(GREEN_LINE)))
 
     def test_a_refused_launch_with_an_uncreatable_state_folder_still_leaves_a_blocked_line(self):
         flags = [flag for flag in launch_flags(self.repo, self.results) if flag not in ("--core", "main")]
@@ -375,11 +382,13 @@ class UncreatableStateFolderTest(unittest.TestCase):
         self.assertEqual(json.loads(stdout.strip().splitlines()[-1]), json.loads(GREEN_LINE))
         self.assertEqual(read_json(os.path.join(self.results, "launch.json")), json.loads(GREEN_LINE))
 
-    def test_a_blocked_verdict_with_an_uncreatable_state_folder_is_refused_without_a_traceback(self):
-        code, stdout, stderr = scratch.run_lighthouse(["verdict", "--blocked", "x", "--repo", self.repo], self.env)
-        self.assertEqual(code, 2, stderr)
+    def test_a_blocked_verdict_with_an_uncreatable_state_folder_prints_its_line_without_a_traceback(self):
+        code, stdout, stderr = scratch.run_lighthouse(["verdict", "--blocked", "x"], self.env)
+        self.assertEqual(code, 0, stderr)
         self.assertNotIn("Traceback", stderr)
-        self.assertIn(".lighthouse", json.loads(stdout.strip().splitlines()[-1])["error"])
+        line = json.loads(stdout.strip().splitlines()[-1])
+        self.assertEqual((line["verdict"], line["reason"]), ("blocked", "x"))
+        self.assertTrue(os.path.isfile(os.path.join(self.home, ".lighthouse")))
 
 
 if __name__ == "__main__":
