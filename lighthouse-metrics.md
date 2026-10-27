@@ -1,6 +1,6 @@
 # lighthouse-metrics: Lighthouse metrics on the shared plugin-metrics store
 Status: parked
-Updated: 2026-10-27T10:40:46.682Z
+Updated: 2026-10-27T10:44:38.220Z
 Next ids: c5 D4 R3 S3
 
 ## Goal
@@ -16,7 +16,7 @@ Lighthouse records metrics personalised to its purpose (proving a FEATURE branch
 
 ## Where things stand
 
-Integration: every MSP is merged into feat/lighthouse-metrics (de02ffc, through the catch-up pull request #17) and pipeline integration-ready passes. Lighthouse run 1 (results in lighthouse/run-1 under the run home) ended blocked with no verdict: both suites passed, then the child session ended its turn while its lighthouse:driver agents still ran in the background. That cause is recorded as integration round 1 finding U1 (kind failing test, verdict diagnose), and its diagnosis is running against the integration worktree ~/.mitosis/runs/lighthouse/lighthouse-metrics/integration at 839983e, the FEATURE tip after run 1's profile commit. test_launch_records_cost_and_priority fails only under a background shell at nice 5, the same on the base, so it is not a finding.
+Integration: every MSP is merged into feat/lighthouse-metrics (de02ffc, through the catch-up pull request #17) and pipeline integration-ready passes. Lighthouse run 1 (results in lighthouse/run-1 under the run home) ended blocked with no verdict: both suites passed, then the child session ended its turn while its lighthouse:driver agents still ran in the background. That cause is integration round 1 finding U1 (kind failing test), diagnosed fixable: the test skill never told the child to run drivers in the foreground. The integration worktree ~/.mitosis/runs/lighthouse/lighthouse-metrics/integration holds its receipt (ce1bd3a) and fix (3643dc1) on feat/lighthouse-metrics, unpushed, with the full suite running there. The pipeline runs the installed lighthouse 0.3.0, which keeps the old skill text until lighthouse is reinstalled from this branch, so run 2 may stop the same way. test_launch_records_cost_and_priority fails only under a background shell at nice 5, the same on the base, so it is not a finding.
 
 ## Next step
 
