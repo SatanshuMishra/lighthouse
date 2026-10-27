@@ -254,6 +254,12 @@ class SkillsTest(unittest.TestCase):
                 for line in holds:
                     self.assertIn("600000", line)
 
+    def test_test_skill_dispatches_drivers_in_the_foreground(self):
+        steps = section(scratch.skill_text("test"), "## Steps", "## Stopping early")
+
+        self.assertIn("Dispatch every driver through the lighthouse:driver agent in the foreground, never with run_in_background", steps)
+        self.assertNotIn("a driver's result", steps)
+
     def test_test_skill_dispatches_drivers_through_the_driver_agent(self):
         text = scratch.skill_text("test")
         steps = section(text, "## Steps", "## Stopping early")
