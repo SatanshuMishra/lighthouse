@@ -1,6 +1,6 @@
 # lighthouse-metrics: Lighthouse metrics on the shared plugin-metrics store
 Status: parked
-Updated: 2026-10-27T08:07:36.121Z
+Updated: 2026-10-27T08:09:23.360Z
 Next ids: c5 D3 R3 S1
 
 ## Goal
@@ -16,7 +16,7 @@ Lighthouse records metrics personalised to its purpose (proving a FEATURE branch
 
 ## Where things stand
 
-Stage 3 round 1: all three MSPs are built and committed (metrics-foundation 3c764ef, run-records 8fd044f, ledger-import 9730ab0, worktrees under ~/.mitosis/runs/lighthouse/lighthouse-metrics/trees); the only gate gap is test_not_a_repository_writes_nothing inert, which is not a finding. Round 1's reviewers are running; their inputs and each finished reviewer's array (<msp>.<agent>.json) are under review/round-1 in the run home. All three conformance audits found nothing. metrics-foundation has two LOW advisory candidates (C1 price-date regex, C2 duplicated withheld list) with its validator running. Every suite's one failure, test_launch_records_cost_and_priority (nice 10 != 5), fails the same way on the base under a background shell, so it is not a finding. The glossary terms and ADR 0009 are uncommitted in the checkout and ship with the first pull request.
+Stage 3 round 1: all three MSPs are built and committed (metrics-foundation 3c764ef, run-records 8fd044f, ledger-import 9730ab0, worktrees under ~/.mitosis/runs/lighthouse/lighthouse-metrics/trees); the only gate gap is test_not_a_repository_writes_nothing inert, which is not a finding. Round 1's reviewers are running; their inputs and each finished reviewer's array (<msp>.<agent>.json) are under review/round-1 in the run home. All three conformance audits found nothing. metrics-foundation is green; its advisories C1 and C2 are fixed in 9f724a0, not yet merged into run-records and ledger-import, which wait until their own reviews end. Every suite's one failure, test_launch_records_cost_and_priority (nice 10 != 5), fails the same way on the base under a background shell, so it is not a finding. The glossary terms and ADR 0009 are uncommitted in the checkout and ship with the first pull request.
 
 ## Next step
 
