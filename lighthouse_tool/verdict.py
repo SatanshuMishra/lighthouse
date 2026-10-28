@@ -39,6 +39,7 @@ CONFIRMED_FAILURE = "confirmed failure"
 PRE_EXISTING = "pre-existing"
 FLAKY = "flaky"
 UNPROVEN = "unproven"
+VERDICTS = ("green", "failures", "blocked", "unproven")
 
 JudgedPath = Tuple[Dict[str, Any], str, Optional[str]]
 

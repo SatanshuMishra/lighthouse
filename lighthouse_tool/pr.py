@@ -9,7 +9,6 @@ from lighthouse_tool import repo as repository
 from lighthouse_tool.repo import Parser, Refusal
 from lighthouse_tool import verdict as verdicts
 
-VERDICTS = ("green", "failures", "blocked", "unproven")
 OPENS_WITHOUT_FINAL = ("green", "unproven")
 TITLE_LIMIT = 72
 TYPE_FORM = re.compile(r"[a-z]+\Z")
@@ -66,8 +65,8 @@ def read_verdict(results: str) -> Dict[str, Any]:
         raise Refusal("{} cannot be read: {}".format(path, error.strerror or error))
     except ValueError:
         raise Refusal("{} is not JSON".format(path))
-    if not isinstance(line, dict) or line.get("verdict") not in VERDICTS:
-        raise Refusal("{} carries no verdict of {}".format(path, ", ".join(VERDICTS)))
+    if not isinstance(line, dict) or line.get("verdict") not in verdicts.VERDICTS:
+        raise Refusal("{} carries no verdict of {}".format(path, ", ".join(verdicts.VERDICTS)))
     for key in ("failures", "unproven", "flaky"):
         if not isinstance(line.get(key), list):
             raise Refusal("{} in {} must be a list".format(key, path))

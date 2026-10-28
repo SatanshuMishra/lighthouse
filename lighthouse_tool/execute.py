@@ -7,20 +7,16 @@ from typing import Any, Dict, List, Optional, Tuple
 from lighthouse_tool import contract, credentials, records, retest, suite
 from lighthouse_tool.change import changed_files
 from lighthouse_tool.repo import Parser, Refusal
-from lighthouse_tool.results import CHECKS, PLAN, RECORD
+from lighthouse_tool.results import CHECKS, PLAN, RECORD, record_beside
+from lighthouse_tool.verdict import EXACT_RUNS, FEATURE, K3_SCHEMA
 
 Outcome = Tuple[int, Optional[str], Optional[str]]
 K1_SCHEMA = "k1-acceptance.schema.json"
-K3_SCHEMA = "k3-check-result.schema.json"
 RUNNER = "lighthouse execute"
-FEATURE = "feature"
 CHECK_STEP = "check"
 REACH_STEP = "reach"
 CHECK_EVIDENCE = "evidence/checks"
 REACH_EVIDENCE = "evidence/reach.log"
-SPEC_SUFFIX = ".md"
-RECORD_SUFFIX = ".record.json"
-EXACT_RUNS = 1
 STATUS_BY_EXIT = {0: "pass", 1: "fail"}
 COULD_NOT_RUN = "could-not-run"
 
@@ -79,13 +75,6 @@ def read_commits(results: str) -> Dict[str, str]:
     if not isinstance(commits, dict) or not all(isinstance(commits.get(build), str) for build in suite.BUILDS):
         raise Refusal("{} must be an object holding core and feature commits".format(path))
     return {build: commits[build] for build in suite.BUILDS}
-
-
-def record_beside(spec: Optional[str]) -> Optional[str]:
-    if spec is None or not spec.endswith(SPEC_SUFFIX):
-        return None
-    path = spec[: -len(SPEC_SUFFIX)] + RECORD_SUFFIX
-    return path if os.path.isfile(path) else None
 
 
 def chosen_record(results: str, record: Optional[str], spec: Optional[str]) -> Optional[Dict[str, Any]]:

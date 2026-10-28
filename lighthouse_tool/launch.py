@@ -35,9 +35,6 @@ NO_KEEP_AWAKE = "none"
 DARWIN_PROCESS_SELECTOR = 4
 KEEP_AWAKE_GRACE_SECONDS = 5
 PATH_FLAGS = ("repo", "results", "previous", "spec", "record")
-SPEC_SUFFIX = ".md"
-RECORD_SUFFIX = ".record.json"
-VERDICTS = ("green", "failures", "blocked", "unproven")
 CHILD_STORE = "plugin-metrics"
 
 
@@ -207,15 +204,8 @@ def write_limits(results: str, profile: Dict[str, Any]) -> limits.Limits:
     return found
 
 
-def record_beside(spec: Optional[str]) -> Optional[str]:
-    if spec is None or not spec.endswith(SPEC_SUFFIX):
-        return None
-    path = spec[: -len(SPEC_SUFFIX)] + RECORD_SUFFIX
-    return path if os.path.isfile(path) else None
-
-
 def copy_record(results: str, options: argparse.Namespace) -> None:
-    source = os.path.abspath(options.record) if options.record is not None else record_beside(spec_path(options))
+    source = os.path.abspath(options.record) if options.record is not None else run_files.record_beside(spec_path(options))
     if source is None:
         return
     try:
@@ -411,7 +401,7 @@ def verdict_object(text: str) -> Optional[Dict[str, Any]]:
 
 def written_verdict(results: str) -> Optional[Dict[str, Any]]:
     line = verdict.optional_json(os.path.join(results, verdict.VERDICT))
-    return line if isinstance(line, dict) and line.get("verdict") in VERDICTS else None
+    return line if isinstance(line, dict) and line.get("verdict") in verdict.VERDICTS else None
 
 
 def printed_verdict(results: str, childs_line: Optional[Dict[str, Any]]) -> Optional[str]:
