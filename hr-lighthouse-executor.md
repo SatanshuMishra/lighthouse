@@ -1,7 +1,7 @@
 # hr-lighthouse-executor: Run 4 of the harness-redesign program: lighthouse executes locked K1 lines and computes its verdict from K3 results
 Status: active
-Updated: 2026-10-28T15:05:11.720Z
-Next ids: c7 D2 R4 S1
+Updated: 2026-10-28T15:15:05.611Z
+Next ids: c7 D3 R4 S1
 
 ## Goal
 
@@ -29,6 +29,7 @@ Needs: D1.
 ## Decisions in force
 
 - D1 interphase hand-off: build the spec as one MSP of 7 Steps with 60 locked K1 lines: Hand off now: one MSP executor with 7 Steps, 60 K1 lines and 27 assumptions; the next step is the O2 check author on feat/hr-lighthouse-executor.
+- D2 ship boundary: ship executor at d40a570 as one ready pull request: Ship now: SHIP=1 run.zsh --resume --proven-head executor=d40a570, then open the pull request ready for review, assigned to the owner, with review/executor.comment.md as its comment.
 
 ## Open risks
 
