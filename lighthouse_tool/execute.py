@@ -52,7 +52,7 @@ def execute_command(options: argparse.Namespace) -> Dict[str, Any]:
     hidden = suite.hidden_values(worktree, profile)
     checks_path = os.path.join(results, CHECKS)
     records.write_atomically(checks_path, "")
-    statuses = [run_line(line, results, worktree, commits[FEATURE], profile, hidden) for line in lines]
+    runs = [run_line(line, results, worktree, commits[FEATURE], profile, hidden) for line in lines]
     surfaces = profile_surfaces(profile)
     changed = changed_files(worktree, commits["core"], commits[FEATURE])
     neighbours = [surface["name"] for surface in surfaces if retest.is_touched(surface, changed)]
@@ -64,7 +64,7 @@ def execute_command(options: argparse.Namespace) -> Dict[str, Any]:
     }
     records.write_atomically(os.path.join(results, PLAN), json.dumps(plan, indent=2) + "\n")
     return {
-        "checks": [{"id": line["id"], "status": status} for line, status in zip(lines, statuses)],
+        "checks": [{"id": line["id"], "runs": statuses} for line, statuses in zip(lines, runs)],
         "neighbours": neighbours,
     }
 
@@ -167,12 +167,11 @@ def run_line(
     commit: str,
     profile: Dict[str, Any],
     hidden: credentials.Secrets,
-) -> str:
+) -> List[str]:
     if line["kind"] == "judged":
-        trials = [run_once(line, number, results, worktree, commit, profile, hidden) for number in range(1, line["trials"] + 1)]
-        return trials[-1]
+        return [run_once(line, number, results, worktree, commit, profile, hidden) for number in range(1, line["trials"] + 1)]
     first = run_once(line, 1, results, worktree, commit, profile, hidden)
-    return run_once(line, 2, results, worktree, commit, profile, hidden) if first == "fail" else first
+    return [first, run_once(line, 2, results, worktree, commit, profile, hidden)] if first == "fail" else [first]
 
 
 def run_once(
