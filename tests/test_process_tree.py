@@ -155,12 +155,16 @@ def is_running(pid):
     return True
 
 
-def gone_by(pid, deadline):
-    while is_running(pid):
+def turns_false_by(holds, deadline):
+    while holds():
         if time.monotonic() >= deadline:
             return False
         time.sleep(POLL_SECONDS)
     return True
+
+
+def gone_by(pid, deadline):
+    return turns_false_by(lambda: is_running(pid), deadline)
 
 
 def is_zombie(pid):
@@ -176,11 +180,7 @@ def is_zombie(pid):
 
 
 def ended_by(pid, deadline):
-    while is_running(pid) and not is_zombie(pid):
-        if time.monotonic() >= deadline:
-            return False
-        time.sleep(POLL_SECONDS)
-    return True
+    return turns_false_by(lambda: is_running(pid) and not is_zombie(pid), deadline)
 
 
 def kill_quietly(pid):
