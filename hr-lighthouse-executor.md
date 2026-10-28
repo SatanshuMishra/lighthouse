@@ -1,6 +1,6 @@
 # hr-lighthouse-executor: Run 4 of the harness-redesign program: lighthouse executes locked K1 lines and computes its verdict from K3 results
 Status: active
-Updated: 2026-10-28T09:22:02.423Z
+Updated: 2026-10-28T09:22:05.001Z
 Next ids: c7 D2 R3 S1
 
 ## Goal
@@ -22,7 +22,7 @@ interphase is handed off (record status handed-off). The FEATURE branch feat/hr-
 
 ## Next step
 
-Dispatch a fresh O2 check author to write the 60 locked acceptance tests, referee schema copies and tests/contract_check.py on feat/hr-lighthouse-executor, commit and push them, then run receipts lock, write CHARTER.md with the Locked lines, and run run.zsh --plan-only.
+When the three check authors report, confirm each locked test fails at base for the absent behaviour, the existing suite passes and nothing lands under the real HOME; commit and push them on feat/hr-lighthouse-executor, run receipts lock into receipts-lock.txt, and run run.zsh --plan-only.
 
 Needs: D1.
 
