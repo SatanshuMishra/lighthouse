@@ -1,6 +1,6 @@
 # hr-lighthouse-executor: Run 4 of the harness-redesign program: lighthouse executes locked K1 lines and computes its verdict from K3 results
 Status: active
-Updated: 2026-10-28T09:31:42.458Z
+Updated: 2026-10-28T10:26:32.958Z
 Next ids: c7 D2 R3 S1
 
 ## Goal
@@ -18,7 +18,7 @@ Run 4 of the harness-redesign program (~/.mitosis/harness-redesign/PROGRAM.md, l
 
 ## Where things stand
 
-The FEATURE branch feat/hr-lighthouse-executor holds the CI fix (lighthouse#21) and the locked tests at b9eabdc: 60 tests written by three fresh check authors, each failing at f4da7f7 through accept.zsh, with the existing suite passing and nothing written under the real HOME. Two prose checks were loosened to their rows before the lock at the parent session's request (reach as code or a quoted key, the draft sentence in either word order). The receipt-lock line is in receipts-lock.txt. The first mitosis build runs in the background (7 Lanes, MSP executor, plan bff94b06179a).
+The FEATURE branch feat/hr-lighthouse-executor holds the CI fix (lighthouse#21) and the locked tests at b9eabdc: 60 tests written by three fresh check authors, each failing at f4da7f7 through accept.zsh, with the existing suite passing and nothing written under the real HOME. Two prose checks were loosened to their rows before the lock at the parent session's request (reach as code or a quoted key, the draft sentence in either word order). The receipt-lock line is in receipts-lock.txt. The MSP executor is committed on mitosis/executor at 400ec97 (worktree ~/.mitosis/runs/lighthouse/hr-lighthouse-executor/trees/executor): all 7 Lanes ok, mitosis's gate passed 60 of 60, the locked files are unchanged and the lock hash matches at the head; mitosis exit 6 only lists declared files left unwritten, which are no finding. The five Lane assumptions are in review/executor.assumptions.txt and the round-1 diff and obligations (67) are written. The O4 locked checks and the full suite run at the head.
 
 ## Next step
 
