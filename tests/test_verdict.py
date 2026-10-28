@@ -15,8 +15,14 @@ def results_folder(test, files=()):
     return results
 
 
-def lighthouse_verdict(test, findings, plan=None, files=()):
-    return verdict_in(test, results_folder(test, files), findings, plan)
+def lighthouse_verdict(test, findings, plan=None, files=None):
+    named = evidence_named(findings) if files is None else files
+    return verdict_in(test, results_folder(test, named), findings, plan)
+
+
+def evidence_named(findings):
+    paths = findings.get("paths", []) if isinstance(findings, dict) else []
+    return [item for path in paths for item in path.get("evidence", [])]
 
 
 def verdict_in(test, results, findings, plan=None):
@@ -25,9 +31,24 @@ def verdict_in(test, results, findings, plan=None):
     if plan is not None:
         with open(os.path.join(results, "retest.json"), "w", encoding="utf-8") as handle:
             handle.write(json.dumps(plan, indent=2) + "\n")
+    write_matching_suite(results, findings)
     env = scratch.environment(scratch.make_home(test))
     code, stdout, stderr = scratch.run_lighthouse(["verdict", "--results", results], env)
     return code, stdout, stderr, results
+
+
+def write_matching_suite(results, findings):
+    suite_path = os.path.join(results, "suite.json")
+    copy = findings.get("suite") if isinstance(findings, dict) else None
+    if not isinstance(copy, dict):
+        return
+    try:
+        with open(suite_path, encoding="utf-8") as handle:
+            recorded = json.load(handle)
+    except FileNotFoundError:
+        recorded = {}
+    with open(suite_path, "w", encoding="utf-8") as handle:
+        handle.write(json.dumps({**copy, **recorded}, indent=2) + "\n")
 
 
 def verdict_line(test, stdout, results):
@@ -283,7 +304,7 @@ class CheckTest(unittest.TestCase):
         check = {"kind": "suite", "why": "test_export asserts the header row", "tests": ["tests.T.test_export"]}
         suite = suite_record({"passed": [], "failed": ["tests.T.test_export"]})
         suite = {**suite, "flaky": ["tests.T.test_export"], "feature": {**suite["feature"], "rerun_minutes": 1}}
-        code, stdout, stderr, results = judged_with_suite(self, check_findings([checked_path(check)]), suite)
+        code, stdout, stderr, results = judged_with_suite(self, check_findings([checked_path(check)], suite), suite)
         self.assertEqual(code, 0, stderr)
         line, _ = verdict_line(self, stdout, results)
         self.assertEqual(line["verdict"], "unproven")
@@ -401,9 +422,9 @@ class VerdictTest(unittest.TestCase):
             "suite": {"result": "passed", "reason": None, "failures": [], "pre_existing": [], "flaky": [], "core": None, "feature": None},
             "build": {"result": "ok", "reason": None},
             "paths": [
-                {"name": "export writes a csv", "kind": "new", "surface": "cli", "expected": "a csv with a header row", "evidence": [], "status": "passed", "retry": None, "core": None, "check": DIRECT_CHECK, "trials": None},
-                {"name": "model names the file", "kind": "neighbour", "surface": "skill", "expected": "a file name", "evidence": [], "status": "failed", "retry": None, "core": "failed", "check": DIRECT_CHECK, "trials": {"count": 3, "feature_passed": 0, "core_passed": 0}},
-                {"name": "model sums the rows", "kind": "neighbour", "surface": "skill", "expected": "the total", "evidence": [], "status": "failed", "retry": None, "core": None, "check": DIRECT_CHECK, "trials": {"count": 3, "feature_passed": 0, "core_passed": None}},
+                {"name": "export writes a csv", "kind": "new", "surface": "cli", "expected": "a csv with a header row", "evidence": ["evidence/export.txt"], "status": "passed", "retry": None, "core": None, "check": DIRECT_CHECK, "trials": None},
+                {"name": "model names the file", "kind": "neighbour", "surface": "skill", "expected": "a file name", "evidence": ["evidence/names.txt"], "status": "failed", "retry": None, "core": "failed", "check": DIRECT_CHECK, "trials": {"count": 3, "feature_passed": 0, "core_passed": 0}},
+                {"name": "model sums the rows", "kind": "neighbour", "surface": "skill", "expected": "the total", "evidence": ["evidence/sums.txt"], "status": "failed", "retry": None, "core": None, "check": DIRECT_CHECK, "trials": {"count": 3, "feature_passed": 0, "core_passed": None}},
             ],
             "spend": {"tokens": 5000, "minutes": 2},
         }
@@ -418,7 +439,7 @@ class VerdictTest(unittest.TestCase):
         pre_existing = report.split("## Pre-existing\n", 1)[1].split("\n## ", 1)[0]
         self.assertIn("model names the file", pre_existing)
 
-    def test_flaky_is_not_a_failure(self):
+    def test_a_flaky_new_path_is_a_failure(self):
         findings = {
             "version": 1,
             "suite": {"result": "passed", "reason": None, "failures": [], "pre_existing": [], "flaky": [], "core": None, "feature": None},
@@ -433,7 +454,7 @@ class VerdictTest(unittest.TestCase):
 
         self.assertEqual(code, 0, stderr)
         line, _ = verdict_line(self, stdout, results)
-        self.assertEqual(line["verdict"], "green")
+        self.assertEqual(line["verdict"], "failures")
         self.assertEqual(line["flaky"], ["export writes a csv"])
         self.assertEqual(line["failures"], [])
 
@@ -559,7 +580,7 @@ class VerdictTest(unittest.TestCase):
             "spend": {"tokens": 6000, "minutes": 2},
         }
 
-        code, stdout, stderr, results = lighthouse_verdict(self, findings, plan, files=["evidence/import.txt"])
+        code, stdout, stderr, results = lighthouse_verdict(self, findings, plan, files=["evidence/export.txt", "evidence/import.txt"])
 
         self.assertEqual(code, 0, stderr)
         line, _ = verdict_line(self, stdout, results)

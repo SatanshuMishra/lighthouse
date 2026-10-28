@@ -14,10 +14,16 @@ import sys
 import time
 
 folder = os.path.dirname(os.path.realpath(__file__))
-earlier_line = os.path.join(os.path.dirname(os.getcwd()), "launch.json")
+results = os.path.dirname(os.getcwd())
+earlier_line = os.path.join(results, "launch.json")
+earlier_files = [name for name in ("verdict.json", "checks.jsonl", "plan.json", "record.json") if os.path.exists(os.path.join(results, name))]
 with open(os.path.join(folder, "claude-calls.jsonl"), "a", encoding="utf-8") as calls:
-    calls.write(json.dumps({{"argv": sys.argv[1:], "cwd": os.getcwd(), "pid": os.getpid(), "saw_launch": os.path.exists(earlier_line)}}) + "\\n")
+    calls.write(json.dumps({{"argv": sys.argv[1:], "cwd": os.getcwd(), "pid": os.getpid(), "saw_launch": os.path.exists(earlier_line), "saw_earlier": earlier_files}}) + "\\n")
 time.sleep(0.5)
+verdict_to_write = os.path.join(folder, "verdict-to-write.json")
+if os.path.exists(verdict_to_write):
+    with open(verdict_to_write, encoding="utf-8") as source, open(os.path.join(results, "verdict.json"), "w", encoding="utf-8") as written:
+        written.write(source.read())
 with open(os.path.join(folder, "claude-output.txt"), encoding="utf-8") as output:
     sys.stdout.write(output.read())
 with open(os.path.join(folder, "claude-exit.txt"), encoding="utf-8") as code:
@@ -98,6 +104,11 @@ def seed_earlier_run(results):
         handle.write(GREEN_LINE + "\n")
     with open(os.path.join(results, "child.json"), "w", encoding="utf-8") as handle:
         handle.write("{}\n")
+    for name in ("verdict.json", "plan.json", "record.json"):
+        with open(os.path.join(results, name), "w", encoding="utf-8") as handle:
+            handle.write("{}\n")
+    with open(os.path.join(results, "checks.jsonl"), "w", encoding="utf-8") as handle:
+        handle.write("{}\n")
 
 
 def claude_output(result, cost=1.25, model="claude-opus-5-5"):
@@ -113,8 +124,11 @@ def claude_output(result, cost=1.25, model="claude-opus-5-5"):
     )
 
 
-def stub_folder(test, output, exit_code=0):
+def stub_folder(test, output, exit_code=0, written=None):
     folder = scratch.temporary_folder(test, "lh-stubs-")
+    if written is not None:
+        with open(os.path.join(folder, "verdict-to-write.json"), "w", encoding="utf-8") as handle:
+            handle.write(written + "\n")
     write_stub(folder, "claude", CLAUDE_STUB)
     write_stub(folder, "caffeinate", CAFFEINATE_STUB)
     write_stub(folder, "systemd-inhibit", SYSTEMD_INHIBIT_STUB)
@@ -155,14 +169,14 @@ def launch_flags(repo, results):
     return ["--repo", repo, "--core", "main", "--feature", "feat/x", "--results", results]
 
 
-def launch(test, output, exit_code=0, nice=None, earlier=False, claude=CLAUDE_STUB):
+def launch(test, output, exit_code=0, nice=None, earlier=False, claude=CLAUDE_STUB, written=None):
     repo, _ = scratch.make_repo(test)
     home = scratch.make_home(test)
     store = scratch.temporary_folder(test, "lh-store-")
     results = os.path.join(scratch.temporary_folder(test, "lh-results-"), "results")
     if earlier:
         seed_earlier_run(results)
-    stubs = stub_folder(test, output, exit_code)
+    stubs = stub_folder(test, output, exit_code, written)
     write_stub(stubs, "claude", claude)
     env = {**scratch.environment(home, stubs), "PLUGIN_METRICS_DIR": store}
     prefix = ["nice", "-n", str(nice)] if nice is not None else []
@@ -204,12 +218,38 @@ class LaunchTest(unittest.TestCase):
         self.assertEqual(argv[argv.index("--output-format") + 1], "json")
         self.assertEqual(os.path.realpath(calls[0]["cwd"]), os.path.realpath(os.path.join(ran["results"], "work")))
 
-    def test_launch_prints_the_childs_verdict_line(self):
-        earlier = '{"verdict": "unproven", "failures": [], "unproven": ["x"], "flaky": [], "tokens": 1, "minutes": 1, "pr": null}'
-        ran = launch(self, claude_output("First try:\n" + earlier + "\nThen:\n" + GREEN_LINE + "\n"))
+    def test_launch_prints_verdict_json_with_the_childs_last_pr(self):
+        earlier = '{"verdict": "unproven", "failures": [], "unproven": ["x"], "flaky": [], "tokens": 1, "minutes": 1, "pr": "https://example.invalid/pr/0"}'
+        opened = json.dumps({**json.loads(RED_LINE), "pr": "https://example.invalid/pr/2"})
+        ran = launch(self, claude_output("First try:\n" + earlier + "\nThen:\n" + opened + "\n"), written=GREEN_LINE)
         self.assertEqual(ran["code"], 0, ran["stderr"])
-        self.assertEqual(ran["stdout"].strip().splitlines()[-1], GREEN_LINE)
-        self.assertEqual(read_json(os.path.join(ran["results"], "launch.json")), json.loads(GREEN_LINE))
+        expected = {**json.loads(GREEN_LINE), "pr": "https://example.invalid/pr/2"}
+        self.assertEqual(json.loads(ran["stdout"].strip().splitlines()[-1]), expected)
+        self.assertEqual(read_json(os.path.join(ran["results"], "launch.json")), expected)
+
+    def test_launch_without_verdict_json_prints_a_blocked_line_not_the_childs(self):
+        ran = launch(self, claude_output("Driven every path.\n" + GREEN_LINE))
+        self.assertEqual(ran["code"], 0, ran["stderr"])
+        line = json.loads(ran["stdout"].strip().splitlines()[-1])
+        self.assertEqual(line["verdict"], "blocked")
+        self.assertEqual(line["reason"], "the child session exited 0 without writing verdict.json")
+        self.assertEqual(read_json(os.path.join(ran["results"], "launch.json")), line)
+
+    def test_launch_passes_the_record_to_the_child_and_copies_it(self):
+        repo, _ = scratch.make_repo(self)
+        results = os.path.join(scratch.temporary_folder(self, "lh-results-"), "results")
+        record = os.path.join(scratch.temporary_folder(self, "lh-record-"), "chosen.json")
+        with open(record, "w", encoding="utf-8") as handle:
+            handle.write('{"criteria": []}\n')
+        stubs = stub_folder(self, claude_output(GREEN_LINE))
+        env = launch_environment(self, scratch.make_home(self), stubs)
+        code, _, stderr = scratch.run_lighthouse(["launch", *launch_flags(repo, results), "--record", record], env)
+        self.assertEqual(code, 0, stderr)
+        call = calls_of(stubs, "claude")[0]
+        self.assertIn("--record {}".format(record), call["argv"][1])
+        self.assertEqual(call["saw_earlier"], ["record.json"])
+        with open(os.path.join(results, "record.json"), encoding="utf-8") as handle:
+            self.assertEqual(handle.read(), '{"criteria": []}\n')
 
     def test_launch_prints_a_blocked_line_when_the_child_gives_none(self):
         ran = launch(self, claude_output("I could not finish."), exit_code=1)
@@ -222,7 +262,7 @@ class LaunchTest(unittest.TestCase):
         ran = launch(self, "not json at all", exit_code=1)
         self.assertEqual(ran["code"], 0, ran["stderr"])
         self.assertEqual(json.loads(ran["stdout"].strip().splitlines()[-1])["verdict"], "blocked")
-        self.assertIn("not JSON", ran["stderr"])
+        self.assertIn("without writing verdict.json", ran["stderr"])
 
     def test_launch_refuses_results_inside_the_repository(self):
         repo, _ = scratch.make_repo(self)
@@ -283,9 +323,10 @@ class LaunchTest(unittest.TestCase):
             self.assertEqual(handle.read().strip(), printed)
 
     def test_launch_clears_an_earlier_launch_line_before_the_child_starts(self):
-        ran = launch(self, claude_output(RED_LINE), earlier=True)
+        ran = launch(self, claude_output(RED_LINE), earlier=True, written=RED_LINE)
         self.assertEqual(ran["code"], 0, ran["stderr"])
         self.assertFalse(calls_of(ran["stubs"], "claude")[0]["saw_launch"])
+        self.assertEqual(calls_of(ran["stubs"], "claude")[0]["saw_earlier"], [])
         self.assertEqual(read_json(os.path.join(ran["results"], "launch.json")), json.loads(RED_LINE))
 
     def test_a_refused_launch_replaces_an_earlier_launch_line_with_a_blocked_one(self):
@@ -366,7 +407,7 @@ class UncreatableStateFolderTest(unittest.TestCase):
         self.home = scratch.make_home(self)
         open(os.path.join(self.home, ".lighthouse"), "w").close()
         self.results = os.path.join(scratch.temporary_folder(self, "lh-results-"), "results")
-        self.env = launch_environment(self, self.home, stub_folder(self, claude_output(GREEN_LINE)))
+        self.env = launch_environment(self, self.home, stub_folder(self, claude_output(GREEN_LINE), written=GREEN_LINE))
 
     def test_a_refused_launch_with_an_uncreatable_state_folder_still_leaves_a_blocked_line(self):
         flags = [flag for flag in launch_flags(self.repo, self.results) if flag not in ("--core", "main")]
