@@ -10,6 +10,7 @@ from lighthouse_tool.repo import Parser, Refusal
 from lighthouse_tool import verdict as verdicts
 
 VERDICTS = ("green", "failures", "blocked", "unproven")
+OPENS_WITHOUT_FINAL = ("green", "unproven")
 TITLE_LIMIT = 72
 TYPE_FORM = re.compile(r"[a-z]+\Z")
 SCOPE_FORM = re.compile(r"[a-z0-9-]+\Z")
@@ -37,8 +38,8 @@ def run(argv: List[str]) -> Tuple[int, Optional[str], Optional[str]]:
         results = os.path.realpath(options.results)
         line = read_verdict(results)
         findings = verdicts.read_findings(results)
-        if line["verdict"] != "green" and not options.final:
-            return 1, None, "lighthouse pr: the verdict is {}, so the pull request waits; pass --final to open it anyway".format(
+        if line["verdict"] not in OPENS_WITHOUT_FINAL and not options.final:
+            return 1, None, "lighthouse pr: the verdict is {}, which needs --final to open the pull request".format(
                 line["verdict"]
             )
         pull_request_title = title(options.change_type, scope_of(options.repo, options.scope), options.summary)
@@ -51,6 +52,7 @@ def run(argv: List[str]) -> Tuple[int, Optional[str], Optional[str]]:
             "body": body(options, changes, findings, line),
             "base": options.core,
             "head": options.feature,
+            "draft": line["verdict"] != "green",
         }
     ), None
 
