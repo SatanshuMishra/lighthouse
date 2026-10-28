@@ -1,6 +1,6 @@
 # hr-lighthouse-executor: Run 4 of the harness-redesign program: lighthouse executes locked K1 lines and computes its verdict from K3 results
 Status: parked
-Updated: 2026-10-28T19:24:19.517Z
+Updated: 2026-10-28T20:17:27.914Z
 Next ids: c7 D3 R4 S1
 
 ## Goal
@@ -9,12 +9,12 @@ Run 4 of the harness-redesign program (~/.mitosis/harness-redesign/PROGRAM.md, l
 
 ## Done when
 
-- [ ] c1 L1 The verdict is computed from K3 check results only: a passed path whose evidence file is missing, a new path that failed once without a retry, a check that passed 2 of 3 trials, and a suite result that differs from suite.json each make the verdict not green.
-- [ ] c2 L2 With a record holding K1 lines, lighthouse executes those lines as its paths, each path id equal to its check id, plus neighbours computed by code from the changed files.
-- [ ] c3 L3 The child session, the suite and the run each have a time limit taken from durations measured at init.
-- [ ] c4 L4 Contrast is measured from declared colours or the accessibility tree where available; a pixel sample within 0.3 of a threshold is could-not-run, never a failure.
-- [ ] c5 L5 lighthouse init runs the suite, the start command, the readiness check and each driver once and records their durations; available is read by code.
-- [ ] c6 L6 An unproven verdict opens the FEATURE pull request in the same run, listing what could not be reached; no second run exists only to add --final.
+- [x] c1 L1 The verdict is computed from K3 check results only: a passed path whose evidence file is missing, a new path that failed once without a retry, a check that passed 2 of 3 trials, and a suite result that differs from suite.json each make the verdict not green. evidence: the locked verdict checks pass at 77aad0e and lighthouse run-2 drove the new verdict green on FEATURE
+- [x] c2 L2 With a record holding K1 lines, lighthouse executes those lines as its paths, each path id equal to its check id, plus neighbours computed by code from the changed files. evidence: the locked execute checks pass at 77aad0e and run-2's live sessions ran the record's checks through lighthouse execute on FEATURE
+- [x] c3 L3 The child session, the suite and the run each have a time limit taken from durations measured at init. evidence: the locked time-limit checks pass at 77aad0e and run-2's direct runs of launch, wait and the suite limit passed
+- [x] c4 L4 Contrast is measured from declared colours or the accessibility tree where available; a pixel sample within 0.3 of a threshold is could-not-run, never a failure. evidence: the locked contrast checks pass at 77aad0e and run-2's driver agents measured contrast only with lighthouse contrast in 3 of 3 sessions
+- [x] c5 L5 lighthouse init runs the suite, the start command, the readiness check and each driver once and records their durations; available is read by code. evidence: the locked profile-measure checks pass at 77aad0e and run-2 routed set-up and repair requests to init and doctor in 3 of 3 trials per build
+- [x] c6 L6 An unproven verdict opens the FEATURE pull request in the same run, listing what could not be reached; no second run exists only to add --final. evidence: the locked pull-request checks pass at 77aad0e and run-2's direct run of lighthouse pr on an unproven verdict passed
 
 ## Where things stand
 
