@@ -1,6 +1,6 @@
 # hr-lighthouse-executor: Run 4 of the harness-redesign program: lighthouse executes locked K1 lines and computes its verdict from K3 results
 Status: active
-Updated: 2026-10-28T09:22:07.059Z
+Updated: 2026-10-28T09:26:04.725Z
 Next ids: c7 D2 R3 S1
 
 ## Goal
@@ -18,7 +18,7 @@ Run 4 of the harness-redesign program (~/.mitosis/harness-redesign/PROGRAM.md, l
 
 ## Where things stand
 
-interphase is handed off (record status handed-off). The FEATURE branch feat/hr-lighthouse-executor is pushed at f4da7f7, which carries the CI fix (lighthouse#21); the repository already commits receipts.config.json. Three fresh check authors write the locked tests in the worktree <run home>/checks-tree, where the referee schema copies are in place. CHARTER.md is written with the eleven planned locked files. receipts runs as npx -y receipts-cli@0.9.5.
+interphase is handed off (record status handed-off). The FEATURE branch feat/hr-lighthouse-executor is pushed at f4da7f7, which carries the CI fix (lighthouse#21); the repository already commits receipts.config.json. The 60 locked tests are written in the worktree <run home>/checks-tree by three fresh check authors, each reporting every test failing today for the absent behaviour. Two prose checks in tests/test_skill_executor.py are being loosened before the lock, at the parent session's request, because they pinned incidental wording: literal backticks around reach in init, and one fixed word order for the draft sentence. A verification run of the other 54 tests and the full suite at base is in progress. CHARTER.md is written with the eleven planned locked files. receipts runs as npx -y receipts-cli@0.9.5.
 
 ## Next step
 
