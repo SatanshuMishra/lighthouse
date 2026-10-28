@@ -1,6 +1,6 @@
 # hr-lighthouse-executor: Run 4 of the harness-redesign program: lighthouse executes locked K1 lines and computes its verdict from K3 results
 Status: active
-Updated: 2026-10-28T12:34:41.743Z
+Updated: 2026-10-28T12:38:18.808Z
 Next ids: c7 D2 R3 S1
 
 ## Goal
@@ -18,7 +18,7 @@ Run 4 of the harness-redesign program (~/.mitosis/harness-redesign/PROGRAM.md, l
 
 ## Where things stand
 
-The FEATURE branch feat/hr-lighthouse-executor holds the CI fix (lighthouse#21) and the 60 locked tests at b9eabdc, each failing at f4da7f7 through accept.zsh; the receipt-lock line is in receipts-lock.txt. The MSP executor is on mitosis/executor at 312f746 (worktree ~/.mitosis/runs/lighthouse/hr-lighthouse-executor/trees/executor), where all 60 locked checks pass (O4) and the full suite passes (414 tests, 3 skipped). Round 2's verdict is diagnose: the four round 1 blockers are fixed; C1 (with suite.isolated true, a SIGTERM or SIGHUP to lighthouse suite leaves the worker-thread steps running past their limits) is a confirmed blocker of kind background process hang; S3 (a signal landing while the owned lock is held deadlocks the forwarder) is an advisory; C2, S1 and S2 are rejected. A fresh diagnosis agent diagnoses background process hang again, with round 1's diagnosis as the earlier attempt. review/report-notes.txt holds what goes only to the final report.
+The FEATURE branch feat/hr-lighthouse-executor holds the CI fix (lighthouse#21) and the 60 locked tests at b9eabdc, each failing at f4da7f7 through accept.zsh; the receipt-lock line is in receipts-lock.txt. The MSP executor is on mitosis/executor at 312f746 (worktree ~/.mitosis/runs/lighthouse/hr-lighthouse-executor/trees/executor), where all 60 locked checks pass (O4) and the full suite passes (414 tests, 3 skipped). Round 2's verdict is loop: the four round 1 blockers are fixed; C1 (with suite.isolated true, a SIGTERM or SIGHUP to lighthouse suite leaves the worker-thread steps running past their limits) is a confirmed blocker of kind background process hang, diagnosed fixable and recorded (process_tree owns signal handling for each process's whole life: a guarded() handler context, a started() context that blocks signals around spawn and registration, and an in_parallel() pool; it also names what round 1's diagnosis missed); S3 (a signal landing while the owned lock is held deadlocks the forwarder) is an advisory; C2, S1 and S2 are rejected. Fix agent D runs C1 and S3 under review/round-2/fix-brief.md. review/report-notes.txt holds what goes only to the final report.
 
 ## Next step
 
