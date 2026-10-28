@@ -1,6 +1,6 @@
 # hr-lighthouse-executor: Run 4 of the harness-redesign program: lighthouse executes locked K1 lines and computes its verdict from K3 results
 Status: active
-Updated: 2026-10-28T09:21:16.737Z
+Updated: 2026-10-28T09:21:19.713Z
 Next ids: c7 D2 R3 S1
 
 ## Goal
@@ -43,5 +43,4 @@ Needs: D1.
 - Audit: /Users/satanshumishra/.mitosis/harness-redesign/audit/lighthouse.md
 - Contracts: /Users/satanshumishra/.mitosis/harness-redesign/contracts/ (k1-acceptance, k2-locked, k3-check-result, k6-outcome)
 - Spec, decisions, record, items: /Users/satanshumishra/Documents/DevLabs/lighthouse/docs/specs/hr-lighthouse-executor.*
-- Run home: /Users/satanshumishra/.mitosis/lighthouse/hr-lighthouse-executor/ (acceptance.jsonl holds the 53 K1 lines)
-- Worked example: run 1's files were cleaned up after its merge; its charter, worker rules, run script and lock line shapes are copied into this run home
+- Run home: /Users/satanshumishra/.mitosis/lighthouse/hr-lighthouse-executor/ (acceptance.jsonl holds the 60 K1 lines; check-author-brief.md the check authors' brief; items.json, run.zsh, dispatch.zsh, worker-rules.txt)
