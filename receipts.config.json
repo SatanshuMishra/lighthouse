@@ -53,7 +53,7 @@
       "Verified"
     ],
     "repo_name": "lighthouse",
-    "receipts_version": "0.9.3"
+    "receipts_version": "0.9.5"
   },
   "gates": {
     "medium": "cli",
