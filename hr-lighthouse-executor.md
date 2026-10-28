@@ -1,7 +1,7 @@
 # hr-lighthouse-executor: Run 4 of the harness-redesign program: lighthouse executes locked K1 lines and computes its verdict from K3 results
 Status: active
-Updated: 2026-10-28T09:20:00.300Z
-Next ids: c7 D2 R1 S1
+Updated: 2026-10-28T09:20:04.097Z
+Next ids: c7 D2 R3 S1
 
 ## Goal
 
@@ -22,13 +22,18 @@ The checkout is at f4da7f7, which carries the CI fix (lighthouse#21), so the FEA
 
 ## Next step
 
-Fix what the spec review finds, hand off (guard verify, status handed-off), then cut the FEATURE branch and dispatch the O2 check author.
+Dispatch a fresh O2 check author to write the 60 locked acceptance tests, referee schema copies and tests/contract_check.py on feat/hr-lighthouse-executor, commit and push them, then run receipts lock, write CHARTER.md with the Locked lines, and run run.zsh --plan-only.
+
+Needs: D1.
 
 ## Decisions in force
 
 - D1 interphase hand-off: build the spec as one MSP of 7 Steps with 60 locked K1 lines: Hand off now: one MSP executor with 7 Steps, 60 K1 lines and 27 assumptions; the next step is the O2 check author on feat/hr-lighthouse-executor.
 
 ## Open risks
+
+- R1 Locked acceptance test files sit in their Steps' write-sets because interphase's items format requires it; only worker rules, the receipts lock hash and the locked checks at each MSP head keep a Worker from loosening them. Bears on c1.
+- R2 A repository whose tests pin its root entries fails once .lighthouse/profile.json is first committed on FEATURE; lighthouse reports that as a suite failure rather than hiding it. Bears on c5.
 
 ## Settled, do not reopen
 
