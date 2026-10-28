@@ -362,5 +362,22 @@ class ProcessTreeTest(unittest.TestCase):
         self.assertIsNotNone(process.returncode)
 
 
+class InheritedSignalMaskTest(unittest.TestCase):
+    def test_started_steps_receive_the_signals_lighthouse_forwards(self):
+        from lighthouse_tool import process_tree
+
+        def self_terminating():
+            command = ["/bin/sh", "-c", "kill -TERM $$; exit 0"]
+            with process_tree.started(command, 0.0, stdin=subprocess.DEVNULL) as process:
+                return process.wait(timeout=HOST_SECONDS)
+
+        def in_a_worker():
+            return process_tree.in_parallel([self_terminating])[0]
+
+        for label, run in (("serial", self_terminating), ("parallel", in_a_worker)):
+            with self.subTest(path=label):
+                self.assertEqual(run(), -signal.SIGTERM)
+
+
 if __name__ == "__main__":
     unittest.main()
