@@ -1,6 +1,6 @@
 # hr-lighthouse-executor: Run 4 of the harness-redesign program: lighthouse executes locked K1 lines and computes its verdict from K3 results
 Status: active
-Updated: 2026-10-28T15:15:05.611Z
+Updated: 2026-10-28T15:15:08.854Z
 Next ids: c7 D3 R4 S1
 
 ## Goal
@@ -22,9 +22,9 @@ The FEATURE branch feat/hr-lighthouse-executor holds the CI fix (lighthouse#21) 
 
 ## Next step
 
-When review/ship-o4 shows 60 locked checks and both suites passing, record the ship boundary, then run SHIP=1 run.zsh --resume --proven-head executor=d40a570 and open, assign and comment the pull request.
+Run SHIP=1 /Users/satanshumishra/.mitosis/lighthouse/hr-lighthouse-executor/run.zsh --resume --proven-head executor=d40a570f9bb27708eca6d7541db5d0552d162abe, then open the executor pull request ready with mitosis's title and body, assign it to the owner, post review/executor.comment.md, bind and monitor it, park the thread at awaiting-merge and update run 4's row in PROGRAM.md.
 
-Needs: D1.
+Needs: D2.
 
 ## Decisions in force
 
