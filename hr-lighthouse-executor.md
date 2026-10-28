@@ -1,6 +1,6 @@
 # hr-lighthouse-executor: Run 4 of the harness-redesign program: lighthouse executes locked K1 lines and computes its verdict from K3 results
 Status: active
-Updated: 2026-10-28T14:12:06.541Z
+Updated: 2026-10-28T14:15:06.595Z
 Next ids: c7 D2 R4 S1
 
 ## Goal
@@ -18,11 +18,11 @@ Run 4 of the harness-redesign program (~/.mitosis/harness-redesign/PROGRAM.md, l
 
 ## Where things stand
 
-The FEATURE branch feat/hr-lighthouse-executor holds the CI fix (lighthouse#21) and the 60 locked tests at b9eabdc, each failing at f4da7f7 through accept.zsh; the receipt-lock line is in receipts-lock.txt. The MSP executor is on mitosis/executor at 078fff4 (worktree ~/.mitosis/runs/lighthouse/hr-lighthouse-executor/trees/executor). Round 3's blocker S1 (inherited signal mask) and advisory C1 are fixed there: process_tree holds forwarded signals in Python with held() and never touches the kernel mask, the receipt was red at 960d4b3 and passes, the selecting checks are empty, the locked files are untouched, and there is no stash and no trailer. At 078fff4 all 60 locked checks pass (O4) and the full suite passes under Python 3.15 (419 tests, 3 skipped); under Python 3.9 it fails only the two tests.test_suite tests that fail from 312f746 on (a step's background process is still running), which round 4 records as suite finding U1. Both outputs are round 4's suite file. Round 4's findings are U1 (suite, HIGH), C1 (HIGH) and S1 (MEDIUM), all one defect: without os.waitid (macOS Python before 3.13), process_tree's exit fallbacks reap the child before released() stops its tree, so kill_tree returns early and every background process a step leaves running survives, and a core server left on its port can answer the feature build. The validator judges the candidates in review/round-4/executor.candidates.md (carried P1, C1, S1). review/report-notes.txt holds what goes only to the final report.
+The FEATURE branch feat/hr-lighthouse-executor holds the CI fix (lighthouse#21) and the 60 locked tests at b9eabdc, each failing at f4da7f7 through accept.zsh; the receipt-lock line is in receipts-lock.txt. The MSP executor is on mitosis/executor at 078fff4 (worktree ~/.mitosis/runs/lighthouse/hr-lighthouse-executor/trees/executor), where all 60 locked checks pass (O4) and the full suite passes under Python 3.15 (419 tests, 3 skipped). Round 4's verdict is diagnose: round 3's inherited signal mask blocker is fixed; the one blocker is suite finding U1 (kind failing test): under Python 3.9 two tests.test_suite tests fail because, without os.waitid (macOS Python before 3.13), process_tree's exit fallbacks reap a step before released() stops its tree, so kill_tree returns early and a background process the step leaves running survives. The reviewers' C1 and S1 describe the same defect and are rejected only because round 1's fixes introduced it, not round 4's. A fresh diagnosis agent diagnoses failing test. review/report-notes.txt holds what goes only to the final report.
 
 ## Next step
 
-When the round 4 validator reports, save its verdicts, then run pipeline record and pipeline verdict, and act on the outcome.
+When the round 4 diagnosis reports, save and record it, rerun pipeline verdict, then on loop send one fresh fix agent for U1 under review/round-4/fix-brief.md, then review round 5 with previous head 078fff4.
 
 Needs: D1.
 
