@@ -1,10 +1,12 @@
 import json
 import os
+import time
 import unittest
 
 from tests import scratch
 
 PROFILE_PATH = ".lighthouse/profile.json"
+EXITED_START_SECONDS = 8
 MEASURED_UPGRADE = {"field": "measured", "detail": "measured is not set, and lighthouse:doctor writes it"}
 
 
@@ -337,6 +339,23 @@ class ProfileMeasureTest(unittest.TestCase):
         self.assertEqual(printed["available"], {"cli": True, "missing": False})
         with open(os.path.join(work, PROFILE_PATH), encoding="utf-8") as handle:
             self.assertEqual(json.load(handle)["measured"], measured)
+
+    def test_measure_stops_waiting_once_the_start_command_exits(self):
+        work, _ = scratch.make_repo(self)
+        missing = os.path.join(scratch.temporary_folder(self, "lh-ready-"), "never-written")
+        profile = scratch.sample_profile(
+            suite={"command": "true", "junit": None, "timeout_minutes": 0.25},
+            start={"command": "exit 1", "ready": "test -f {}".format(missing)},
+        )
+        scratch.write_profile(work, profile)
+        started = time.monotonic()
+
+        code, printed = self.measure(work)
+
+        self.assertLess(time.monotonic() - started, EXITED_START_SECONDS)
+        self.assertEqual(code, 0, printed)
+        self.assertIs(printed["measured"]["ready"], False)
+        self.assertIsNone(printed["measured"]["start_seconds"])
 
 
 class ProfilePublishTest(unittest.TestCase):

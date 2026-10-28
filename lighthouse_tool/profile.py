@@ -687,5 +687,7 @@ def started_ready(root: str, profile: Dict[str, Any], start_log: str) -> Tuple[O
         except OSError:
             return None, False
         with process_tree.owned(process, STOP_GRACE_SECONDS):
-            passed, seconds = wait.wait_until(check, READY_POLL_SECONDS, limits.of(profile).suite_seconds)
+            passed, seconds = wait.wait_until(
+                check, READY_POLL_SECONDS, limits.of(profile).suite_seconds, lambda: process_tree.has_exited(process)
+            )
     return (rounded(seconds), True) if passed else (None, False)

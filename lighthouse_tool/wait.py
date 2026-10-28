@@ -141,12 +141,18 @@ def check_passes(check: str, seconds_left: float) -> bool:
             return False
 
 
-def wait_until(check: Check, every: float, within: float) -> Tuple[bool, float]:
+def never_ends() -> bool:
+    return False
+
+
+def wait_until(
+    check: Check, every: float, within: float, ended: Callable[[], bool] = never_ends
+) -> Tuple[bool, float]:
     started = time.monotonic()
     deadline = started + within
     while True:
         seconds_left = deadline - time.monotonic()
-        if seconds_left <= 0:
+        if seconds_left <= 0 or ended():
             return False, time.monotonic() - started
         if check(seconds_left):
             return True, time.monotonic() - started
