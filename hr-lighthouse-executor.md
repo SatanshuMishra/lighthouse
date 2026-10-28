@@ -1,6 +1,6 @@
 # hr-lighthouse-executor: Run 4 of the harness-redesign program: lighthouse executes locked K1 lines and computes its verdict from K3 results
 Status: active
-Updated: 2026-10-28T12:11:45.739Z
+Updated: 2026-10-28T12:26:24.048Z
 Next ids: c7 D2 R3 S1
 
 ## Goal
@@ -18,7 +18,7 @@ Run 4 of the harness-redesign program (~/.mitosis/harness-redesign/PROGRAM.md, l
 
 ## Where things stand
 
-The FEATURE branch feat/hr-lighthouse-executor holds the CI fix (lighthouse#21) and the 60 locked tests at b9eabdc, each failing at f4da7f7 through accept.zsh; the receipt-lock line is in receipts-lock.txt. The MSP executor is on mitosis/executor (worktree ~/.mitosis/runs/lighthouse/hr-lighthouse-executor/trees/executor): built at 400ec97, then round 1's fixes up to 312f746. Round 1's blockers C1, S2 (background process hang), C2 (mixed runs judged failure) and C3 (wait exceeds tool timeout) and advisories C4, C5, C8, C9 and S7 each carry a fix commit with its receipt red then green, the selecting checks empty, the suite passing (414 tests, 3 skipped), the locked files untouched, and no stash and no trailers. At 312f746 all 60 locked checks pass (O4) and the full suite passes (414 tests, 3 skipped), kept as round 2's suite file. In review round 2 the security-reviewer reports 3 LOW candidates (S1 worker-thread steps outlive a signal, S2 descendants outlive a normally exiting child, S3 a signal deadlocking the owned lock) and no blocker; the code-reviewer runs. review/report-notes.txt holds what goes only to the final report.
+The FEATURE branch feat/hr-lighthouse-executor holds the CI fix (lighthouse#21) and the 60 locked tests at b9eabdc, each failing at f4da7f7 through accept.zsh; the receipt-lock line is in receipts-lock.txt. The MSP executor is on mitosis/executor (worktree ~/.mitosis/runs/lighthouse/hr-lighthouse-executor/trees/executor): built at 400ec97, then round 1's fixes up to 312f746. Round 1's blockers C1, S2 (background process hang), C2 (mixed runs judged failure) and C3 (wait exceeds tool timeout) and advisories C4, C5, C8, C9 and S7 each carry a fix commit with its receipt red then green, the selecting checks empty, the suite passing (414 tests, 3 skipped), the locked files untouched, and no stash and no trailers. At 312f746 all 60 locked checks pass (O4) and the full suite passes (414 tests, 3 skipped), kept as round 2's suite file. Review round 2 has 9 candidates in review/round-2/executor.candidates.md: the four carried round 1 blockers (P1 to P4), one new MEDIUM (C1, the isolated suite's worker-thread steps outlive a signal), and four LOW advisory candidates (C2 duplicated K3 status constants, S1 the same thread gap, S2 descendants outliving a normally exiting child, S3 a signal deadlocking the owned lock). The validator judges them. review/report-notes.txt holds what goes only to the final report.
 
 ## Next step
 
