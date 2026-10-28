@@ -1,6 +1,6 @@
 # hr-lighthouse-executor: Run 4 of the harness-redesign program: lighthouse executes locked K1 lines and computes its verdict from K3 results
 Status: active
-Updated: 2026-10-28T10:33:05.509Z
+Updated: 2026-10-28T10:33:07.531Z
 Next ids: c7 D2 R3 S1
 
 ## Goal
@@ -22,7 +22,7 @@ The FEATURE branch feat/hr-lighthouse-executor holds the CI fix (lighthouse#21) 
 
 ## Next step
 
-When the O4 run reports, file any locked check not passing as a HIGH mitosis finding, then dispatch round 1: code-reviewer, conformance-auditor and security-reviewer with briefs from scratchpad briefs.zsh 1.
+When the three reviewers report, collect their arrays into review/round-1/executor.findings.json with review/round-1/executor.md, then run the validator on that candidates file.
 
 Needs: D1.
 
