@@ -93,6 +93,35 @@ with mock.patch.object(process_tree.subprocess, "Popen", spawned_then_signalled)
     suite.run_step("setup", "exec sleep 30", folder, "core", os.path.join(folder, "core.log"), profile, ())
 """
 
+NESTED_HOST = """
+import os
+import signal
+import subprocess
+import sys
+import time
+sys.path.insert(0, sys.argv[1])
+from unittest import mock
+from lighthouse_tool import process_tree
+signal.signal(signal.SIGTERM, signal.SIG_DFL)
+pids = sys.argv[3]
+step = ["/bin/sh", "-c", "exec sleep 30"]
+
+
+class SignalledOnNestedAdd(set):
+    def add(self, process):
+        super().add(process)
+        with open(pids, "a") as handle:
+            handle.write(str(process.pid) + " ")
+        if len(self) == 2:
+            os.kill(os.getpid(), signal.SIGTERM)
+
+
+with mock.patch.object(process_tree, "owned_processes", SignalledOnNestedAdd()):
+    with process_tree.started(step, 0.0, stdin=subprocess.DEVNULL):
+        with process_tree.started(step, 0.0, stdin=subprocess.DEVNULL):
+            time.sleep(30)
+"""
+
 
 def fifo_reader(test, path):
     os.mkfifo(path)
@@ -271,7 +300,49 @@ class ProcessTreeTest(unittest.TestCase):
             kill_quietly(pid)
         self.assertEqual(alive, [], "the step outlived a signal sent before its ownership")
 
-    def test_owned_restores_the_callers_handlers(self):
+    def test_signal_while_nested_start_holds_the_lock_does_not_deadlock(self):
+        folder = scratch.temporary_folder(self, "lh-tree-")
+        pids = os.path.join(folder, "steps.pid")
+        host = started_host(self, NESTED_HOST, folder, pids)
+
+        code = host.wait(timeout=HOST_SECONDS)
+        found = written_pids(pids, 2, PID_SECONDS)
+        deadline = time.monotonic() + INTERRUPT_GONE_SECONDS
+        alive = [pid for pid in found or [] if not gone_by(pid, deadline)]
+
+        self.assertEqual(code, 128 + signal.SIGTERM)
+        self.assertIsNotNone(found, "the nested steps never started")
+        self.assertEqual(alive, [], "nested steps outlived the signal")
+
+    def test_started_refuses_once_a_stop_has_begun(self):
+        from unittest import mock
+
+        from lighthouse_tool import process_tree
+
+        spawn = subprocess.Popen
+        steps = []
+
+        def recorded(command, *arguments, **options):
+            process = spawn(command, *arguments, **options)
+            if command[:2] == ["/bin/sh", "-c"]:
+                steps.append(process)
+            return process
+
+        def start_a_step():
+            with process_tree.started(["/bin/sh", "-c", "exec sleep 30"], 0.0, stdin=subprocess.DEVNULL):
+                return "started"
+
+        with mock.patch.object(process_tree.subprocess, "Popen", recorded):
+            with process_tree.guarded():
+                process_tree.kill_owned()
+                with self.assertRaises(process_tree.StopBegun):
+                    process_tree.in_parallel([start_a_step])
+
+        self.assertEqual(len(steps), 1)
+        self.assertIsNotNone(steps[0].returncode)
+        self.assertFalse(process_tree.stop_begun.is_set())
+
+    def test_started_restores_the_callers_handlers(self):
         from lighthouse_tool import process_tree
 
         def caller_handler(number, frame):
@@ -283,9 +354,7 @@ class ProcessTreeTest(unittest.TestCase):
             self.addCleanup(signal.signal, number, before[number])
         signal.signal(signal.SIGTERM, caller_handler)
         expected = {number: signal.getsignal(number) for number in numbers}
-        process = process_tree.start(["/bin/sh", "-c", "exec sleep 30"], stdin=subprocess.DEVNULL)
-
-        with process_tree.owned(process):
+        with process_tree.started(["/bin/sh", "-c", "exec sleep 30"], 0.0, stdin=subprocess.DEVNULL) as process:
             installed = {number: signal.getsignal(number) for number in numbers}
 
         self.assertNotEqual(installed[signal.SIGTERM], caller_handler)

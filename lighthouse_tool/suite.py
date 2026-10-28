@@ -8,7 +8,7 @@ import subprocess
 import tempfile
 import time
 import xml.etree.ElementTree as ElementTree
-from concurrent.futures import ThreadPoolExecutor
+from contextlib import ExitStack
 from typing import Any, Callable, Dict, List, NamedTuple, Optional, Set, Tuple, TypeVar
 
 from lighthouse_tool import credentials, limits, process_tree
@@ -242,18 +242,21 @@ def run_step(
     seconds = step_limit(step, profile)
     append_log(log_path, "$ {}: {}\n".format(step, command), hidden)
     with tempfile.TemporaryFile() as output:
-        try:
-            process = process_tree.start(
-                ["/bin/sh", "-c", command],
-                cwd=worktree,
-                env={**os.environ, "LIGHTHOUSE_BUILD": build},
-                stdin=subprocess.DEVNULL,
-                stdout=output,
-                stderr=subprocess.STDOUT,
-            )
-        except OSError as error:
-            return StepRun(None, "{} could not start: {}".format(step, error.strerror or error))
-        with process_tree.owned(process):
+        with ExitStack() as owning:
+            try:
+                process = owning.enter_context(
+                    process_tree.started(
+                        ["/bin/sh", "-c", command],
+                        0.0,
+                        cwd=worktree,
+                        env={**os.environ, "LIGHTHOUSE_BUILD": build},
+                        stdin=subprocess.DEVNULL,
+                        stdout=output,
+                        stderr=subprocess.STDOUT,
+                    )
+                )
+            except OSError as error:
+                return StepRun(None, "{} could not start: {}".format(step, error.strerror or error))
             try:
                 process_tree.exited_unreaped(process, seconds)
                 timed_out = False
@@ -599,10 +602,8 @@ def both_builds(
     if not runs_isolated(profile):
         core_built = build_core()
         return core_built, build_feature()
-    with ThreadPoolExecutor(max_workers=len(BUILDS)) as pool:
-        core_future = pool.submit(build_core)
-        feature_future = pool.submit(build_feature)
-        return core_future.result(), feature_future.result()
+    core_built, feature_built = process_tree.in_parallel([build_core, build_feature])
+    return core_built, feature_built
 
 
 def compare_builds(

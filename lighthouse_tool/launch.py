@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import sys
 import time
+from contextlib import ExitStack
 from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
 from lighthouse_tool import limits, metrics_writer, process_tree, results as run_files, run_record, suite, verdict
@@ -276,29 +277,30 @@ def run_child(
     command: List[str], work: str, keep_awake: str, environment: Dict[str, str], limit_seconds: float
 ) -> ChildRun:
     started = time.monotonic()
-    try:
-        process = process_tree.start(
-            wrapped(command, keep_awake),
-            cwd=work,
-            env=environment,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-    except OSError as error:
-        return ChildRun(None, "", "the child session could not start: {}".format(error.strerror or error), 0.0)
-    guard = awake_guard(process.pid) if keep_awake == CAFFEINATE else None
-    try:
-        with process_tree.owned(process):
-            try:
-                stdout, _ = process.communicate(timeout=limit_seconds)
-                problem = None
-            except subprocess.TimeoutExpired:
-                stdout = stopped_output(process)
-                problem = "the child session ran past its time limit of {:g} seconds".format(limit_seconds)
-    finally:
+    with ExitStack() as guarding, ExitStack() as owning:
+        try:
+            process = owning.enter_context(
+                process_tree.started(
+                    wrapped(command, keep_awake),
+                    0.0,
+                    cwd=work,
+                    env=environment,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                )
+            )
+        except OSError as error:
+            return ChildRun(None, "", "the child session could not start: {}".format(error.strerror or error), 0.0)
+        guard = awake_guard(process.pid) if keep_awake == CAFFEINATE else None
         if guard is not None:
-            release_guard(guard)
+            guarding.callback(release_guard, guard)
+        try:
+            stdout, _ = process.communicate(timeout=limit_seconds)
+            problem = None
+        except subprocess.TimeoutExpired:
+            stdout = stopped_output(process)
+            problem = "the child session ran past its time limit of {:g} seconds".format(limit_seconds)
     seconds = time.monotonic() - started
     exit_status = process.returncode if problem is None else None
     return ChildRun(exit_status, stdout.decode("utf-8", errors="replace"), problem, seconds)

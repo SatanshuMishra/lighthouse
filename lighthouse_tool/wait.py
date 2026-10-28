@@ -128,13 +128,13 @@ def ready_check(options: Any) -> Check:
 
 
 def check_passes(check: str, seconds_left: float) -> bool:
-    process = process_tree.start(
+    with process_tree.started(
         ["/bin/sh", "-c", check],
+        0.0,
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
-    )
-    with process_tree.owned(process):
+    ) as process:
         try:
             return process.wait(timeout=seconds_left) == 0
         except subprocess.TimeoutExpired:

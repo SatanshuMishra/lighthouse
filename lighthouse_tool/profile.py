@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import tempfile
 import time
+from contextlib import ExitStack
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from lighthouse_tool import credentials, limits, process_tree, suite, wait
@@ -677,20 +678,22 @@ def started_ready(root: str, profile: Dict[str, Any], start_log: str) -> Tuple[O
     if command is None or not isinstance(ready, str):
         return None, None
     check = ready_check(root, ready, start_log)
-    with open(start_log, "wb") as output:
+    with open(start_log, "wb") as output, ExitStack() as owning:
         try:
-            process = process_tree.start(
-                ["/bin/sh", "-c", command],
-                cwd=root,
-                env={**os.environ, "LIGHTHOUSE_BUILD": "feature"},
-                stdin=subprocess.DEVNULL,
-                stdout=output,
-                stderr=subprocess.STDOUT,
+            process = owning.enter_context(
+                process_tree.started(
+                    ["/bin/sh", "-c", command],
+                    STOP_GRACE_SECONDS,
+                    cwd=root,
+                    env={**os.environ, "LIGHTHOUSE_BUILD": "feature"},
+                    stdin=subprocess.DEVNULL,
+                    stdout=output,
+                    stderr=subprocess.STDOUT,
+                )
             )
         except OSError:
             return None, False
-        with process_tree.owned(process, STOP_GRACE_SECONDS):
-            passed, seconds = wait.wait_until(
-                check, READY_POLL_SECONDS, limits.of(profile).suite_seconds, lambda: process_tree.has_exited(process)
-            )
+        passed, seconds = wait.wait_until(
+            check, READY_POLL_SECONDS, limits.of(profile).suite_seconds, lambda: process_tree.has_exited(process)
+        )
     return (rounded(seconds), True) if passed else (None, False)

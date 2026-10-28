@@ -3,8 +3,9 @@ import signal
 import subprocess
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
-from typing import Any, Callable, Dict, Iterator, List, Optional, Set
+from typing import Any, Callable, Dict, Iterator, List, NamedTuple, Optional, Sequence, Set
 
 FORWARDED_SIGNALS = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
 SIGNAL_EXIT_BASE = 128
@@ -15,11 +16,12 @@ UNREAPED_POLL_SECONDS = 0.05
 Handler = Any
 
 owned_processes: Set["subprocess.Popen[bytes]"] = set()
-owned_lock = threading.Lock()
+owned_lock = threading.RLock()
+stop_begun = threading.Event()
 
 
-def start(command: List[str], **options: Any) -> "subprocess.Popen[bytes]":
-    return subprocess.Popen(command, start_new_session=True, **options)
+class StopBegun(Exception):
+    pass
 
 
 def parents() -> Dict[int, int]:
@@ -120,32 +122,37 @@ def stop(process: "subprocess.Popen[bytes]", grace_seconds: float = 0.0) -> None
 
 def kill_owned() -> None:
     with owned_lock:
+        stop_begun.set()
         listed = list(owned_processes)
     for process in listed:
         kill_tree(process)
 
 
-def forwarder(previous: Handler) -> Callable[[int, Any], None]:
-    def forward(number: int, frame: Any) -> None:
-        if not callable(previous):
+class Forwarder(NamedTuple):
+    previous: Handler
+
+    def __call__(self, number: int, frame: Any) -> None:
+        if not callable(self.previous):
             kill_owned()
             raise SystemExit(SIGNAL_EXIT_BASE + number)
         try:
-            previous(number, frame)
+            self.previous(number, frame)
         except BaseException:
             kill_owned()
             raise
-
-    return forward
 
 
 def forwarding() -> Dict[int, Handler]:
     if threading.current_thread() is not threading.main_thread():
         return {}
     previous = {number: signal.getsignal(number) for number in FORWARDED_SIGNALS}
-    replaced = {number: handler for number, handler in previous.items() if handler not in (None, signal.SIG_IGN)}
+    replaced = {
+        number: handler
+        for number, handler in previous.items()
+        if handler not in (None, signal.SIG_IGN) and not isinstance(handler, Forwarder)
+    }
     for number, handler in replaced.items():
-        signal.signal(number, forwarder(handler))
+        signal.signal(number, Forwarder(handler))
     return replaced
 
 
@@ -166,18 +173,67 @@ def unblocked(mask: Optional[Set[int]]) -> None:
 
 
 @contextmanager
-def owned(process: "subprocess.Popen[bytes]", grace_seconds: float = 0.0) -> Iterator["subprocess.Popen[bytes]"]:
-    with owned_lock:
-        owned_processes.add(process)
+def guarded() -> Iterator[None]:
     saved = forwarding()
     try:
-        yield process
+        yield
     finally:
+        if saved:
+            mask = blocked()
+            try:
+                restored(saved)
+                stop_begun.clear()
+            finally:
+                unblocked(mask)
+
+
+def registered(process: "subprocess.Popen[bytes]") -> None:
+    with owned_lock:
+        owned_processes.add(process)
+        refused = stop_begun.is_set()
+    if refused:
+        raise StopBegun("a stop began before {} could start".format(process.args))
+
+
+def released(process: "subprocess.Popen[bytes]", grace_seconds: float) -> None:
+    with owned_lock:
+        owned_processes.discard(process)
+    stop(process, grace_seconds)
+
+
+def spawned(command: List[str], options: Dict[str, Any]) -> "subprocess.Popen[bytes]":
+    process = subprocess.Popen(command, start_new_session=True, **options)
+    try:
+        registered(process)
+    except BaseException:
+        released(process, 0.0)
+        raise
+    return process
+
+
+@contextmanager
+def started(command: List[str], grace_seconds: float, **options: Any) -> Iterator["subprocess.Popen[bytes]"]:
+    with guarded():
         mask = blocked()
         try:
-            with owned_lock:
-                owned_processes.discard(process)
-            stop(process, grace_seconds)
+            process = spawned(command, options)
         finally:
-            restored(saved)
             unblocked(mask)
+        try:
+            yield process
+        finally:
+            mask = blocked()
+            try:
+                released(process, grace_seconds)
+            finally:
+                unblocked(mask)
+
+
+def in_parallel(calls: Sequence[Callable[[], Any]]) -> List[Any]:
+    with guarded(), ThreadPoolExecutor(max_workers=max(1, len(calls))) as pool:
+        mask = blocked()
+        try:
+            futures = [pool.submit(call) for call in calls]
+        finally:
+            unblocked(mask)
+        return [future.result() for future in futures]
