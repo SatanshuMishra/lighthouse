@@ -1,6 +1,6 @@
 # hr-lighthouse-executor: Run 4 of the harness-redesign program: lighthouse executes locked K1 lines and computes its verdict from K3 results
 Status: active
-Updated: 2026-10-28T09:31:38.007Z
+Updated: 2026-10-28T09:31:40.209Z
 Next ids: c7 D2 R3 S1
 
 ## Goal
@@ -22,7 +22,7 @@ The FEATURE branch feat/hr-lighthouse-executor holds the CI fix (lighthouse#21) 
 
 ## Next step
 
-When the three check authors report, confirm each locked test fails at base for the absent behaviour, the existing suite passes and nothing lands under the real HOME; commit and push them on feat/hr-lighthouse-executor, run receipts lock into receipts-lock.txt, and run run.zsh --plan-only.
+When the build reports, read mitosis's last JSON line, write each lane's Assumption notes to review/executor.assumptions.txt, run the 60 locked checks at the MSP head (O4), then start review round 1.
 
 Needs: D1.
 
