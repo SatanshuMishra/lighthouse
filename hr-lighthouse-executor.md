@@ -1,6 +1,6 @@
 # hr-lighthouse-executor: Run 4 of the harness-redesign program: lighthouse executes locked K1 lines and computes its verdict from K3 results
 Status: parked
-Updated: 2026-10-28T20:17:36.019Z
+Updated: 2026-10-28T20:32:34.049Z
 Next ids: c7 D3 R4 S1
 
 ## Goal
@@ -18,11 +18,11 @@ Run 4 of the harness-redesign program (~/.mitosis/harness-redesign/PROGRAM.md, l
 
 ## Where things stand
 
-The FEATURE branch feat/hr-lighthouse-executor holds the CI fix (lighthouse#21) and the 60 locked tests at b9eabdc, each failing at f4da7f7 through accept.zsh; the receipt-lock line is in receipts-lock.txt. Integration is green and the run awaits merge: feat/hr-lighthouse-executor is at 77aad0e (MSP pull request https://github.com/SatanshuMishra/lighthouse/pull/22 merged), its suite passes under Python 3.15 and 3.9 (420 tests, 3 skipped each, in <run home>/integration-suite), and lighthouse run-2 (installed 0.4.0) is green with 32 paths passed and opened the FEATURE pull request https://github.com/SatanshuMishra/lighthouse/pull/23 into main, ready, assigned to the owner, bound to this session with Auto-fix and comment handling on. Run 1 died with Claude Code mid-drive and left no findings. PROGRAM.md's run 4 row reads awaiting-merge with both links. The integration worktree ~/.mitosis/runs/lighthouse/hr-lighthouse-executor/integration holds 77aad0e for Clean-up to remove. The ship's reconcile exit 6 names only the glossary and ADR commit, the fix-pass files and ledger_import.py as undeclared writes, and the locked tests (written before the build) plus tests/test_retest.py and tests/test_skill_init_doctor.py as declared but unwritten. review/report-notes.txt holds what goes only to the final report.
+The work is on main at 8099078 through the FEATURE pull request https://github.com/SatanshuMishra/lighthouse/pull/23 (MSP pull request https://github.com/SatanshuMishra/lighthouse/pull/22), and the user's checkout is synced there. pipeline clean removed the run's worktrees, local and remote branches, run home, mitosis run directory and docs/specs/hr-lighthouse-executor.* files, and kept nothing. PROGRAM.md's run 4 row reads done. The run's charter, worker rules, run.zsh, receipt lock, assumptions and metrics are kept in ~/.mitosis/harness-redesign/examples/hr-lighthouse-executor/.
 
 ## Next step
 
-awaiting-merge: the owner starts Clean-up by saying the FEATURE pull request https://github.com/SatanshuMishra/lighthouse/pull/23 merged; Clean-up then resumes this thread, reads CHARTER.md and removes what the run recorded with pipeline clean.
+Close this thread as done once the logbook server reconnects.
 
 Needs: D2.
 
