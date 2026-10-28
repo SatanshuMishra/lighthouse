@@ -1,6 +1,6 @@
 # hr-lighthouse-executor: Run 4 of the harness-redesign program: lighthouse executes locked K1 lines and computes its verdict from K3 results
 Status: active
-Updated: 2026-10-28T13:35:56.048Z
+Updated: 2026-10-28T13:55:53.454Z
 Next ids: c7 D2 R4 S1
 
 ## Goal
@@ -18,7 +18,7 @@ Run 4 of the harness-redesign program (~/.mitosis/harness-redesign/PROGRAM.md, l
 
 ## Where things stand
 
-The FEATURE branch feat/hr-lighthouse-executor holds the CI fix (lighthouse#21) and the 60 locked tests at b9eabdc, each failing at f4da7f7 through accept.zsh; the receipt-lock line is in receipts-lock.txt. The MSP executor is on mitosis/executor at 960d4b3 (worktree ~/.mitosis/runs/lighthouse/hr-lighthouse-executor/trees/executor), where all 60 locked checks pass (O4) and the full suite passes under Python 3.15 (418 tests, 3 skipped). Round 3's verdict is loop: S1 (started() blocks SIGINT, SIGTERM and SIGHUP in the kernel mask around Popen and around the in_parallel pool, so every step inherits the blocked mask and ignores those signals) is a confirmed HIGH blocker of kind inherited signal mask, diagnosed fixable and recorded (hold signals in Python with a held() context that defers and re-raises them, and never touch the kernel mask); C1 (that mask pattern written four times) is an advisory. Fix agent E runs S1 and C1 under review/round-3/fix-brief.md. Under Python 3.9 two tests.test_suite tests fail from 312f746 on (a step's background process is still running); round 4 records that as suite finding U1. review/report-notes.txt holds what goes only to the final report.
+The FEATURE branch feat/hr-lighthouse-executor holds the CI fix (lighthouse#21) and the 60 locked tests at b9eabdc, each failing at f4da7f7 through accept.zsh; the receipt-lock line is in receipts-lock.txt. The MSP executor is on mitosis/executor at 078fff4 (worktree ~/.mitosis/runs/lighthouse/hr-lighthouse-executor/trees/executor). Round 3's blocker S1 (inherited signal mask) and advisory C1 are fixed there: process_tree holds forwarded signals in Python with held() and never touches the kernel mask, the receipt was red at 960d4b3 and passes, the selecting checks are empty, the locked files are untouched, and there is no stash and no trailer. Under Python 3.9 two tests.test_suite tests fail from 312f746 on (a step's background process is still running); round 4 records that as suite finding U1. Review round 4 reviews the fix diff from 960d4b3: its diffs and briefs are written, and the locked checks (O4) and the full suite under Python 3.15 and 3.9 run at 078fff4. review/report-notes.txt holds what goes only to the final report.
 
 ## Next step
 
