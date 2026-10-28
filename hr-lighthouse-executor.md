@@ -1,6 +1,6 @@
 # hr-lighthouse-executor: Run 4 of the harness-redesign program: lighthouse executes locked K1 lines and computes its verdict from K3 results
 Status: active
-Updated: 2026-10-28T13:02:59.395Z
+Updated: 2026-10-28T13:09:16.928Z
 Next ids: c7 D2 R3 S1
 
 ## Goal
@@ -18,7 +18,7 @@ Run 4 of the harness-redesign program (~/.mitosis/harness-redesign/PROGRAM.md, l
 
 ## Where things stand
 
-The FEATURE branch feat/hr-lighthouse-executor holds the CI fix (lighthouse#21) and the 60 locked tests at b9eabdc, each failing at f4da7f7 through accept.zsh; the receipt-lock line is in receipts-lock.txt. The MSP executor is on mitosis/executor at 960d4b3 (worktree ~/.mitosis/runs/lighthouse/hr-lighthouse-executor/trees/executor). Round 2's blocker C1 (background process hang) and advisory S3 (signal handler deadlock) are fixed there: process_tree owns signal handling for each process's whole life, the receipts in tests/test_process_tree.py were red at 312f746 and pass, the selecting check is empty, the locked files are untouched, and there is no stash and no trailer. Review round 3 reviews the fix diff from 312f746: its diffs and the code-reviewer and security-reviewer briefs are written, and the locked checks (O4) and the full suite run at 960d4b3. review/report-notes.txt holds what goes only to the final report.
+The FEATURE branch feat/hr-lighthouse-executor holds the CI fix (lighthouse#21) and the 60 locked tests at b9eabdc, each failing at f4da7f7 through accept.zsh; the receipt-lock line is in receipts-lock.txt. The MSP executor is on mitosis/executor at 960d4b3 (worktree ~/.mitosis/runs/lighthouse/hr-lighthouse-executor/trees/executor). Round 2's blocker C1 (background process hang) and advisory S3 (signal handler deadlock) are fixed there: process_tree owns signal handling for each process's whole life, the receipts in tests/test_process_tree.py were red at 312f746 and pass, the selecting check is empty, the locked files are untouched, and there is no stash and no trailer. At 960d4b3 all 60 locked checks pass (O4) and the full suite passes (418 tests, 3 skipped), kept as round 3's suite file. In review round 3 the code-reviewer and security-reviewer judge the fix diff from 312f746. review/report-notes.txt holds what goes only to the final report.
 
 ## Next step
 
