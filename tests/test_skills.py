@@ -6,6 +6,7 @@ import unittest
 from tests import e2e_harness, scratch
 
 SKILLS = ("init", "doctor", "test")
+LONG_LIGHTHOUSE_CALL = re.compile(r"[Rr]un `lighthouse (profile measure|suite|execute) ")
 SPLICED_PROFILE_TEXT = re.compile(r"curl -fsS <[^>]*>|grep -qF '<[^>]*>'|--until '<the ready check>'|'<the surface's sign_in command>'")
 
 
@@ -45,6 +46,23 @@ def reference_line(reference, subcommand):
 
 def parser_flags(arguments):
     return [option for action in arguments._actions for option in action.option_strings]
+
+
+def instruction_files():
+    skills = [scratch.skill_path(name) for name in sorted(os.listdir(os.path.join(scratch.ROOT, "skills")))]
+    agents = os.path.join(scratch.ROOT, "agents")
+    return [path for path in skills if os.path.isfile(path)] + [
+        os.path.join(agents, name) for name in sorted(os.listdir(agents)) if name.endswith(".md")
+    ]
+
+
+def long_lighthouse_calls():
+    return [
+        (path, line)
+        for path in instruction_files()
+        for line in scratch.read_text(path).splitlines()
+        if LONG_LIGHTHOUSE_CALL.search(line)
+    ]
 
 
 class SkillsTest(unittest.TestCase):
@@ -140,9 +158,9 @@ class SkillsTest(unittest.TestCase):
             "Around each step below, run lighthouse mark --results <results> --step <name> start before it and the same with end after it",
             steps,
         )
-        self.assertIn("naming the step worktrees, retest, profile, change, suite, build, drive, spend, verdict, pr or release", steps)
+        self.assertIn("naming the step worktrees, retest, profile, change, suite, execute, build, drive, spend, verdict, pr or release", steps)
         self.assertIn("mark the build step once per build with --build core or --build feature", steps)
-        for step in ["worktrees", "retest", "profile", "change", "suite", "spend", "verdict", "pr", "release"]:
+        for step in ["worktrees", "retest", "profile", "change", "suite", "execute", "spend", "verdict", "pr", "release"]:
             self.assertIn("marked as the {} step".format(step), steps)
         self.assertIn("each marked as the build step with its --build", steps)
         self.assertIn("all of it marked as the drive step", steps)
@@ -186,7 +204,7 @@ class SkillsTest(unittest.TestCase):
             "Start lighthouse launch <the flags you were given> --repo <repo> --parent <plugin>/<run> in the background, with run_in_background",
             launching,
         )
-        self.assertIn("Run lighthouse wait --until 'test -s <results>/launch.json' in the foreground", launching)
+        self.assertIn("Run lighthouse wait --until 'test -s <results>/launch.json' --limits <results>/limits.json in the foreground", launching)
         self.assertIn("Each time it returns with ready false, call it again, the same way, until it returns ready true", launching)
         self.assertIn("Print the line in <results>/launch.json, unchanged, as the last line of the reply", launching)
         self.assertIn("With --child, run the Steps below", launching)
@@ -366,7 +384,7 @@ class SkillsTest(unittest.TestCase):
                 self.assertIn("Everything a run needs from lighthouse is in this skill and in what its commands print", texts[name])
 
     def test_test_skill_carries_a_command_reference(self):
-        from lighthouse_tool import change, credentials, launch, mark, pr, profile, retest, spend, suite, verdict, wait
+        from lighthouse_tool import change, contrast, credentials, execute, launch, mark, pr, profile, retest, spend, suite, verdict, wait
 
         raw = scratch.read_text(scratch.skill_path("test"))
         self.assertLess(raw.index("## Never"), raw.index("## Command reference"))
@@ -379,6 +397,9 @@ class SkillsTest(unittest.TestCase):
             "retest": retest.parser(),
             "profile check": profile.check_parser(),
             "profile publish": profile.publish_parser(),
+            "profile measure": profile.measure_parser(),
+            "execute": execute.parser(),
+            "contrast": contrast.parser(),
             "change": change.parser(),
             "suite": suite.parser("suite"),
             "with-credentials": credentials.with_credentials_parser(),
@@ -397,7 +418,11 @@ class SkillsTest(unittest.TestCase):
         for flag in ["--until", "--every", "--within"]:
             self.assertIn("`{} ".format(flag), reference_line(reference, "wait"))
         keys = {
-            "wait": ["ready"],
+            "wait": ["ready", "expired"],
+            "execute": ["checks", "neighbours"],
+            "contrast": ["ratio", "threshold", "status", "source", "reason"],
+            "profile measure": ["measured", "available"],
+            "pr": ["draft"],
             "retest": ["full", "changed", "retest", "surfaces", "carried"],
             "profile check": ["problems", "upgrades"],
             "profile publish": ["committed"],
@@ -454,6 +479,16 @@ class SkillsTest(unittest.TestCase):
             planning,
         )
         self.assertIn("so the name under failures or unproven tells a reader what broke", planning)
+
+    def test_every_long_lighthouse_call_runs_in_the_background_and_is_held_with_wait(self):
+        calls = long_lighthouse_calls()
+        for name in SKILLS:
+            with self.subTest(skill=name):
+                self.assertTrue(any(path == scratch.skill_path(name) for path, _ in calls), name)
+        for path, line in calls:
+            for phrase in ["run_in_background", "lighthouse wait --until", "600000"]:
+                with self.subTest(path=path, phrase=phrase, line=line[:80]):
+                    self.assertIn(phrase, line)
 
 if __name__ == "__main__":
     unittest.main()

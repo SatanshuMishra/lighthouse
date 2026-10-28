@@ -337,7 +337,7 @@ def summary_fields(group: Group, start: datetime.datetime, end: datetime.datetim
         "started": run_record.stamp(start),
         "ended": run_record.stamp(end),
         "run_seconds": run_record.seconds(launch.get("minutes")),
-        "verdict": run_record.choice(last.get("verdict"), run_record.VERDICTS),
+        "verdict": run_record.choice(last.get("verdict"), verdict.VERDICTS),
         "reason": run_record.text(last.get("reason")),
         "core": None,
         "feature": None,

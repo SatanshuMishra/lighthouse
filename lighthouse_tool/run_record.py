@@ -17,7 +17,6 @@ EMPTY_NAME = "run"
 STAMP_LENGTH = len(".YYYYMMDDTHHMMSSZ")
 UNSAFE_CHARACTER = re.compile(r"[^a-z0-9.-]")
 TIME_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
-VERDICTS = ("green", "failures", "blocked", "unproven")
 SUITE_RESULTS = ("passed", "failures", "blocked")
 RETRY_OUTCOMES = ("passed", "failed")
 OWN_SPEND = "own"
@@ -144,7 +143,7 @@ def finished(recording: Optional[Recording], results: Optional[str], ending: End
     end = datetime.datetime.now(datetime.timezone.utc)
     line = json_object(ending.line) or {}
     elapsed = round((end - recording.start).total_seconds(), SECONDS_DIGITS)
-    end_fields = {"verdict": choice(line.get("verdict"), VERDICTS), "child_exit": ending.child_exit, "run_seconds": elapsed}
+    end_fields = {"verdict": choice(line.get("verdict"), verdict.VERDICTS), "child_exit": ending.child_exit, "run_seconds": elapsed}
     ended = metrics_writer.append_event(
         PLUGIN, recording.plugin_version, recording.repo, recording.run, RUN_END, end_fields, environ=recording.environ, now=end
     )
@@ -197,7 +196,7 @@ def summary_fields(
         "started": stamp(recording.start),
         "ended": stamp(end),
         "run_seconds": elapsed,
-        "verdict": choice(line.get("verdict"), VERDICTS),
+        "verdict": choice(line.get("verdict"), verdict.VERDICTS),
         "reason": summary_reason(ending, line),
         "core": fields["core"],
         "feature": fields["feature"],

@@ -34,7 +34,8 @@ Everything a run needs from lighthouse is in this skill and in what its commands
      - `name` and `kind`, in plain words.
      - `paths`: the repository-relative code paths behind it.
      - `driver`: the tool and how it drives this surface. Choose the project's own end-to-end tests, drive scripts or runner first; otherwise an industry-standard tool used without adding anything to the project.
-     - `available`: false when this machine cannot reach it, such as hardware, a platform or a service this machine lacks; otherwise true.
+     - `available`: false when this machine cannot reach it, such as hardware, a platform or a service this machine lacks; otherwise true. `lighthouse profile measure` later sets it from `reach`.
+     - `reach`: a command that exits 0 when this machine can drive the surface with its driver, such as `npx playwright --version` or `vmlab capabilities --json`, run from the repository root.
      - `sign_in`: `method` none when no sign-in is needed; otherwise prefer the project's own sign-in command or fixture (`command`), then a token request to the project's own API (`token`), then a web form filled by a Playwright script run under `lighthouse with-credentials` (`form`). Put the shell command in `command`, or null for none.
      - `credentials`: the credential names it needs, never their values.
      - `trials`: 3 when the surface's output comes from a model or from randomness, otherwise 1.
@@ -67,6 +68,7 @@ Everything a run needs from lighthouse is in this skill and in what its commands
          "paths": ["src/pages/notes.tsx", "src/api/notes.ts"],
          "driver": "Playwright, run with npx playwright test against http://localhost:4100/notes",
          "available": true,
+         "reach": "npx playwright --version",
          "sign_in": {"method": "form", "command": "npx playwright test e2e/sign-in.spec.ts"},
          "credentials": ["NOTES_TEST_EMAIL", "NOTES_TEST_PASSWORD"],
          "trials": 1
@@ -88,6 +90,7 @@ Everything a run needs from lighthouse is in this skill and in what its commands
    ```
 4. When any surface needs signing in, run `lighthouse credentials init --repo <repo>`. It creates the credentials file with empty values, or uses the project's own file.
 5. Run `lighthouse profile check --repo <repo>`. When it reports problems, fix each once in the profile and run the check once more. When it still fails, stop and report every remaining problem, so a caller treats the profile as blocked.
+6. When the check passes, run `lighthouse profile measure --repo <repo>` in the background, with run_in_background, so a measure that outlives the Bash tool's 600000 ms ceiling is never moved to the background while you carry on without it. First make a folder outside the repository with `mktemp -d` and use the path it prints as `<folder>`, so the repository gains no file. Start `lighthouse profile measure --repo <repo> > <folder>/measure.out 2>&1; touch <folder>/measure.done` with run_in_background, the done marker written after `;` so it exists even when measure fails. Then run `lighthouse wait --until 'test -e <folder>/measure.done'` in the foreground, with the Bash tool's timeout set to 600000 ms, calling it again, the same way, each time it returns ready false, and run nothing else meanwhile. Once it returns ready true, read `<folder>/measure.out` for what measure printed. It runs the suite, the start command, the readiness check and each surface's `reach` command once, records their durations in the profile's `measured` object, sets each surface's `available` from its `reach` command's exit, stops the started process and writes no file but `.lighthouse/profile.json`. Those durations set the time limits of every later lighthouse:test run.
 
 ## Asking
 

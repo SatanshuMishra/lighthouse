@@ -17,6 +17,13 @@ def wait(test, *arguments):
     return code, stdout, stderr, time.monotonic() - started
 
 
+def limits_file(test, deadline):
+    path = os.path.join(scratch.temporary_folder(test, "lh-limits-"), "limits.json")
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump({"suite_seconds": 60, "check_seconds": 60, "child_seconds": 120, "run_seconds": 720, "deadline": deadline}, handle)
+    return path
+
+
 def ready_profile(test, ready):
     path = os.path.join(scratch.temporary_folder(test, "lh-ready-"), "profile.json")
     with open(path, "w", encoding="utf-8") as handle:
@@ -193,6 +200,34 @@ class WaitTest(unittest.TestCase):
         self.assertAlmostEqual(report["seconds"], 2, delta=0.5)
         self.assertGreaterEqual(elapsed, 2)
         self.assertLess(elapsed, 3)
+        self.assertNotIn("expired", report)
+
+    def test_wait_with_limits_reports_a_ready_check_unexpired(self):
+        code, stdout, stderr, _ = wait(self, "--until", "true", "--limits", limits_file(self, time.time() + 600))
+
+        self.assertEqual(code, 0, stderr)
+        report = json.loads(stdout)
+        self.assertIs(report["ready"], True)
+        self.assertIs(report["expired"], False)
+
+    def test_wait_with_limits_reports_a_window_before_the_deadline_unexpired(self):
+        limits = limits_file(self, time.time() + 600)
+        code, stdout, stderr, _ = wait(self, "--until", "exit 1", "--within", "1", "--limits", limits)
+
+        self.assertEqual(code, 0, stderr)
+        report = json.loads(stdout)
+        self.assertIs(report["ready"], False)
+        self.assertIs(report["expired"], False)
+
+    def test_wait_with_limits_ends_its_window_at_the_deadline(self):
+        limits = limits_file(self, time.time() + 2)
+        code, stdout, stderr, elapsed = wait(self, "--until", "exit 1", "--every", "1", "--limits", limits)
+
+        self.assertEqual(code, 0, stderr)
+        report = json.loads(stdout)
+        self.assertIs(report["ready"], False)
+        self.assertIs(report["expired"], True)
+        self.assertLess(elapsed, 10)
 
     def test_wait_refuses_a_window_over_540(self):
         code, stdout, _, _ = wait(self, "--until", "true", "--within", "541")

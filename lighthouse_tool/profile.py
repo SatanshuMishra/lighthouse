@@ -5,12 +5,15 @@ import posixpath
 import re
 import shlex
 import shutil
+import subprocess
 import tempfile
+import time
+from contextlib import ExitStack
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from lighthouse_tool import credentials, limits, process_tree, suite, wait
 from lighthouse_tool import repo as repository
-from lighthouse_tool import suite
-from lighthouse_tool.records import is_number
+from lighthouse_tool.records import is_number, utc_now, write_atomically
 from lighthouse_tool.repo import Parser, Refusal, checked_git, require_root
 
 Outcome = Tuple[int, Optional[str], Optional[str]]
@@ -20,6 +23,10 @@ PROFILE_PATH = ".lighthouse/profile.json"
 SCHEMA_PATH = os.path.join(os.path.dirname(os.path.realpath(__file__)), "profile_schema.json")
 PUBLISH_MESSAGE = "chore(lighthouse): record the test profile"
 UPGRADED_SUITE_KEYS = ("rerun", "isolated")
+MEASURED_STEPS = ("setup", "build")
+READY_POLL_SECONDS = 0.5
+STOP_GRACE_SECONDS = 5
+MEASURED_DIGITS = 3
 
 SOURCE_NAMES = (
     "package.json",
@@ -111,15 +118,26 @@ def publish_parser() -> Parser:
     return arguments
 
 
+def measure_parser() -> Parser:
+    arguments = Parser(prog="lighthouse profile measure", add_help=False)
+    arguments.add_argument("--repo", required=True)
+    arguments.add_argument("--profile")
+    return arguments
+
+
 def run(argv: List[str]) -> Outcome:
     action = argv[1] if len(argv) > 1 else None
-    handlers: Dict[str, Callable[[List[str]], Outcome]] = {"check": check_command, "publish": publish_command}
+    handlers: Dict[str, Callable[[List[str]], Outcome]] = {
+        "check": check_command,
+        "publish": publish_command,
+        "measure": measure_command,
+    }
     if action not in handlers:
         reason = "no action given" if action is None else "unknown action {}".format(action)
         return (
             2,
             json.dumps({"error": reason, "actions": sorted(handlers)}),
-            "lighthouse profile: {}; usage: lighthouse profile check|publish --repo <repo>".format(reason),
+            "lighthouse profile: {}; usage: lighthouse profile check|publish|measure --repo <repo>".format(reason),
         )
     try:
         return handlers[action](argv[2:])
@@ -148,10 +166,12 @@ def upgrade(field: str) -> Problem:
 
 
 def check_upgrades(repo: str, path: Optional[str] = None) -> List[Problem]:
-    suite = section(repository.load_profile(repo, path), "suite")
+    profile = repository.load_profile(repo, path)
+    suite = section(profile, "suite")
     if not suite:
         return []
-    return [upgrade("suite." + key) for key in UPGRADED_SUITE_KEYS if key not in suite]
+    measured = [] if "measured" in profile else [upgrade("measured")]
+    return [*[upgrade("suite." + key) for key in UPGRADED_SUITE_KEYS if key not in suite], *measured]
 
 
 def load_schema() -> Dict[str, Any]:
@@ -553,3 +573,127 @@ def branch_holders(root: str, feature: str) -> List[str]:
         for block in blocks
         if block and block[0].startswith("worktree ") and wanted in block
     ]
+
+
+def measure_command(args: List[str]) -> Outcome:
+    options = measure_parser().parse_args(args)
+    root = require_root(options.repo)
+    profile_path = os.path.abspath(options.profile) if options.profile else os.path.join(root, PROFILE_PATH)
+    profile = repository.load_profile(root, profile_path)
+    if not isinstance(profile, dict):
+        raise Refusal("there is no readable profile at {}".format(profile_path))
+    if suite.step_command(profile, "suite") is None:
+        raise Refusal("the profile records no suite command")
+    written_paths = (profile_path,) if options.profile else (os.path.dirname(profile_path), profile_path)
+    linked = [path for path in written_paths if os.path.islink(path)]
+    if linked:
+        raise Refusal("{} is a symbolic link, so lighthouse will not write through it".format(linked[0]))
+    unmeasured = {key: value for key, value in profile.items() if key != "measured"}
+    holder = tempfile.mkdtemp(prefix="lighthouse-measure-")
+    try:
+        measured, available = measure(root, unmeasured, holder)
+    finally:
+        shutil.rmtree(holder, ignore_errors=True)
+    written = {**with_availability(profile, available), "measured": measured}
+    write_atomically(profile_path, json.dumps(written, indent=2) + "\n")
+    reported = {
+        item["name"]: item["available"]
+        for item in surfaces(written)
+        if isinstance(item.get("name"), str) and isinstance(item.get("available"), bool)
+    }
+    return 0, json.dumps({"measured": measured, "available": reported}), None
+
+
+def with_availability(profile: Dict[str, Any], available: Dict[str, bool]) -> Dict[str, Any]:
+    listed = profile.get("surfaces")
+    if not isinstance(listed, list):
+        return dict(profile)
+    marked = [
+        {**item, "available": available[item["name"]]} if isinstance(item, dict) and item.get("name") in available else item
+        for item in listed
+    ]
+    return {**profile, "surfaces": marked}
+
+
+def rounded(seconds: Optional[float]) -> Optional[float]:
+    return None if seconds is None else round(seconds, MEASURED_DIGITS)
+
+
+def timed_step(
+    root: str, step: str, command: str, log_path: str, profile: Dict[str, Any], hidden: credentials.Secrets
+) -> Tuple[Optional[int], float]:
+    started = time.monotonic()
+    outcome = suite.run_step(step, command, root, "feature", log_path, profile, hidden)
+    return outcome.exit, round(time.monotonic() - started, MEASURED_DIGITS)
+
+
+def reach_command(item: Dict[str, Any]) -> Optional[str]:
+    reach = item.get("reach")
+    return reach if isinstance(reach, str) and reach.strip() and isinstance(item.get("name"), str) else None
+
+
+def measure(root: str, profile: Dict[str, Any], holder: str) -> Tuple[Dict[str, Any], Dict[str, bool]]:
+    hidden = suite.hidden_values(root, profile)
+    log_path = os.path.join(holder, "measure.log")
+    preparation = {
+        step: timed_step(root, step, command, log_path, profile, hidden)[1]
+        for step, command in ((step, suite.step_command(profile, step)) for step in MEASURED_STEPS)
+        if command is not None
+    }
+    suite_exit, suite_seconds = timed_step(root, "suite", suite.step_command(profile, "suite") or "", log_path, profile, hidden)
+    start_seconds, ready = started_ready(root, profile, os.path.join(holder, "start.log"))
+    reached = {
+        item["name"]: timed_step(root, "reach", command, log_path, profile, hidden)
+        for item, command in ((item, reach_command(item)) for item in surfaces(profile))
+        if command is not None
+    }
+    measured = {
+        "commit": checked_git(root, ["rev-parse", "HEAD"]).strip(),
+        "measured_at": utc_now(),
+        "setup_seconds": preparation.get("setup"),
+        "build_seconds": preparation.get("build"),
+        "suite_seconds": suite_seconds,
+        "suite_exit": suite_exit,
+        "start_seconds": start_seconds,
+        "ready": ready,
+        "drivers": {name: {"seconds": seconds, "exit": code} for name, (code, seconds) in reached.items()},
+    }
+    return measured, {name: code == 0 for name, (code, _) in reached.items()}
+
+
+def ready_check(root: str, ready: str, start_log: str) -> Callable[[float], bool]:
+    text = ready.strip()
+    if wait.requestable(text):
+        url = wait.checked_url(text)
+        return lambda seconds_left: wait.url_answers(url, seconds_left)
+    if command_fault(root, ready) is None:
+        command = "cd {} && {}".format(shlex.quote(root), ready)
+        return lambda seconds_left: wait.check_passes(command, seconds_left)
+    return lambda _: wait.log_holds(start_log, ready)
+
+
+def started_ready(root: str, profile: Dict[str, Any], start_log: str) -> Tuple[Optional[float], Optional[bool]]:
+    command = suite.step_command(profile, "start")
+    ready = section(profile, "start").get("ready")
+    if command is None or not isinstance(ready, str):
+        return None, None
+    check = ready_check(root, ready, start_log)
+    with open(start_log, "wb") as output, ExitStack() as owning:
+        try:
+            process = owning.enter_context(
+                process_tree.started(
+                    ["/bin/sh", "-c", command],
+                    STOP_GRACE_SECONDS,
+                    cwd=root,
+                    env={**os.environ, "LIGHTHOUSE_BUILD": "feature"},
+                    stdin=subprocess.DEVNULL,
+                    stdout=output,
+                    stderr=subprocess.STDOUT,
+                )
+            )
+        except OSError:
+            return None, False
+        passed, seconds = wait.wait_until(
+            check, READY_POLL_SECONDS, limits.of(profile).suite_seconds, lambda: process_tree.has_exited(process)
+        )
+    return (rounded(seconds), True) if passed else (None, False)

@@ -4,15 +4,14 @@ import json
 import os
 import re
 import shlex
-import signal
 import subprocess
 import tempfile
 import time
 import xml.etree.ElementTree as ElementTree
-from concurrent.futures import ThreadPoolExecutor
+from contextlib import ExitStack
 from typing import Any, Callable, Dict, List, NamedTuple, Optional, Set, Tuple, TypeVar
 
-from lighthouse_tool import credentials
+from lighthouse_tool import credentials, limits, process_tree
 from lighthouse_tool import repo as repository
 from lighthouse_tool.records import write_atomically
 from lighthouse_tool.repo import Parser, Refusal, checked_git, require_root
@@ -20,13 +19,13 @@ from lighthouse_tool.repo import Parser, Refusal, checked_git, require_root
 Outcome = Tuple[int, Optional[str], Optional[str]]
 BUILDS = ("core", "feature")
 PREPARATION_STEPS = ("setup", "build")
+SUITE_STEPS = ("suite", "rerun")
 UNRUNNABLE_EXITS = (126, 127)
 WHOLE_SUITE = "suite"
 OWNER_MARK = "lighthouse-owned"
 COMMITS = "commits.json"
 CORE_STORE = "core-suites"
 STORED_SUITE_FIELDS = ("command", "junit", "rerun", "timeout_minutes")
-UNREAPED_POLL_SECONDS = 0.05
 RERUN_PLACEHOLDER = re.compile(r"\{(tests|names_regex|names)\}")
 SHELL_PIECE = re.compile(r"""\\.|'[^']*'?|"(?:\\.|[^"\\])*"?|[^\\'"]+""", re.S)
 Timed = TypeVar("Timed")
@@ -224,10 +223,13 @@ def runs_isolated(profile: Dict[str, Any]) -> bool:
     return profile["suite"].get("isolated") is True
 
 
-def timeout_minutes(profile: Dict[str, Any]) -> Optional[float]:
-    minutes = profile["suite"].get("timeout_minutes")
-    usable = isinstance(minutes, (int, float)) and not isinstance(minutes, bool) and minutes > 0
-    return minutes if usable else None
+def step_limit(step: str, profile: Dict[str, Any]) -> float:
+    found = limits.of(profile)
+    if step in PREPARATION_STEPS:
+        return found.build_seconds
+    if step in SUITE_STEPS:
+        return found.suite_seconds
+    return found.check_seconds
 
 
 def hidden_values(root: str, profile: Dict[str, Any]) -> credentials.Secrets:
@@ -237,29 +239,31 @@ def hidden_values(root: str, profile: Dict[str, Any]) -> credentials.Secrets:
 def run_step(
     step: str, command: str, worktree: str, build: str, log_path: str, profile: Dict[str, Any], hidden: credentials.Secrets
 ) -> StepRun:
-    minutes = timeout_minutes(profile)
+    seconds = step_limit(step, profile)
     append_log(log_path, "$ {}: {}\n".format(step, command), hidden)
     with tempfile.TemporaryFile() as output:
-        try:
-            process = subprocess.Popen(
-                ["/bin/sh", "-c", command],
-                cwd=worktree,
-                env={**os.environ, "LIGHTHOUSE_BUILD": build},
-                stdin=subprocess.DEVNULL,
-                stdout=output,
-                stderr=subprocess.STDOUT,
-                start_new_session=True,
-            )
-        except OSError as error:
-            return StepRun(None, "{} could not start: {}".format(step, error.strerror or error))
-        try:
-            exited_unreaped(process, minutes * 60 if minutes else None)
-            timed_out = False
-        except subprocess.TimeoutExpired:
-            timed_out = True
-        stop(process)
+        with ExitStack() as owning:
+            try:
+                process = owning.enter_context(
+                    process_tree.started(
+                        ["/bin/sh", "-c", command],
+                        0.0,
+                        cwd=worktree,
+                        env={**os.environ, "LIGHTHOUSE_BUILD": build},
+                        stdin=subprocess.DEVNULL,
+                        stdout=output,
+                        stderr=subprocess.STDOUT,
+                    )
+                )
+            except OSError as error:
+                return StepRun(None, "{} could not start: {}".format(step, error.strerror or error))
+            try:
+                process_tree.exited_unreaped(process, seconds)
+                timed_out = False
+            except subprocess.TimeoutExpired:
+                timed_out = True
         outcome = (
-            StepRun(None, "{} timed out after {} minutes".format(step, minutes))
+            StepRun(None, "{} timed out after its limit of {:g} seconds".format(step, seconds))
             if timed_out
             else StepRun(process.returncode, None)
         )
@@ -271,25 +275,6 @@ def run_step(
 def append_log(log_path: str, text: str, hidden: credentials.Secrets) -> None:
     with open(log_path, "a", encoding="utf-8") as log:
         log.write(credentials.redacted(text, hidden))
-
-
-def exited_unreaped(process: "subprocess.Popen[bytes]", seconds: Optional[float]) -> None:
-    if not hasattr(os, "waitid"):
-        process.wait(timeout=seconds)
-        return
-    deadline = None if seconds is None else time.monotonic() + seconds
-    while os.waitid(os.P_PID, process.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT) is None:
-        if deadline is not None and time.monotonic() > deadline:
-            raise subprocess.TimeoutExpired(process.args, seconds or 0)
-        time.sleep(UNREAPED_POLL_SECONDS)
-
-
-def stop(process: "subprocess.Popen[bytes]") -> None:
-    try:
-        os.killpg(process.pid, signal.SIGKILL)
-    except (ProcessLookupError, PermissionError):
-        process.kill()
-    process.wait()
 
 
 def prepare(
@@ -617,10 +602,8 @@ def both_builds(
     if not runs_isolated(profile):
         core_built = build_core()
         return core_built, build_feature()
-    with ThreadPoolExecutor(max_workers=len(BUILDS)) as pool:
-        core_future = pool.submit(build_core)
-        feature_future = pool.submit(build_feature)
-        return core_future.result(), feature_future.result()
+    core_built, feature_built = process_tree.in_parallel([build_core, build_feature])
+    return core_built, feature_built
 
 
 def compare_builds(
