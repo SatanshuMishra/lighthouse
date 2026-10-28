@@ -313,10 +313,10 @@ def run_status(result: Dict[str, Any], results: str) -> str:
 def check_outcome(statuses: List[str], required_count: int) -> str:
     passes = statuses.count(RESULT_PASS)
     fails = statuses.count(RESULT_FAIL)
-    if fails and not passes:
-        return CONFIRMED_FAILURE
-    if fails:
+    if fails and passes:
         return FLAKY
+    if fails and fails == len(statuses):
+        return CONFIRMED_FAILURE
     if passes >= required_count and RESULT_COULD_NOT_RUN not in statuses:
         return PASSED
     return UNPROVEN
