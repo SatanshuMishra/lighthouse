@@ -1,6 +1,6 @@
 # hr-lighthouse-executor: Run 4 of the harness-redesign program: lighthouse executes locked K1 lines and computes its verdict from K3 results
 Status: active
-Updated: 2026-10-28T14:35:50.478Z
+Updated: 2026-10-28T14:46:42.287Z
 Next ids: c7 D2 R4 S1
 
 ## Goal
@@ -18,7 +18,7 @@ Run 4 of the harness-redesign program (~/.mitosis/harness-redesign/PROGRAM.md, l
 
 ## Where things stand
 
-The FEATURE branch feat/hr-lighthouse-executor holds the CI fix (lighthouse#21) and the 60 locked tests at b9eabdc, each failing at f4da7f7 through accept.zsh; the receipt-lock line is in receipts-lock.txt. The MSP executor is on mitosis/executor at 7effa35 (worktree ~/.mitosis/runs/lighthouse/hr-lighthouse-executor/trees/executor). Round 4's blocker U1 (failing test under Python 3.9) is fixed there: kill_tree sends the group kill even after the leader is reaped; the receipt was red at 078fff4 under both Pythons and passes, the selecting check is empty under both, the locked files are untouched, and there is no stash and no trailer. An automated commit security check flags that change (MEDIUM): a group kill after the leader is reaped can reach an unrelated group if the step's group was already empty and its id reused. Review round 5 reviews the fix diff from 078fff4, with that flag for the security reviewer: its diffs and briefs are written, and the locked checks (O4) and the full suite under Python 3.15 and 3.9 run at 7effa35. review/report-notes.txt holds what goes only to the final report.
+The FEATURE branch feat/hr-lighthouse-executor holds the CI fix (lighthouse#21) and the 60 locked tests at b9eabdc, each failing at f4da7f7 through accept.zsh; the receipt-lock line is in receipts-lock.txt. The MSP executor is on mitosis/executor at 7effa35 (worktree ~/.mitosis/runs/lighthouse/hr-lighthouse-executor/trees/executor). Round 4's blocker U1 (failing test under Python 3.9) is fixed there: kill_tree sends the group kill even after the leader is reaped; the receipt was red at 078fff4 under both Pythons and passes, the selecting check is empty under both, the locked files are untouched, and there is no stash and no trailer. An automated commit security check flags that change (MEDIUM): a group kill after the leader is reaped can reach an unrelated group if the step's group was already empty and its id reused. The reviewer briefs go out unchanged, so the flag reaches review only if the security reviewer finds it; otherwise it goes to the final report. At 7effa35 all 60 locked checks pass (O4) and the full suite passes under Python 3.15 and 3.9 (420 tests, 3 skipped each), kept together as round 5's suite file. In review round 5 the code-reviewer and security-reviewer judge the fix diff from 078fff4. review/report-notes.txt holds what goes only to the final report.
 
 ## Next step
 
