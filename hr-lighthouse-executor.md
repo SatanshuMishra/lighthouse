@@ -1,6 +1,6 @@
 # hr-lighthouse-executor: Run 4 of the harness-redesign program: lighthouse executes locked K1 lines and computes its verdict from K3 results
 Status: active
-Updated: 2026-10-28T10:34:33.500Z
+Updated: 2026-10-28T10:43:12.668Z
 Next ids: c7 D2 R3 S1
 
 ## Goal
@@ -18,7 +18,7 @@ Run 4 of the harness-redesign program (~/.mitosis/harness-redesign/PROGRAM.md, l
 
 ## Where things stand
 
-The FEATURE branch feat/hr-lighthouse-executor holds the CI fix (lighthouse#21) and the locked tests at b9eabdc: 60 tests written by three fresh check authors, each failing at f4da7f7 through accept.zsh, with the existing suite passing and nothing written under the real HOME. Two prose checks were loosened to their rows before the lock at the parent session's request (reach as code or a quoted key, the draft sentence in either word order). The receipt-lock line is in receipts-lock.txt. The MSP executor is committed on mitosis/executor at 400ec97 (worktree ~/.mitosis/runs/lighthouse/hr-lighthouse-executor/trees/executor): all 7 Lanes ok, mitosis's gate passed 60 of 60, the locked files are unchanged and the lock hash matches at the head; mitosis exit 6 only lists declared files left unwritten, which are no finding. The five Lane assumptions are in review/executor.assumptions.txt and the round-1 diff and obligations (67) are written. At the head all 60 locked checks pass (O4) and the full suite passes (404 tests, 3 skipped). In review round 1 the conformance auditor finds criteria 5.1 to 5.6 met with no findings; the code-reviewer and security-reviewer still run.
+The FEATURE branch feat/hr-lighthouse-executor holds the CI fix (lighthouse#21) and the locked tests at b9eabdc: 60 tests written by three fresh check authors, each failing at f4da7f7 through accept.zsh, with the existing suite passing and nothing written under the real HOME. Two prose checks were loosened to their rows before the lock at the parent session's request (reach as code or a quoted key, the draft sentence in either word order). The receipt-lock line is in receipts-lock.txt. The MSP executor is committed on mitosis/executor at 400ec97 (worktree ~/.mitosis/runs/lighthouse/hr-lighthouse-executor/trees/executor): all 7 Lanes ok, mitosis's gate passed 60 of 60, the locked files are unchanged and the lock hash matches at the head; mitosis exit 6 only lists declared files left unwritten, which are no finding. The five Lane assumptions are in review/executor.assumptions.txt and the round-1 diff and obligations (67) are written. At the head all 60 locked checks pass (O4) and the full suite passes (404 tests, 3 skipped). In review round 1 the conformance auditor finds criteria 5.1 to 5.6 met with no findings, and the security-reviewer reports 7 candidates (S1 and S2 MEDIUM, both hung work escaping its limit; S3 to S7 LOW), saved in review/round-1/security-reviewer.json; the code-reviewer still runs. S3's pattern bug also sits in the locked referee validator, which no fix may edit.
 
 ## Next step
 
