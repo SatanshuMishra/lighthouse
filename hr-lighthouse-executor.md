@@ -1,7 +1,7 @@
 # hr-lighthouse-executor: Run 4 of the harness-redesign program: lighthouse executes locked K1 lines and computes its verdict from K3 results
 Status: active
-Updated: 2026-10-28T13:21:20.265Z
-Next ids: c7 D2 R3 S1
+Updated: 2026-10-28T13:35:56.048Z
+Next ids: c7 D2 R4 S1
 
 ## Goal
 
@@ -18,11 +18,11 @@ Run 4 of the harness-redesign program (~/.mitosis/harness-redesign/PROGRAM.md, l
 
 ## Where things stand
 
-The FEATURE branch feat/hr-lighthouse-executor holds the CI fix (lighthouse#21) and the 60 locked tests at b9eabdc, each failing at f4da7f7 through accept.zsh; the receipt-lock line is in receipts-lock.txt. The MSP executor is on mitosis/executor at 960d4b3 (worktree ~/.mitosis/runs/lighthouse/hr-lighthouse-executor/trees/executor). Round 2's blocker C1 (background process hang) and advisory S3 (signal handler deadlock) are fixed there: process_tree owns signal handling for each process's whole life, the receipts in tests/test_process_tree.py were red at 312f746 and pass, the selecting check is empty, the locked files are untouched, and there is no stash and no trailer. At 960d4b3 all 60 locked checks pass (O4) and the full suite passes (418 tests, 3 skipped), kept as round 3's suite file. Round 3's verdict is diagnose: round 2's C1 is fixed; S1 (started() blocks SIGINT, SIGTERM and SIGHUP around Popen, so every spawned step inherits the blocked mask and ignores those signals, and a suite that terminates its own child turns red under lighthouse) is a confirmed HIGH blocker of kind inherited signal mask; C1 (the signal mask pattern written four times in process_tree.py) is an advisory. A fresh diagnosis agent diagnoses inherited signal mask. review/report-notes.txt holds what goes only to the final report.
+The FEATURE branch feat/hr-lighthouse-executor holds the CI fix (lighthouse#21) and the 60 locked tests at b9eabdc, each failing at f4da7f7 through accept.zsh; the receipt-lock line is in receipts-lock.txt. The MSP executor is on mitosis/executor at 960d4b3 (worktree ~/.mitosis/runs/lighthouse/hr-lighthouse-executor/trees/executor), where all 60 locked checks pass (O4) and the full suite passes under Python 3.15 (418 tests, 3 skipped). Round 3's verdict is loop: S1 (started() blocks SIGINT, SIGTERM and SIGHUP in the kernel mask around Popen and around the in_parallel pool, so every step inherits the blocked mask and ignores those signals) is a confirmed HIGH blocker of kind inherited signal mask, diagnosed fixable and recorded (hold signals in Python with a held() context that defers and re-raises them, and never touch the kernel mask); C1 (that mask pattern written four times) is an advisory. Fix agent E runs S1 and C1 under review/round-3/fix-brief.md. Under Python 3.9 two tests.test_suite tests fail from 312f746 on (a step's background process is still running); round 4 records that as suite finding U1. review/report-notes.txt holds what goes only to the final report.
 
 ## Next step
 
-When the round 3 diagnosis reports, save and record it, rerun pipeline verdict, then on loop send one fresh fix agent for S1 and advisory C1 under review/round-3/fix-brief.md, then review round 4 with previous head 960d4b3.
+When fix agent E reports, check its commits, locked files and both suites, then start review round 4 on the fix diff with previous head 960d4b3, adding U1 to its findings.
 
 Needs: D1.
 
@@ -34,6 +34,7 @@ Needs: D1.
 
 - R1 Locked acceptance test files sit in their Steps' write-sets because interphase's items format requires it; only worker rules, the receipts lock hash and the locked checks at each MSP head keep a Worker from loosening them. Bears on c1.
 - R2 A repository whose tests pin its root entries fails once .lighthouse/profile.json is first committed on FEATURE; lighthouse reports that as a suite failure rather than hiding it. Bears on c5.
+- R3 The suite runs so far used Python 3.15, which hides failures the CI's Python 3.9 shows; every head's suite now runs under both, and a 3.9-only failure is a suite finding. Bears on c3.
 
 ## Settled, do not reopen
 
