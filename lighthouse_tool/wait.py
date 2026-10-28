@@ -1,15 +1,16 @@
 import http.client
 import json
 import os
-import signal
 import subprocess
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import Any, Callable, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from lighthouse_tool import process_tree
 from lighthouse_tool.ports import port_map, port_pair, url_with_build_ports, with_build_ports
+from lighthouse_tool.records import is_number
 from lighthouse_tool.repo import Parser, Refusal, read_json_or_refuse
 
 DEFAULT_EVERY_SECONDS = 5.0
@@ -33,6 +34,7 @@ def parser() -> Parser:
     arguments.add_argument("--port", type=port_pair, action="append")
     arguments.add_argument("--every", type=float, default=DEFAULT_EVERY_SECONDS)
     arguments.add_argument("--within", type=float, default=LONGEST_WITHIN_SECONDS)
+    arguments.add_argument("--limits")
     return arguments
 
 
@@ -126,45 +128,76 @@ def ready_check(options: Any) -> Check:
 
 
 def check_passes(check: str, seconds_left: float) -> bool:
-    process = subprocess.Popen(
+    with process_tree.started(
         ["/bin/sh", "-c", check],
+        0.0,
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
-    try:
-        return process.wait(timeout=seconds_left) == 0
-    except subprocess.TimeoutExpired:
-        stop_group(process)
-        return False
+    ) as process:
+        try:
+            return process.wait(timeout=seconds_left) == 0
+        except subprocess.TimeoutExpired:
+            return False
 
 
-def stop_group(process: "subprocess.Popen[bytes]") -> None:
-    try:
-        os.killpg(process.pid, signal.SIGKILL)
-    except OSError:
-        pass
-    process.wait()
+def never_ends() -> bool:
+    return False
 
 
-def wait_until(check: Check, every: float, within: float) -> Tuple[bool, float]:
+def wait_until(
+    check: Check, every: float, within: float, ended: Callable[[], bool] = never_ends
+) -> Tuple[bool, float]:
     started = time.monotonic()
     deadline = started + within
     while True:
         seconds_left = deadline - time.monotonic()
-        if seconds_left <= 0:
+        if seconds_left <= 0 or ended():
             return False, time.monotonic() - started
         if check(seconds_left):
             return True, time.monotonic() - started
         time.sleep(max(0.0, min(every, deadline - time.monotonic())))
 
 
+def limits_deadline(path: str) -> Optional[float]:
+    try:
+        with open(path, encoding="utf-8") as handle:
+            written = json.load(handle)
+    except (OSError, ValueError):
+        return None
+    deadline = written.get("deadline") if isinstance(written, dict) else None
+    return deadline if is_number(deadline) else None
+
+
+def is_expired(path: str, deadline: Optional[float]) -> bool:
+    return not os.path.exists(path) or (deadline is not None and time.time() >= deadline)
+
+
+def window(within: float, deadline: Optional[float]) -> float:
+    return within if deadline is None else min(within, deadline - time.time())
+
+
+def bounded_wait(check: Check, options: Any) -> Dict[str, Any]:
+    deadline = limits_deadline(options.limits)
+    if deadline is not None and time.time() >= deadline:
+        return {"ready": False, "seconds": 0, "expired": True}
+    ready, seconds = wait_until(check, options.every, window(options.within, deadline))
+    expired = not ready and is_expired(options.limits, limits_deadline(options.limits))
+    return {"ready": ready, "seconds": round(seconds, 3), "expired": expired}
+
+
+def waited(check: Check, options: Any) -> Dict[str, Any]:
+    if options.limits is not None:
+        return bounded_wait(check, options)
+    ready, seconds = wait_until(check, options.every, options.within)
+    return {"ready": ready, "seconds": round(seconds, 3)}
+
+
 def run(argv: List[str]) -> Tuple[int, Optional[str], Optional[str]]:
     try:
         options = checked_options(parser().parse_args(argv[1:]))
         check = ready_check(options)
-        ready, seconds = wait_until(check, options.every, options.within)
+        result = waited(check, options)
     except Refusal as refusal:
         return 2, json.dumps({"error": str(refusal)}), "lighthouse wait: {}".format(refusal)
-    return 0, json.dumps({"ready": ready, "seconds": round(seconds, 3)}), None
+    return 0, json.dumps(result), None

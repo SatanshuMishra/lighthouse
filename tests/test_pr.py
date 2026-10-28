@@ -130,7 +130,8 @@ class PullRequestTest(unittest.TestCase):
 
         self.assertEqual(code, 0, stderr)
         composed = json.loads(stdout)
-        self.assertEqual(sorted(composed), ["base", "body", "head", "title"])
+        self.assertEqual(sorted(composed), ["base", "body", "draft", "head", "title"])
+        self.assertIs(composed["draft"], False)
         self.assertEqual(composed["title"], "feat(work): add csv export and import")
         self.assertLessEqual(len(composed["title"]), 72)
         self.assertEqual((composed["base"], composed["head"]), ("main", "feat/x"))
@@ -184,20 +185,27 @@ class PullRequestTest(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertEqual(stdout, "")
         self.assertIn("failures", stderr)
+        self.assertIn("--final", stderr)
 
     def test_blocked_waits(self):
         code, stdout, stderr = lighthouse_pr(self, waiting_findings(), waiting_line("blocked"))
 
         self.assertEqual(code, 1)
         self.assertEqual(stdout, "")
+        self.assertIn("blocked", stderr)
+        self.assertIn("--final", stderr)
 
-    def test_unproven_waits(self):
+    def test_unproven_opens_as_a_draft(self):
         code, stdout, stderr = lighthouse_pr(
             self, waiting_findings(), waiting_line("unproven", unproven=["export writes a csv"])
         )
 
-        self.assertEqual(code, 1)
-        self.assertEqual(stdout, "")
+        self.assertEqual(code, 0, stderr)
+        composed = json.loads(stdout)
+        self.assertIs(composed["draft"], True)
+        risk = risk_section(composed["body"])
+        self.assertIn("Verdict: unproven", risk)
+        self.assertIn("- Unproven: export writes a csv\n", risk)
 
     def test_final_opens_with_failures_listed(self):
         findings = {
@@ -216,6 +224,7 @@ class PullRequestTest(unittest.TestCase):
 
         self.assertEqual(code, 0, stderr)
         composed = json.loads(stdout)
+        self.assertIs(composed["draft"], True)
         risk = risk_section(composed["body"])
         self.assertIn("Verdict: failures", risk)
         self.assertIn("- Unresolved: suite: tests.test_export.test_header\n", risk)

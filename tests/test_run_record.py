@@ -206,6 +206,10 @@ def read_json(path):
         return json.load(handle)
 
 
+def verdict_written(line):
+    return {"verdict.json": line + "\n"}
+
+
 class Launched:
     def __init__(self, test, plan, home=None, feature="feat/x", env=None, extra=(), results=None, repo=None, store=None):
         self.repo = repo or scratch.make_repo(test)[0]
@@ -254,6 +258,7 @@ def green_plan(home, session):
             "suite.json": json.dumps(SUITE),
             "findings.json": json.dumps(FINDINGS),
             "retest.json": json.dumps({"retest": [], "carried_paths": [NEW_PATH]}),
+            **verdict_written(FAILURES_LINE),
         },
         "caller": {
             "path": caller_path(home, session),
@@ -307,7 +312,7 @@ def undescribed(label, value, entry):
 
 class RunRecordTest(unittest.TestCase):
     def test_launch_writes_start_and_end(self):
-        ran = Launched(self, {"output": claude_output(GREEN_LINE)}, feature="feat/Unified Metrics")
+        ran = Launched(self, {"files": verdict_written(GREEN_LINE), "output": claude_output(GREEN_LINE)}, feature="feat/Unified Metrics")
         self.assertEqual(ran.code, 0, ran.stderr)
         names = ran.event_files()
         self.assertEqual(len(names), 1)
@@ -384,7 +389,7 @@ class RunRecordTest(unittest.TestCase):
         self.assertIs(summary["imported"], False)
 
     def test_missing_sources_are_null(self):
-        ran = Launched(self, {"output": claude_output(GREEN_LINE)})
+        ran = Launched(self, {"files": verdict_written(GREEN_LINE), "output": claude_output(GREEN_LINE)})
         self.assertEqual(ran.code, 0, ran.stderr)
         summary = ran.summary()
         for key in ("core_commit", "feature_commit", "build", "suite", "paths"):
@@ -403,7 +408,7 @@ class RunRecordTest(unittest.TestCase):
         self.assertEqual(ran.code, 0, ran.stderr)
         summary = ran.summary()
         self.assertEqual(summary["verdict"], "blocked")
-        self.assertEqual(summary["reason"], "the child session exited 1 without a verdict line")
+        self.assertEqual(summary["reason"], "the child session exited 1 without writing verdict.json")
 
     def test_records_written_before_launch_json(self):
         ran = Launched(self, {"output": claude_output(GREEN_LINE)})
@@ -416,7 +421,7 @@ class RunRecordTest(unittest.TestCase):
 
     def test_truncated_marks_keep_the_run(self):
         cut = mark_entry("suite", "start", "2026-10-16T10:00:00Z") + "\n" + '{"step": "suite", "edge": "en'
-        ran = Launched(self, {"files": {"marks.jsonl": cut}, "output": claude_output(GREEN_LINE)})
+        ran = Launched(self, {"files": {"marks.jsonl": cut, **verdict_written(GREEN_LINE)}, "output": claude_output(GREEN_LINE)})
         self.assertEqual(ran.code, 0, ran.stderr)
         self.assertEqual(ran.stdout, GREEN_LINE + "\n")
         with open(os.path.join(ran.results, "launch.json"), encoding="utf-8") as handle:
@@ -574,7 +579,7 @@ class RunRecordTest(unittest.TestCase):
         store = os.path.join(scratch.temporary_folder(self, "lh-store-file-"), "store")
         with open(store, "w", encoding="utf-8") as handle:
             handle.write("not a folder\n")
-        ran = Launched(self, {"output": claude_output(GREEN_LINE)}, store=store)
+        ran = Launched(self, {"files": verdict_written(GREEN_LINE), "output": claude_output(GREEN_LINE)}, store=store)
         self.assertEqual(ran.code, 0, ran.stderr)
         self.assertEqual(ran.stdout, GREEN_LINE + "\n")
         self.assertEqual(read_json(os.path.join(ran.results, "launch.json")), json.loads(GREEN_LINE))

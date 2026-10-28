@@ -6,9 +6,11 @@ import shutil
 import subprocess
 import sys
 import time
+from contextlib import ExitStack
 from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
-from lighthouse_tool import metrics_writer, run_record, suite, verdict
+from lighthouse_tool import limits, metrics_writer, process_tree, results as run_files, run_record, suite, verdict
+from lighthouse_tool import repo as repository
 from lighthouse_tool.records import is_number, write_atomically
 from lighthouse_tool.repo import Parser, Refusal, require_root, toplevel
 
@@ -17,13 +19,23 @@ PLUGIN_ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 WORK = "work"
 CHILD = "child.json"
 LAUNCH = "launch.json"
-EARLIER_RUN_FILES = (LAUNCH, CHILD, *run_record.RESULTS_SOURCES)
+EARLIER_RUN_FILES = (
+    LAUNCH,
+    CHILD,
+    verdict.VERDICT,
+    run_files.CHECKS,
+    run_files.PLAN,
+    run_files.RECORD,
+    run_files.LIMITS,
+    *run_record.RESULTS_SOURCES,
+)
+FEATURE_PROFILE = ".lighthouse/profile.json"
 CAFFEINATE = "caffeinate"
 SYSTEMD_INHIBIT = "systemd-inhibit"
 NO_KEEP_AWAKE = "none"
 DARWIN_PROCESS_SELECTOR = 4
 KEEP_AWAKE_GRACE_SECONDS = 5
-PATH_FLAGS = ("repo", "results", "previous", "spec")
+PATH_FLAGS = ("repo", "results", "previous", "spec", "record")
 CHILD_STORE = "plugin-metrics"
 
 
@@ -40,6 +52,7 @@ def parser() -> Parser:
         arguments.add_argument(flag, required=True)
     arguments.add_argument("--previous")
     arguments.add_argument("--spec")
+    arguments.add_argument("--record")
     arguments.add_argument("--parent")
     arguments.add_argument("--final", action="store_true")
     return arguments
@@ -47,7 +60,7 @@ def parser() -> Parser:
 
 def located_parser() -> Parser:
     arguments = Parser(prog="lighthouse launch", add_help=False)
-    for flag in ("--repo", "--core", "--feature", "--results", "--previous", "--spec", "--parent"):
+    for flag in ("--repo", "--core", "--feature", "--results", "--previous", "--spec", "--record", "--parent"):
         arguments.add_argument(flag)
     arguments.add_argument("--final", action="store_true")
     return arguments
@@ -147,13 +160,15 @@ def launch(options: argparse.Namespace, recording: Optional[run_record.Recording
     work = os.path.join(os.path.abspath(options.results), WORK)
     os.makedirs(work, exist_ok=True)
     results = os.path.realpath(options.results)
+    found = write_limits(results, feature_profile(root, options.feature))
+    copy_record(results, options)
     keep_awake = keep_awake_tool()
-    child = run_child(child_command(options), work, keep_awake, child_environment(results))
+    child = run_child(child_command(options), work, keep_awake, child_environment(results), found.child_seconds)
     output = parsed_output(child.stdout)
     record = child_record(child, output, keep_awake)
     write_json(os.path.join(results, CHILD), record)
-    line = verdict_text(output)
-    reason = None if line is not None else blocked_reason(child, output)
+    line = None if child.problem is not None else printed_verdict(results, childs_line(output))
+    reason = None if line is not None else blocked_reason(child)
     printed = line if line is not None else blocked_text(reason)
     warnings = run_record.finished(recording, results, run_record.Ending(printed, reason, child.exit, record["session_id"]))
     try:
@@ -163,6 +178,45 @@ def launch(options: argparse.Namespace, recording: Optional[run_record.Recording
     summary = "lighthouse launch: the child exited {}".format(child.exit)
     told = summary if reason is None else "{}; blocked: {}".format(summary, reason)
     return 0, printed, with_warnings(told, warnings)
+
+
+def feature_profile(root: str, feature: str) -> Dict[str, Any]:
+    commit = repository.resolve_branch(root, feature)
+    if commit is None:
+        return {}
+    code, stdout, _ = repository.git(root, ["show", "{}:{}".format(commit, FEATURE_PROFILE)])
+    if code != 0:
+        return {}
+    try:
+        profile = json.loads(stdout)
+    except ValueError:
+        return {}
+    return profile if isinstance(profile, dict) else {}
+
+
+def write_limits(results: str, profile: Dict[str, Any]) -> limits.Limits:
+    found = limits.of(profile)
+    written = {
+        **found._asdict(),
+        "deadline": time.time() + found.run_seconds,
+        "measured": isinstance(profile.get("measured"), dict),
+    }
+    write_json(os.path.join(results, run_files.LIMITS), written)
+    return found
+
+
+def copy_record(results: str, options: argparse.Namespace) -> None:
+    source = os.path.abspath(options.record) if options.record is not None else run_files.record_beside(spec_path(options))
+    if source is None:
+        return
+    try:
+        shutil.copyfile(source, os.path.join(results, run_files.RECORD))
+    except OSError as error:
+        raise Refusal("cannot copy the record {}: {}".format(source, error.strerror or error))
+
+
+def spec_path(options: argparse.Namespace) -> Optional[str]:
+    return os.path.abspath(options.spec) if options.spec is not None else None
 
 
 def child_environment(results: str) -> Dict[str, str]:
@@ -179,6 +233,7 @@ def test_flags(options: argparse.Namespace) -> List[str]:
             ("results", options.results),
             ("previous", options.previous),
             ("spec", options.spec),
+            ("record", options.record),
         )
         if value is not None
     ]
@@ -218,25 +273,46 @@ def wrapped(command: List[str], keep_awake: str) -> List[str]:
     return command
 
 
-def run_child(command: List[str], work: str, keep_awake: str, environment: Dict[str, str]) -> ChildRun:
+def run_child(
+    command: List[str], work: str, keep_awake: str, environment: Dict[str, str], limit_seconds: float
+) -> ChildRun:
     started = time.monotonic()
-    try:
-        process = subprocess.Popen(
-            wrapped(command, keep_awake),
-            cwd=work,
-            env=environment,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-    except OSError as error:
-        return ChildRun(None, "", "the child session could not start: {}".format(error.strerror or error), 0.0)
-    guard = awake_guard(process.pid) if keep_awake == CAFFEINATE else None
-    stdout, _ = process.communicate()
+    with ExitStack() as guarding, ExitStack() as owning:
+        try:
+            process = owning.enter_context(
+                process_tree.started(
+                    wrapped(command, keep_awake),
+                    0.0,
+                    cwd=work,
+                    env=environment,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                )
+            )
+        except OSError as error:
+            return ChildRun(None, "", "the child session could not start: {}".format(error.strerror or error), 0.0)
+        guard = awake_guard(process.pid) if keep_awake == CAFFEINATE else None
+        if guard is not None:
+            guarding.callback(release_guard, guard)
+        try:
+            stdout, _ = process.communicate(timeout=limit_seconds)
+            problem = None
+        except subprocess.TimeoutExpired:
+            stdout = stopped_output(process)
+            problem = "the child session ran past its time limit of {:g} seconds".format(limit_seconds)
     seconds = time.monotonic() - started
-    if guard is not None:
-        release_guard(guard)
-    return ChildRun(process.returncode, stdout.decode("utf-8", errors="replace"), None, seconds)
+    exit_status = process.returncode if problem is None else None
+    return ChildRun(exit_status, stdout.decode("utf-8", errors="replace"), problem, seconds)
+
+
+def stopped_output(process: "subprocess.Popen[bytes]") -> bytes:
+    process_tree.stop(process)
+    try:
+        stdout, _ = process.communicate(timeout=KEEP_AWAKE_GRACE_SECONDS)
+    except subprocess.TimeoutExpired as late:
+        return late.output or b""
+    return stdout or b""
 
 
 def awake_guard(pid: int) -> Optional["subprocess.Popen[bytes]"]:
@@ -308,29 +384,42 @@ def child_record(child: ChildRun, output: Optional[Dict[str, Any]], keep_awake: 
     }
 
 
-def verdict_text(output: Optional[Dict[str, Any]]) -> Optional[str]:
+def childs_line(output: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     result = output.get("result") if output is not None else None
     if not isinstance(result, str):
         return None
-    lines = [text.strip() for text in result.splitlines()]
-    found = [text for text in lines if is_verdict_line(text)]
+    lines = [verdict_object(text.strip()) for text in result.splitlines()]
+    found = [line for line in lines if line is not None]
     return found[-1] if found else None
 
 
-def is_verdict_line(text: str) -> bool:
+def verdict_object(text: str) -> Optional[Dict[str, Any]]:
     try:
         line = json.loads(text)
     except ValueError:
-        return False
-    return isinstance(line, dict) and "verdict" in line
+        return None
+    return line if isinstance(line, dict) and "verdict" in line else None
 
 
-def blocked_reason(child: ChildRun, output: Optional[Dict[str, Any]]) -> str:
+def written_verdict(results: str) -> Optional[Dict[str, Any]]:
+    line = verdict.optional_json(os.path.join(results, verdict.VERDICT))
+    return line if isinstance(line, dict) and line.get("verdict") in verdict.VERDICTS else None
+
+
+def printed_verdict(results: str, childs_line: Optional[Dict[str, Any]]) -> Optional[str]:
+    written = written_verdict(results)
+    if written is not None:
+        pr = childs_line.get("pr") if childs_line is not None else None
+        return json.dumps({**written, "pr": pr if isinstance(pr, str) else None})
+    if childs_line is not None and childs_line.get("verdict") == "blocked":
+        return json.dumps(childs_line)
+    return None
+
+
+def blocked_reason(child: ChildRun) -> str:
     if child.problem is not None:
         return child.problem
-    if output is None:
-        return "the child session exited {} and its output is not JSON".format(child.exit)
-    return "the child session exited {} without a verdict line".format(child.exit)
+    return "the child session exited {} without writing {}".format(child.exit, verdict.VERDICT)
 
 
 def blocked_text(reason: str) -> str:

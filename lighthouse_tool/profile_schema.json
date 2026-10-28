@@ -36,6 +36,9 @@
             },
             "credentials": {"type": "list", "items": {"type": "string"}},
             "trials": {"type": "integer", "minimum": 1}
+          },
+          "optional": {
+            "reach": {"type": "string"}
           }
         }
       },
@@ -87,7 +90,30 @@
           "ready": {"type": "string"}
         }
       },
-      "test_data": {"type": "string"}
+      "test_data": {"type": "string"},
+      "measured": {
+        "type": "object",
+        "optional": {
+          "commit": {"type": "string"},
+          "measured_at": {"type": "string"},
+          "setup_seconds": {"type": ["number", "null"]},
+          "build_seconds": {"type": ["number", "null"]},
+          "suite_seconds": {"type": ["number", "null"]},
+          "suite_exit": {"type": ["integer", "null"]},
+          "start_seconds": {"type": ["number", "null"]},
+          "ready": {"type": ["boolean", "null"]},
+          "drivers": {
+            "type": "map",
+            "values": {
+              "type": "object",
+              "optional": {
+                "seconds": {"type": ["number", "null"]},
+                "exit": {"type": ["integer", "null"]}
+              }
+            }
+          }
+        }
+      }
     }
   }
 }
