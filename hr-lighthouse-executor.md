@@ -1,6 +1,6 @@
 # hr-lighthouse-executor: Run 4 of the harness-redesign program: lighthouse executes locked K1 lines and computes its verdict from K3 results
 Status: active
-Updated: 2026-10-28T14:53:22.794Z
+Updated: 2026-10-28T14:53:46.084Z
 Next ids: c7 D2 R4 S1
 
 ## Goal
@@ -18,7 +18,7 @@ Run 4 of the harness-redesign program (~/.mitosis/harness-redesign/PROGRAM.md, l
 
 ## Where things stand
 
-The FEATURE branch feat/hr-lighthouse-executor holds the CI fix (lighthouse#21) and the 60 locked tests at b9eabdc, each failing at f4da7f7 through accept.zsh; the receipt-lock line is in receipts-lock.txt. The MSP executor is on mitosis/executor at 7effa35 (worktree ~/.mitosis/runs/lighthouse/hr-lighthouse-executor/trees/executor), and its review verdict is green at round 5: no blocker, every earlier advisory fixed by its fix commits, all 60 locked checks passing (O4) and the full suite passing under Python 3.15 and 3.9 (420 tests, 3 skipped each, none of them an acceptance test, so no slow check needs a rerun). The validator rejected round 5's S1 (a second group SIGKILL after reap reaching a reused id) as unreachable: the second kill met no process, and wrapping the PID space takes about 154 s against a 5 s window; the automated commit check's MEDIUM flag on the same change goes to the final report with that result. A fresh fix agent is fixing the one confirmed advisory, C1 (gone_by and ended_by in tests/test_process_tree.py duplicate one poll loop), directly on the branch. review/report-notes.txt holds what goes only to the final report.
+The FEATURE branch feat/hr-lighthouse-executor holds the CI fix (lighthouse#21) and the 60 locked tests at b9eabdc, each failing at f4da7f7 through accept.zsh; the receipt-lock line is in receipts-lock.txt. The MSP executor is on mitosis/executor at 7effa35 (worktree ~/.mitosis/runs/lighthouse/hr-lighthouse-executor/trees/executor), and its review verdict is green at round 5: no blocker, every earlier advisory fixed by its fix commits, all 60 locked checks passing (O4) and the full suite passing under Python 3.15 and 3.9 (420 tests, 3 skipped each, none of them an acceptance test, so no slow check needs a rerun). The validator rejected round 5's S1 (a second group SIGKILL after reap reaching a reused id) as unreachable: the second kill met no process, and wrapping the PID space takes about 154 s against a 5 s window; the automated commit check's MEDIUM flag on the same change goes to the final report with that result. A fresh fix agent is fixing the one confirmed advisory, C1 (gone_by and ended_by in tests/test_process_tree.py duplicate one poll loop), directly on the branch. origin/feat/hr-lighthouse-executor contains origin/main. The checkout's GLOSSARY.md terms, ADRs 0010 and 0011 and the ADR 0007 status line are interphase's, and the branch leaves those paths at their FEATURE state, so they copy into the worktree unchanged for the ship commit. review/report-notes.txt holds what goes only to the final report.
 
 ## Next step
 
