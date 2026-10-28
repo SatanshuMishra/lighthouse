@@ -1,6 +1,6 @@
 # hr-lighthouse-executor: Run 4 of the harness-redesign program: lighthouse executes locked K1 lines and computes its verdict from K3 results
 Status: parked
-Updated: 2026-10-28T20:17:33.409Z
+Updated: 2026-10-28T20:17:36.019Z
 Next ids: c7 D3 R4 S1
 
 ## Goal
@@ -22,7 +22,7 @@ The FEATURE branch feat/hr-lighthouse-executor holds the CI fix (lighthouse#21) 
 
 ## Next step
 
-Read lighthouse:test run 1's last JSON line and the FEATURE suite results under both Pythons; on green or an opened FEATURE pull request, bind it with Auto-fix on, park the thread for Clean-up and update run 4's row in PROGRAM.md; on failures or blocked, record them as integration round 1 findings and send each fixable kind to a fresh fix agent with a receipt test first.
+awaiting-merge: the owner starts Clean-up by saying the FEATURE pull request https://github.com/SatanshuMishra/lighthouse/pull/23 merged; Clean-up then resumes this thread, reads CHARTER.md and removes what the run recorded with pipeline clean.
 
 Needs: D2.
 
