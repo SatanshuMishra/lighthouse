@@ -49,6 +49,50 @@ with mock.patch.object(limits, "of", lambda found: measured(found)._replace(chec
 os._exit(0)
 """
 
+ISOLATED_HOST = """
+import os
+import shlex
+import signal
+import sys
+sys.path.insert(0, sys.argv[1])
+from lighthouse_tool import suite
+signal.signal(signal.SIGINT, signal.default_int_handler)
+signal.signal(signal.SIGTERM, signal.SIG_DFL)
+signal.signal(signal.SIGHUP, signal.SIG_DFL)
+folder, pids = sys.argv[2], sys.argv[3]
+step = "echo $$ >> {} ; exec sleep 30".format(shlex.quote(pids))
+profile = {"suite": {"command": "true", "isolated": True, "timeout_minutes": 1}, "setup": {"command": step}}
+trees = {build: {"path": folder} for build in suite.BUILDS}
+logs = {build: os.path.join(folder, build + ".log") for build in suite.BUILDS}
+suite.both_builds(profile, (), trees, logs, None)
+"""
+
+WINDOW_HOST = """
+import os
+import signal
+import sys
+sys.path.insert(0, sys.argv[1])
+from unittest import mock
+from lighthouse_tool import process_tree, suite
+signal.signal(signal.SIGTERM, signal.SIG_DFL)
+folder, pids = sys.argv[2], sys.argv[3]
+spawn = process_tree.subprocess.Popen
+
+
+def spawned_then_signalled(command, *arguments, **options):
+    process = spawn(command, *arguments, **options)
+    if list(command[:2]) == ["/bin/sh", "-c"]:
+        with open(pids, "a") as handle:
+            handle.write(str(process.pid) + " ")
+        os.kill(os.getpid(), signal.SIGTERM)
+    return process
+
+
+profile = {"suite": {"command": "true", "timeout_minutes": 1}}
+with mock.patch.object(process_tree.subprocess, "Popen", spawned_then_signalled):
+    suite.run_step("setup", "exec sleep 30", folder, "core", os.path.join(folder, "core.log"), profile, ())
+"""
+
 
 def fifo_reader(test, path):
     os.mkfifo(path)
@@ -105,6 +149,43 @@ def stop_host(host):
         host.wait(timeout=HOST_SECONDS)
 
 
+def written_pids(path, count, seconds):
+    deadline = time.monotonic() + seconds
+    found = []
+    while len(found) < count and time.monotonic() < deadline:
+        found = listed_pids(path)
+        if len(found) < count:
+            time.sleep(POLL_SECONDS)
+    return found if len(found) >= count else None
+
+
+def listed_pids(path):
+    try:
+        with open(path) as handle:
+            return [int(word) for word in handle.read().split() if word.isdigit()]
+    except OSError:
+        return []
+
+
+def kill_listed_quietly(path):
+    for pid in listed_pids(path):
+        kill_quietly(pid)
+
+
+def started_host(test, script, folder, pids):
+    host = subprocess.Popen(
+        [sys.executable, "-c", script, scratch.ROOT, folder, pids],
+        env=scratch.environment(scratch.make_home(test)),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    test.addCleanup(kill_listed_quietly, pids)
+    test.addCleanup(stop_host, host)
+    return host
+
+
 class ProcessTreeTest(unittest.TestCase):
     def test_interrupted_launch_stops_the_child(self):
         folder = scratch.temporary_folder(self, "lh-tree-")
@@ -156,6 +237,39 @@ class ProcessTreeTest(unittest.TestCase):
 
         self.assertTrue(gone, "the check {} outlived the child's limit".format(pid))
         self.assertFalse(os.path.exists(marker), "the check finished after the child's limit")
+
+    def test_signalled_isolated_suite_stops_its_steps(self):
+        for number in (signal.SIGTERM, signal.SIGHUP, signal.SIGINT):
+            with self.subTest(signal=signal.Signals(number).name):
+                folder = scratch.temporary_folder(self, "lh-tree-")
+                pids = os.path.join(folder, "steps.pid")
+                host = started_host(self, ISOLATED_HOST, folder, pids)
+                found = written_pids(pids, 2, PID_SECONDS)
+                self.assertIsNotNone(found, "the two builds' steps never wrote their pids")
+
+                os.kill(host.pid, number)
+                deadline = time.monotonic() + INTERRUPT_GONE_SECONDS
+                alive = [pid for pid in found if not gone_by(pid, deadline)]
+
+                for pid in alive:
+                    kill_quietly(pid)
+                self.assertEqual(alive, [], "steps outlived the signalled isolated suite")
+                host.wait(timeout=HOST_SECONDS)
+
+    def test_signal_between_start_and_ownership_stops_the_step(self):
+        folder = scratch.temporary_folder(self, "lh-tree-")
+        pids = os.path.join(folder, "step.pid")
+        host = started_host(self, WINDOW_HOST, folder, pids)
+        host.wait(timeout=HOST_SECONDS)
+        found = written_pids(pids, 1, PID_SECONDS)
+        self.assertIsNotNone(found, "the step was never spawned")
+
+        deadline = time.monotonic() + INTERRUPT_GONE_SECONDS
+        alive = [pid for pid in found if not gone_by(pid, deadline)]
+
+        for pid in alive:
+            kill_quietly(pid)
+        self.assertEqual(alive, [], "the step outlived a signal sent before its ownership")
 
     def test_owned_restores_the_callers_handlers(self):
         from lighthouse_tool import process_tree
