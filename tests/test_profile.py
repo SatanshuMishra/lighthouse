@@ -5,6 +5,7 @@ import unittest
 from tests import scratch
 
 PROFILE_PATH = ".lighthouse/profile.json"
+MEASURED_UPGRADE = {"field": "measured", "detail": "measured is not set, and lighthouse:doctor writes it"}
 
 
 def profile_check(test, work):
@@ -48,6 +49,18 @@ class ProfileCheckTest(unittest.TestCase):
             "paths": ["src/app.py", "README.md"],
             "sign_in": {"method": "command", "command": "APP_MODE=test sh scripts/sign_in.sh"},
             "credentials": ["APP_USER"],
+            "reach": "python3 --version",
+        }
+        measured = {
+            "commit": scratch.run_git(work, "rev-parse", "HEAD").strip(),
+            "measured_at": "2026-10-28T00:00:00.000Z",
+            "setup_seconds": None,
+            "build_seconds": 0.5,
+            "suite_seconds": 12.25,
+            "suite_exit": 0,
+            "start_seconds": None,
+            "ready": False,
+            "drivers": {"cli": {"seconds": 0.01, "exit": 0}},
         }
         scratch.write_profile(
             work,
@@ -59,6 +72,7 @@ class ProfileCheckTest(unittest.TestCase):
                 facts={"start_port": {"value": None, "confirmed": False, "recheck": "read src/app.py"}},
                 build={"command": "python3 -m compileall -q src"},
                 start={"command": "python3 src/app.py", "ready": "app"},
+                measured=measured,
             ),
         )
 
@@ -156,7 +170,7 @@ class ProfileCheckTest(unittest.TestCase):
         code, report, stderr = profile_check(self, work)
 
         self.assertEqual(code, 0, stderr)
-        self.assertEqual(report, {"ok": True, "problems": [], "upgrades": []})
+        self.assertEqual(report, {"ok": True, "problems": [], "upgrades": [MEASURED_UPGRADE]})
 
     def test_reports_a_vanished_setup_script(self):
         work, _ = scratch.make_repo(self)
@@ -179,7 +193,7 @@ class ProfileCheckTest(unittest.TestCase):
         code, report, stderr = profile_check(self, work)
 
         self.assertEqual(code, 0, stderr)
-        self.assertEqual(report, {"ok": True, "problems": [], "upgrades": []})
+        self.assertEqual(report, {"ok": True, "problems": [], "upgrades": [MEASURED_UPGRADE]})
 
     def test_accepts_shell_builtins_and_keywords(self):
         work, _ = scratch.make_repo(self)
@@ -196,7 +210,7 @@ class ProfileCheckTest(unittest.TestCase):
         code, report, stderr = profile_check(self, work)
 
         self.assertEqual(code, 0, stderr)
-        self.assertEqual(report, {"ok": True, "problems": [], "upgrades": []})
+        self.assertEqual(report, {"ok": True, "problems": [], "upgrades": [MEASURED_UPGRADE]})
 
 
     def test_profile_accepts_rerun(self):
@@ -253,7 +267,76 @@ class ProfileCheckTest(unittest.TestCase):
 
         self.assertEqual(code, 0, stderr)
         self.assertEqual(report["problems"], [])
-        self.assertEqual([item["field"] for item in report["upgrades"]], ["suite.rerun", "suite.isolated"])
+        self.assertEqual([item["field"] for item in report["upgrades"]], ["suite.rerun", "suite.isolated", "measured"])
+
+    def test_profile_rejects_a_mistyped_measurement(self):
+        work, _ = scratch.make_repo(self)
+        scratch.write_profile(work, scratch.sample_profile(measured={"suite_exit": "passed"}))
+
+        code, report, _ = profile_check(self, work)
+
+        self.assertEqual(code, 1)
+        self.assertEqual(problem_kinds(report), ["schema"])
+        self.assertIn("measured.suite_exit", details_of(report, "schema")[0])
+
+    def test_unresolvable_reach_is_not_a_problem(self):
+        work, _ = scratch.make_repo(self)
+        surface = {**scratch.sample_profile()["surfaces"][0], "reach": "no-such-lighthouse-program --version"}
+        scratch.write_profile(work, scratch.sample_profile(surfaces=[surface]))
+
+        code, report, stderr = profile_check(self, work)
+
+        self.assertEqual(code, 0, stderr)
+        self.assertEqual(report["problems"], [])
+
+
+class ProfileMeasureTest(unittest.TestCase):
+    def measure(self, work, *extra):
+        env = scratch.environment(scratch.make_home(self))
+        code, stdout, _ = scratch.run_lighthouse(["profile", "measure", "--repo", work, *extra], env)
+        return code, json.loads(stdout)
+
+    def test_measure_refuses_a_missing_profile(self):
+        work, _ = scratch.make_repo(self)
+
+        code, printed = self.measure(work)
+
+        self.assertEqual(code, 2)
+        self.assertIn("no readable profile", printed["error"])
+
+    def test_measure_refuses_a_profile_without_a_suite_command(self):
+        work, _ = scratch.make_repo(self)
+        scratch.write_profile(work, scratch.sample_profile(suite={"junit": None, "timeout_minutes": None}))
+
+        code, printed = self.measure(work)
+
+        self.assertEqual(code, 2)
+        self.assertIn("no suite command", printed["error"])
+
+    def test_measure_waits_for_a_log_line_and_replaces_an_old_measurement(self):
+        work, _ = scratch.make_repo(self)
+        missing = {**scratch.sample_profile()["surfaces"][0], "name": "missing", "reach": "no-such-lighthouse-program"}
+        profile = scratch.sample_profile(
+            suite={"command": "exit 3", "junit": None, "timeout_minutes": None},
+            setup={"command": "true"},
+            start={"command": "echo serving now && exec sleep 30", "ready": "serving now"},
+            surfaces=[scratch.sample_profile()["surfaces"][0], missing],
+            measured={"suite_seconds": 0.001, "suite_exit": 0, "drivers": {"stale": {"seconds": 1, "exit": 0}}},
+        )
+        scratch.write_profile(work, profile)
+
+        code, printed = self.measure(work)
+
+        self.assertEqual(code, 0, printed)
+        measured = printed["measured"]
+        self.assertEqual(measured["suite_exit"], 3)
+        self.assertIsInstance(measured["setup_seconds"], float)
+        self.assertIsNone(measured["build_seconds"])
+        self.assertIs(measured["ready"], True)
+        self.assertEqual(sorted(measured["drivers"]), ["missing"])
+        self.assertEqual(printed["available"], {"cli": True, "missing": False})
+        with open(os.path.join(work, PROFILE_PATH), encoding="utf-8") as handle:
+            self.assertEqual(json.load(handle)["measured"], measured)
 
 
 class ProfilePublishTest(unittest.TestCase):
