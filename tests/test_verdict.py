@@ -3,6 +3,7 @@ import os
 import unittest
 
 from tests import scratch
+from tests import test_k3_verdict as k3
 
 
 def results_folder(test, files=()):
@@ -637,6 +638,20 @@ class VerdictTest(unittest.TestCase):
     def test_retest_path_with_copied_evidence_spelled_in_capitals_is_unproven(self):
         results = results_folder(self, ["evidence/export.txt", "previous/evidence/import.txt"])
         self.assert_retest_not_driven(results, ["PREVIOUS/evidence/import.txt"])
+
+
+
+class MixedRunsTest(unittest.TestCase):
+    def test_check_that_failed_then_could_not_run_is_unproven(self):
+        results = k3.results_folder(self)
+        failed = k3.write_evidence(results, "evidence/checks/C1.1-1.log")
+        stopped = k3.write_evidence(results, "evidence/checks/C1.1-2.log")
+        k3.write_json(results, "plan.json", k3.plan_with([k3.exact_check()]))
+        k3.write_checks(results, [k3.k3_result("fail", [failed]), k3.k3_result("could-not-run", [stopped])])
+        line = k3.run_verdict(self, results)
+        self.assertEqual(line["verdict"], "unproven", line)
+        self.assertIn("C1.1", line["unproven"])
+        self.assertNotIn("C1.1", line["failures"])
 
 
 if __name__ == "__main__":
