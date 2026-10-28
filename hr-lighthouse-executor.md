@@ -1,6 +1,6 @@
 # hr-lighthouse-executor: Run 4 of the harness-redesign program: lighthouse executes locked K1 lines and computes its verdict from K3 results
 Status: active
-Updated: 2026-10-28T12:38:20.880Z
+Updated: 2026-10-28T13:02:59.395Z
 Next ids: c7 D2 R3 S1
 
 ## Goal
@@ -18,11 +18,11 @@ Run 4 of the harness-redesign program (~/.mitosis/harness-redesign/PROGRAM.md, l
 
 ## Where things stand
 
-The FEATURE branch feat/hr-lighthouse-executor holds the CI fix (lighthouse#21) and the 60 locked tests at b9eabdc, each failing at f4da7f7 through accept.zsh; the receipt-lock line is in receipts-lock.txt. The MSP executor is on mitosis/executor at 312f746 (worktree ~/.mitosis/runs/lighthouse/hr-lighthouse-executor/trees/executor), where all 60 locked checks pass (O4) and the full suite passes (414 tests, 3 skipped). Round 2's verdict is loop: the four round 1 blockers are fixed; C1 (with suite.isolated true, a SIGTERM or SIGHUP to lighthouse suite leaves the worker-thread steps running past their limits) is a confirmed blocker of kind background process hang, diagnosed fixable and recorded (process_tree owns signal handling for each process's whole life: a guarded() handler context, a started() context that blocks signals around spawn and registration, and an in_parallel() pool; it also names what round 1's diagnosis missed); S3 (a signal landing while the owned lock is held deadlocks the forwarder) is an advisory; C2, S1 and S2 are rejected. Fix agent D runs C1 and S3 under review/round-2/fix-brief.md. review/report-notes.txt holds what goes only to the final report.
+The FEATURE branch feat/hr-lighthouse-executor holds the CI fix (lighthouse#21) and the 60 locked tests at b9eabdc, each failing at f4da7f7 through accept.zsh; the receipt-lock line is in receipts-lock.txt. The MSP executor is on mitosis/executor at 960d4b3 (worktree ~/.mitosis/runs/lighthouse/hr-lighthouse-executor/trees/executor). Round 2's blocker C1 (background process hang) and advisory S3 (signal handler deadlock) are fixed there: process_tree owns signal handling for each process's whole life, the receipts in tests/test_process_tree.py were red at 312f746 and pass, the selecting check is empty, the locked files are untouched, and there is no stash and no trailer. Review round 3 reviews the fix diff from 312f746: its diffs and the code-reviewer and security-reviewer briefs are written, and the locked checks (O4) and the full suite run at 960d4b3. review/report-notes.txt holds what goes only to the final report.
 
 ## Next step
 
-When fix agent D reports, check its commits, locked files and suite, then start review round 3 on the fix diff with previous head 312f746.
+When the locked checks and the suite at 960d4b3 finish, keep the suite output as round 3's suite file, dispatch the code-reviewer and security-reviewer on the round 3 briefs, then candidates, validator, record and verdict.
 
 Needs: D1.
 
