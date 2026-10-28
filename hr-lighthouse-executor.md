@@ -1,6 +1,6 @@
 # hr-lighthouse-executor: Run 4 of the harness-redesign program: lighthouse executes locked K1 lines and computes its verdict from K3 results
 Status: active
-Updated: 2026-10-28T08:51:22.914Z
+Updated: 2026-10-28T09:07:46.738Z
 Next ids: c7 D1 R1 S1
 
 ## Goal
@@ -18,11 +18,11 @@ Run 4 of the harness-redesign program (~/.mitosis/harness-redesign/PROGRAM.md, l
 
 ## Where things stand
 
-Checkout synced at db3e5bb; readiness reports nothing open; receipts.config.json is already committed, so receipts setup is skipped. Stage 1 (interphase) is next.
+interphase Phase 9: spec, record and items written and passing their checks (7 Steps, one MSP executor, 53 K1 acceptance lines, 24 assumptions); the one spec review is running; glossary terms and ADRs 0010 and 0011 are written.
 
 ## Next step
 
-Invoke interphase:feature with the request citing I1 to I6, L1 to L6, the contract schemas and the O10 line, ending Work autonomously.
+Fix what the spec review finds, hand off (guard verify, status handed-off), then cut the FEATURE branch and dispatch the O2 check author.
 
 ## Decisions in force
 
@@ -35,5 +35,6 @@ Invoke interphase:feature with the request citing I1 to I6, L1 to L6, the contra
 - Program: /Users/satanshumishra/.mitosis/harness-redesign/PROGRAM.md (run 4 of 7; intent I1 to I6, contracts K1 to K7, overrides O1 to O10)
 - Audit: /Users/satanshumishra/.mitosis/harness-redesign/audit/lighthouse.md
 - Contracts: /Users/satanshumishra/.mitosis/harness-redesign/contracts/ (k1-acceptance, k2-locked, k3-check-result, k6-outcome)
-- Run home: /Users/satanshumishra/.mitosis/lighthouse/hr-lighthouse-executor/
-- Worked example: /Users/satanshumishra/.mitosis/VMLab/hr-vmlab-capabilities/
+- Spec, decisions, record, items: /Users/satanshumishra/Documents/DevLabs/lighthouse/docs/specs/hr-lighthouse-executor.*
+- Run home: /Users/satanshumishra/.mitosis/lighthouse/hr-lighthouse-executor/ (acceptance.jsonl holds the 53 K1 lines)
+- Worked example: run 1's files were cleaned up after its merge; its charter, worker rules, run script and lock line shapes are copied into this run home
