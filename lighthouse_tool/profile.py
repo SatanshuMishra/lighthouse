@@ -12,7 +12,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from lighthouse_tool import credentials, limits, process_tree, suite, wait
 from lighthouse_tool import repo as repository
-from lighthouse_tool.records import is_number, utc_now
+from lighthouse_tool.records import is_number, utc_now, write_atomically
 from lighthouse_tool.repo import Parser, Refusal, checked_git, require_root
 
 Outcome = Tuple[int, Optional[str], Optional[str]]
@@ -583,6 +583,10 @@ def measure_command(args: List[str]) -> Outcome:
         raise Refusal("there is no readable profile at {}".format(profile_path))
     if suite.step_command(profile, "suite") is None:
         raise Refusal("the profile records no suite command")
+    written_paths = (profile_path,) if options.profile else (os.path.dirname(profile_path), profile_path)
+    linked = [path for path in written_paths if os.path.islink(path)]
+    if linked:
+        raise Refusal("{} is a symbolic link, so lighthouse will not write through it".format(linked[0]))
     unmeasured = {key: value for key, value in profile.items() if key != "measured"}
     holder = tempfile.mkdtemp(prefix="lighthouse-measure-")
     try:
@@ -590,8 +594,7 @@ def measure_command(args: List[str]) -> Outcome:
     finally:
         shutil.rmtree(holder, ignore_errors=True)
     written = {**with_availability(profile, available), "measured": measured}
-    with open(profile_path, "w", encoding="utf-8") as profile_file:
-        profile_file.write(json.dumps(written, indent=2) + "\n")
+    write_atomically(profile_path, json.dumps(written, indent=2) + "\n")
     reported = {
         item["name"]: item["available"]
         for item in surfaces(written)

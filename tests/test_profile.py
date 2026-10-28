@@ -357,6 +357,29 @@ class ProfileMeasureTest(unittest.TestCase):
         self.assertIs(printed["measured"]["ready"], False)
         self.assertIsNone(printed["measured"]["start_seconds"])
 
+    def test_measure_refuses_a_linked_profile_path(self):
+        shared = json.dumps(scratch.sample_profile(suite={"command": "true", "junit": None, "timeout_minutes": None}))
+        for linked in (".lighthouse", PROFILE_PATH):
+            with self.subTest(linked=linked):
+                work, _ = scratch.make_repo(self)
+                outside = scratch.temporary_folder(self, "lh-outside-")
+                shared_path = os.path.join(outside, "profile.json")
+                with open(shared_path, "w", encoding="utf-8") as handle:
+                    handle.write(shared)
+                if linked == PROFILE_PATH:
+                    os.makedirs(os.path.join(work, ".lighthouse"))
+                    os.symlink(shared_path, os.path.join(work, PROFILE_PATH))
+                else:
+                    os.symlink(outside, os.path.join(work, ".lighthouse"))
+
+                code, printed = self.measure(work)
+
+                self.assertEqual(code, 2, printed)
+                self.assertIn("symbolic link", printed["error"])
+                self.assertEqual(sorted(os.listdir(outside)), ["profile.json"])
+                with open(shared_path, encoding="utf-8") as handle:
+                    self.assertEqual(handle.read(), shared)
+
 
 class ProfilePublishTest(unittest.TestCase):
     def test_publish_commits_to_the_feature_branch(self):
