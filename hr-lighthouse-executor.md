@@ -1,6 +1,6 @@
 # hr-lighthouse-executor: Run 4 of the harness-redesign program: lighthouse executes locked K1 lines and computes its verdict from K3 results
 Status: active
-Updated: 2026-10-28T12:26:24.048Z
+Updated: 2026-10-28T12:26:25.420Z
 Next ids: c7 D2 R3 S1
 
 ## Goal
@@ -22,7 +22,7 @@ The FEATURE branch feat/hr-lighthouse-executor holds the CI fix (lighthouse#21) 
 
 ## Next step
 
-When both round 2 reviewers report, collect their findings, then run candidates, the validator, record and verdict.
+When the round 2 validator reports, save its verdicts, then run pipeline record and pipeline verdict, and act on the outcome.
 
 Needs: D1.
 
