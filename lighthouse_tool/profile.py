@@ -5,13 +5,12 @@ import posixpath
 import re
 import shlex
 import shutil
-import signal
 import subprocess
 import tempfile
 import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from lighthouse_tool import credentials, limits, suite, wait
+from lighthouse_tool import credentials, limits, process_tree, suite, wait
 from lighthouse_tool import repo as repository
 from lighthouse_tool.records import is_number, utc_now
 from lighthouse_tool.repo import Parser, Refusal, checked_git, require_root
@@ -677,31 +676,16 @@ def started_ready(root: str, profile: Dict[str, Any], start_log: str) -> Tuple[O
     check = ready_check(root, ready, start_log)
     with open(start_log, "wb") as output:
         try:
-            process = subprocess.Popen(
+            process = process_tree.start(
                 ["/bin/sh", "-c", command],
                 cwd=root,
                 env={**os.environ, "LIGHTHOUSE_BUILD": "feature"},
                 stdin=subprocess.DEVNULL,
                 stdout=output,
                 stderr=subprocess.STDOUT,
-                start_new_session=True,
             )
         except OSError:
             return None, False
-        try:
+        with process_tree.owned(process, STOP_GRACE_SECONDS):
             passed, seconds = wait.wait_until(check, READY_POLL_SECONDS, limits.of(profile).suite_seconds)
-        finally:
-            stop_started(process)
     return (rounded(seconds), True) if passed else (None, False)
-
-
-def stop_started(process: "subprocess.Popen[bytes]") -> None:
-    try:
-        os.killpg(process.pid, signal.SIGTERM)
-    except OSError:
-        pass
-    try:
-        suite.exited_unreaped(process, STOP_GRACE_SECONDS)
-    except subprocess.TimeoutExpired:
-        pass
-    wait.stop_group(process)

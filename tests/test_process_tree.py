@@ -157,6 +157,27 @@ class ProcessTreeTest(unittest.TestCase):
         self.assertTrue(gone, "the check {} outlived the child's limit".format(pid))
         self.assertFalse(os.path.exists(marker), "the check finished after the child's limit")
 
+    def test_owned_restores_the_callers_handlers(self):
+        from lighthouse_tool import process_tree
+
+        def caller_handler(number, frame):
+            return None
+
+        numbers = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
+        before = {number: signal.getsignal(number) for number in numbers}
+        for number in numbers:
+            self.addCleanup(signal.signal, number, before[number])
+        signal.signal(signal.SIGTERM, caller_handler)
+        expected = {number: signal.getsignal(number) for number in numbers}
+        process = process_tree.start(["/bin/sh", "-c", "exec sleep 30"], stdin=subprocess.DEVNULL)
+
+        with process_tree.owned(process):
+            installed = {number: signal.getsignal(number) for number in numbers}
+
+        self.assertNotEqual(installed[signal.SIGTERM], caller_handler)
+        self.assertEqual({number: signal.getsignal(number) for number in numbers}, expected)
+        self.assertIsNotNone(process.returncode)
+
 
 if __name__ == "__main__":
     unittest.main()

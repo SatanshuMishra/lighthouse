@@ -8,7 +8,7 @@ import sys
 import time
 from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
-from lighthouse_tool import limits, metrics_writer, results as run_files, run_record, suite, verdict, wait
+from lighthouse_tool import limits, metrics_writer, process_tree, results as run_files, run_record, suite, verdict
 from lighthouse_tool import repo as repository
 from lighthouse_tool.records import is_number, write_atomically
 from lighthouse_tool.repo import Parser, Refusal, require_root, toplevel
@@ -287,33 +287,35 @@ def run_child(
 ) -> ChildRun:
     started = time.monotonic()
     try:
-        process = subprocess.Popen(
+        process = process_tree.start(
             wrapped(command, keep_awake),
             cwd=work,
             env=environment,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            start_new_session=True,
         )
     except OSError as error:
         return ChildRun(None, "", "the child session could not start: {}".format(error.strerror or error), 0.0)
     guard = awake_guard(process.pid) if keep_awake == CAFFEINATE else None
     try:
-        stdout, _ = process.communicate(timeout=limit_seconds)
-        problem = None
-    except subprocess.TimeoutExpired:
-        stdout = stopped_output(process)
-        problem = "the child session ran past its time limit of {:g} seconds".format(limit_seconds)
+        with process_tree.owned(process):
+            try:
+                stdout, _ = process.communicate(timeout=limit_seconds)
+                problem = None
+            except subprocess.TimeoutExpired:
+                stdout = stopped_output(process)
+                problem = "the child session ran past its time limit of {:g} seconds".format(limit_seconds)
+    finally:
+        if guard is not None:
+            release_guard(guard)
     seconds = time.monotonic() - started
-    if guard is not None:
-        release_guard(guard)
     exit_status = process.returncode if problem is None else None
     return ChildRun(exit_status, stdout.decode("utf-8", errors="replace"), problem, seconds)
 
 
 def stopped_output(process: "subprocess.Popen[bytes]") -> bytes:
-    wait.stop_group(process)
+    process_tree.stop(process)
     try:
         stdout, _ = process.communicate(timeout=KEEP_AWAKE_GRACE_SECONDS)
     except subprocess.TimeoutExpired as late:

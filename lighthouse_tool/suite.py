@@ -4,7 +4,6 @@ import json
 import os
 import re
 import shlex
-import signal
 import subprocess
 import tempfile
 import time
@@ -12,7 +11,7 @@ import xml.etree.ElementTree as ElementTree
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable, Dict, List, NamedTuple, Optional, Set, Tuple, TypeVar
 
-from lighthouse_tool import credentials, limits
+from lighthouse_tool import credentials, limits, process_tree
 from lighthouse_tool import repo as repository
 from lighthouse_tool.records import write_atomically
 from lighthouse_tool.repo import Parser, Refusal, checked_git, require_root
@@ -27,7 +26,6 @@ OWNER_MARK = "lighthouse-owned"
 COMMITS = "commits.json"
 CORE_STORE = "core-suites"
 STORED_SUITE_FIELDS = ("command", "junit", "rerun", "timeout_minutes")
-UNREAPED_POLL_SECONDS = 0.05
 RERUN_PLACEHOLDER = re.compile(r"\{(tests|names_regex|names)\}")
 SHELL_PIECE = re.compile(r"""\\.|'[^']*'?|"(?:\\.|[^"\\])*"?|[^\\'"]+""", re.S)
 Timed = TypeVar("Timed")
@@ -245,23 +243,22 @@ def run_step(
     append_log(log_path, "$ {}: {}\n".format(step, command), hidden)
     with tempfile.TemporaryFile() as output:
         try:
-            process = subprocess.Popen(
+            process = process_tree.start(
                 ["/bin/sh", "-c", command],
                 cwd=worktree,
                 env={**os.environ, "LIGHTHOUSE_BUILD": build},
                 stdin=subprocess.DEVNULL,
                 stdout=output,
                 stderr=subprocess.STDOUT,
-                start_new_session=True,
             )
         except OSError as error:
             return StepRun(None, "{} could not start: {}".format(step, error.strerror or error))
-        try:
-            exited_unreaped(process, seconds)
-            timed_out = False
-        except subprocess.TimeoutExpired:
-            timed_out = True
-        stop(process)
+        with process_tree.owned(process):
+            try:
+                process_tree.exited_unreaped(process, seconds)
+                timed_out = False
+            except subprocess.TimeoutExpired:
+                timed_out = True
         outcome = (
             StepRun(None, "{} timed out after its limit of {:g} seconds".format(step, seconds))
             if timed_out
@@ -275,25 +272,6 @@ def run_step(
 def append_log(log_path: str, text: str, hidden: credentials.Secrets) -> None:
     with open(log_path, "a", encoding="utf-8") as log:
         log.write(credentials.redacted(text, hidden))
-
-
-def exited_unreaped(process: "subprocess.Popen[bytes]", seconds: Optional[float]) -> None:
-    if not hasattr(os, "waitid"):
-        process.wait(timeout=seconds)
-        return
-    deadline = None if seconds is None else time.monotonic() + seconds
-    while os.waitid(os.P_PID, process.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT) is None:
-        if deadline is not None and time.monotonic() > deadline:
-            raise subprocess.TimeoutExpired(process.args, seconds or 0)
-        time.sleep(UNREAPED_POLL_SECONDS)
-
-
-def stop(process: "subprocess.Popen[bytes]") -> None:
-    try:
-        os.killpg(process.pid, signal.SIGKILL)
-    except (ProcessLookupError, PermissionError):
-        process.kill()
-    process.wait()
 
 
 def prepare(

@@ -1,7 +1,6 @@
 import http.client
 import json
 import os
-import signal
 import subprocess
 import time
 import urllib.error
@@ -9,6 +8,7 @@ import urllib.parse
 import urllib.request
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from lighthouse_tool import process_tree
 from lighthouse_tool.ports import port_map, port_pair, url_with_build_ports, with_build_ports
 from lighthouse_tool.records import is_number
 from lighthouse_tool.repo import Parser, Refusal, read_json_or_refuse
@@ -128,26 +128,17 @@ def ready_check(options: Any) -> Check:
 
 
 def check_passes(check: str, seconds_left: float) -> bool:
-    process = subprocess.Popen(
+    process = process_tree.start(
         ["/bin/sh", "-c", check],
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
-        start_new_session=True,
     )
-    try:
-        return process.wait(timeout=seconds_left) == 0
-    except subprocess.TimeoutExpired:
-        stop_group(process)
-        return False
-
-
-def stop_group(process: "subprocess.Popen[bytes]") -> None:
-    try:
-        os.killpg(process.pid, signal.SIGKILL)
-    except OSError:
-        pass
-    process.wait()
+    with process_tree.owned(process):
+        try:
+            return process.wait(timeout=seconds_left) == 0
+        except subprocess.TimeoutExpired:
+            return False
 
 
 def wait_until(check: Check, every: float, within: float) -> Tuple[bool, float]:
