@@ -1,6 +1,6 @@
 # hr-lighthouse-executor: Run 4 of the harness-redesign program: lighthouse executes locked K1 lines and computes its verdict from K3 results
 Status: active
-Updated: 2026-10-28T13:12:34.961Z
+Updated: 2026-10-28T13:13:37.304Z
 Next ids: c7 D2 R3 S1
 
 ## Goal
@@ -18,7 +18,7 @@ Run 4 of the harness-redesign program (~/.mitosis/harness-redesign/PROGRAM.md, l
 
 ## Where things stand
 
-The FEATURE branch feat/hr-lighthouse-executor holds the CI fix (lighthouse#21) and the 60 locked tests at b9eabdc, each failing at f4da7f7 through accept.zsh; the receipt-lock line is in receipts-lock.txt. The MSP executor is on mitosis/executor at 960d4b3 (worktree ~/.mitosis/runs/lighthouse/hr-lighthouse-executor/trees/executor). Round 2's blocker C1 (background process hang) and advisory S3 (signal handler deadlock) are fixed there: process_tree owns signal handling for each process's whole life, the receipts in tests/test_process_tree.py were red at 312f746 and pass, the selecting check is empty, the locked files are untouched, and there is no stash and no trailer. At 960d4b3 all 60 locked checks pass (O4) and the full suite passes (418 tests, 3 skipped), kept as round 3's suite file. In review round 3, judging the fix diff from 312f746, the code-reviewer reports one LOW candidate and no blocker (C1, the block-run-unblock signal mask written four times in process_tree.py); the security-reviewer runs. review/report-notes.txt holds what goes only to the final report.
+The FEATURE branch feat/hr-lighthouse-executor holds the CI fix (lighthouse#21) and the 60 locked tests at b9eabdc, each failing at f4da7f7 through accept.zsh; the receipt-lock line is in receipts-lock.txt. The MSP executor is on mitosis/executor at 960d4b3 (worktree ~/.mitosis/runs/lighthouse/hr-lighthouse-executor/trees/executor). Round 2's blocker C1 (background process hang) and advisory S3 (signal handler deadlock) are fixed there: process_tree owns signal handling for each process's whole life, the receipts in tests/test_process_tree.py were red at 312f746 and pass, the selecting check is empty, the locked files are untouched, and there is no stash and no trailer. At 960d4b3 all 60 locked checks pass (O4) and the full suite passes (418 tests, 3 skipped), kept as round 3's suite file. Review round 3 has 3 candidates in review/round-3/executor.candidates.md: carried P1 (round 2's C1), a new HIGH S1 (started() blocks SIGINT, SIGTERM and SIGHUP around Popen, so every spawned step inherits the blocked mask and ignores those signals; a step's own kill -TERM no longer ends it), and LOW C1 (the signal mask pattern written four times). The validator judges them. review/report-notes.txt holds what goes only to the final report.
 
 ## Next step
 
