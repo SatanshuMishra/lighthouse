@@ -1,6 +1,6 @@
 # hr-lighthouse-executor: Run 4 of the harness-redesign program: lighthouse executes locked K1 lines and computes its verdict from K3 results
 Status: active
-Updated: 2026-10-28T10:33:07.531Z
+Updated: 2026-10-28T10:33:13.379Z
 Next ids: c7 D2 R3 S1
 
 ## Goal
