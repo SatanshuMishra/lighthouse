@@ -1,6 +1,6 @@
 # hr-lighthouse-executor: Run 4 of the harness-redesign program: lighthouse executes locked K1 lines and computes its verdict from K3 results
 Status: parked
-Updated: 2026-10-28T20:32:34.049Z
+Updated: 2026-10-28T20:35:09.449Z
 Next ids: c7 D3 R4 S1
 
 ## Goal
@@ -18,7 +18,7 @@ Run 4 of the harness-redesign program (~/.mitosis/harness-redesign/PROGRAM.md, l
 
 ## Where things stand
 
-The work is on main at 8099078 through the FEATURE pull request https://github.com/SatanshuMishra/lighthouse/pull/23 (MSP pull request https://github.com/SatanshuMishra/lighthouse/pull/22), and the user's checkout is synced there. pipeline clean removed the run's worktrees, local and remote branches, run home, mitosis run directory and docs/specs/hr-lighthouse-executor.* files, and kept nothing. PROGRAM.md's run 4 row reads done. The run's charter, worker rules, run.zsh, receipt lock, assumptions and metrics are kept in ~/.mitosis/harness-redesign/examples/hr-lighthouse-executor/.
+The work is on main at 8099078, where main's CI passes (validate, test 3.14, test 3.9), through the FEATURE pull request https://github.com/SatanshuMishra/lighthouse/pull/23 (MSP pull request https://github.com/SatanshuMishra/lighthouse/pull/22), and the user's checkout is synced there. pipeline clean removed the run's worktrees, local and remote branches, run home, mitosis run directory and docs/specs/hr-lighthouse-executor.* files, and kept nothing. PROGRAM.md's run 4 row reads done. The run's charter, worker rules, run.zsh, receipt lock, assumptions and metrics are kept in ~/.mitosis/harness-redesign/examples/hr-lighthouse-executor/.
 
 ## Next step
 
