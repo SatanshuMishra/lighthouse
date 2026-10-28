@@ -1,6 +1,6 @@
 # hr-lighthouse-executor: Run 4 of the harness-redesign program: lighthouse executes locked K1 lines and computes its verdict from K3 results
 Status: parked
-Updated: 2026-10-28T15:16:18.805Z
+Updated: 2026-10-28T19:10:51.438Z
 Next ids: c7 D3 R4 S1
 
 ## Goal
@@ -18,7 +18,7 @@ Run 4 of the harness-redesign program (~/.mitosis/harness-redesign/PROGRAM.md, l
 
 ## Where things stand
 
-The FEATURE branch feat/hr-lighthouse-executor holds the CI fix (lighthouse#21) and the 60 locked tests at b9eabdc, each failing at f4da7f7 through accept.zsh; the receipt-lock line is in receipts-lock.txt. The MSP executor is pushed at d40a570 on mitosis/executor and open, ready and assigned to the owner, as https://github.com/SatanshuMishra/lighthouse/pull/22 into feat/hr-lighthouse-executor, which contains origin/main. Its comment carries the receipt-lock line and the 14 assumptions; the pull request is bound to this session with Auto-fix and comment handling on, and PROGRAM.md's run 4 row reads awaiting-merge. Review was green at round 5 with every advisory fixed; at d40a570 all 60 locked checks pass and the full suite passes under Python 3.15 and 3.9 (420 tests, 3 skipped each). The ship's reconcile exit 6 names only the glossary and ADR commit, the fix-pass files and ledger_import.py as undeclared writes, and the locked tests (written before the build) plus tests/test_retest.py and tests/test_skill_init_doctor.py as declared but unwritten. review/report-notes.txt holds what goes only to the final report.
+The FEATURE branch feat/hr-lighthouse-executor holds the CI fix (lighthouse#21) and the 60 locked tests at b9eabdc, each failing at f4da7f7 through accept.zsh; the receipt-lock line is in receipts-lock.txt. Integration runs: the MSP pull request https://github.com/SatanshuMishra/lighthouse/pull/22 is merged, so feat/hr-lighthouse-executor is at 77aad0e, integration-ready reports ready, and the integration worktree ~/.mitosis/runs/lighthouse/hr-lighthouse-executor/integration holds 77aad0e. The FEATURE suite runs there under Python 3.15 and 3.9 into <run home>/integration-suite, and lighthouse:test run 1 (installed lighthouse 0.4.0) tests main against FEATURE into <run home>/lighthouse/run-1. Review was green at round 5 with every advisory fixed. The ship's reconcile exit 6 names only the glossary and ADR commit, the fix-pass files and ledger_import.py as undeclared writes, and the locked tests (written before the build) plus tests/test_retest.py and tests/test_skill_init_doctor.py as declared but unwritten. review/report-notes.txt holds what goes only to the final report.
 
 ## Next step
 
