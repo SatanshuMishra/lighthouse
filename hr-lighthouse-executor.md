@@ -1,6 +1,6 @@
 # hr-lighthouse-executor: Run 4 of the harness-redesign program: lighthouse executes locked K1 lines and computes its verdict from K3 results
 Status: active
-Updated: 2026-10-28T14:15:18.769Z
+Updated: 2026-10-28T14:20:15.531Z
 Next ids: c7 D2 R4 S1
 
 ## Goal
@@ -18,7 +18,7 @@ Run 4 of the harness-redesign program (~/.mitosis/harness-redesign/PROGRAM.md, l
 
 ## Where things stand
 
-The FEATURE branch feat/hr-lighthouse-executor holds the CI fix (lighthouse#21) and the 60 locked tests at b9eabdc, each failing at f4da7f7 through accept.zsh; the receipt-lock line is in receipts-lock.txt. The MSP executor is on mitosis/executor at 078fff4 (worktree ~/.mitosis/runs/lighthouse/hr-lighthouse-executor/trees/executor), where all 60 locked checks pass (O4) and the full suite passes under Python 3.15 (419 tests, 3 skipped). Round 4's verdict is diagnose: round 3's inherited signal mask blocker is fixed; the one blocker is suite finding U1 (kind failing test): under Python 3.9 two tests.test_suite tests fail because, without os.waitid (macOS Python before 3.13), process_tree's exit fallbacks reap a step before released() stops its tree, so kill_tree returns early and a background process the step leaves running survives. The reviewers' C1 and S1 describe the same defect and are rejected only because round 1's fixes introduced it, not round 4's. A fresh diagnosis agent diagnoses failing test; the round 4 fix brief is written. review/report-notes.txt holds what goes only to the final report.
+The FEATURE branch feat/hr-lighthouse-executor holds the CI fix (lighthouse#21) and the 60 locked tests at b9eabdc, each failing at f4da7f7 through accept.zsh; the receipt-lock line is in receipts-lock.txt. The MSP executor is on mitosis/executor at 078fff4 (worktree ~/.mitosis/runs/lighthouse/hr-lighthouse-executor/trees/executor), where all 60 locked checks pass (O4) and the full suite passes under Python 3.15 (419 tests, 3 skipped). Round 4's verdict is loop: round 3's inherited signal mask blocker is fixed; the one blocker is suite finding U1 (kind failing test): under Python 3.9 two tests.test_suite tests fail because kill_tree returns before its group kill once a step's leader is reaped, which four callers do (two only without os.waitid, two on every Python), so a background process the step leaves running survives. It is diagnosed fixable and recorded: kill_tree sends the group kill even after the leader is reaped. The reviewers' C1 and S1 describe the same defect and are rejected only because round 1's fixes introduced it, not round 4's. Fix agent F runs U1 under review/round-4/fix-brief.md. review/report-notes.txt holds what goes only to the final report.
 
 ## Next step
 
