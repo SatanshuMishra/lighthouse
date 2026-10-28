@@ -108,6 +108,7 @@ def terminated_tree(process: "subprocess.Popen[bytes]", grace_seconds: float) ->
 
 def kill_tree(process: "subprocess.Popen[bytes]", grace_seconds: float = 0.0) -> None:
     if process.returncode is not None:
+        send_group(process.pid, signal.SIGKILL)
         return
     lingering = terminated_tree(process, grace_seconds) if grace_seconds > 0 else set()
     for pid in lingering:
