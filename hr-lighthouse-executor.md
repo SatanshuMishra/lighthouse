@@ -1,6 +1,6 @@
 # hr-lighthouse-executor: Run 4 of the harness-redesign program: lighthouse executes locked K1 lines and computes its verdict from K3 results
 Status: active
-Updated: 2026-10-28T15:15:08.854Z
+Updated: 2026-10-28T15:16:15.314Z
 Next ids: c7 D3 R4 S1
 
 ## Goal
@@ -18,7 +18,7 @@ Run 4 of the harness-redesign program (~/.mitosis/harness-redesign/PROGRAM.md, l
 
 ## Where things stand
 
-The FEATURE branch feat/hr-lighthouse-executor holds the CI fix (lighthouse#21) and the 60 locked tests at b9eabdc, each failing at f4da7f7 through accept.zsh; the receipt-lock line is in receipts-lock.txt. The MSP executor is on mitosis/executor at 7effa35 (worktree ~/.mitosis/runs/lighthouse/hr-lighthouse-executor/trees/executor), and its review verdict is green at round 5: no blocker, every earlier advisory fixed by its fix commits, all 60 locked checks passing (O4) and the full suite passing under Python 3.15 and 3.9 (420 tests, 3 skipped each, none of them an acceptance test, so no slow check needs a rerun). The validator rejected round 5's S1 (a second group SIGKILL after reap reaching a reused id) as unreachable: the second kill met no process, and wrapping the PID space takes about 154 s against a 5 s window; the automated commit check's MEDIUM flag on the same change goes to the final report with that result. The one confirmed advisory, C1 (a duplicated poll loop in tests/test_process_tree.py), is fixed on the branch at bcece7f, and the glossary terms and ADRs 0007, 0010 and 0011 are committed on top at d40a570 (docs only, with a receipts ack), the head to ship; the worktree is clean with no stash, no trailer and the locked files untouched. The O4 locked checks and both suites run at d40a570 into review/ship-o4. origin/feat/hr-lighthouse-executor contains origin/main. The pull request comment is saved as review/executor.comment.md (the receipt-lock line and the 14 assumptions), and promote added no do-not-flag kind. review/report-notes.txt holds what goes only to the final report.
+The FEATURE branch feat/hr-lighthouse-executor holds the CI fix (lighthouse#21) and the 60 locked tests at b9eabdc, each failing at f4da7f7 through accept.zsh; the receipt-lock line is in receipts-lock.txt. The MSP executor is pushed at d40a570 on mitosis/executor and open, ready and assigned to the owner, as https://github.com/SatanshuMishra/lighthouse/pull/22 into feat/hr-lighthouse-executor, which contains origin/main. Its comment carries the receipt-lock line and the 14 assumptions; the pull request is bound to this session with Auto-fix and comment handling on, and PROGRAM.md's run 4 row reads awaiting-merge. Review was green at round 5 with every advisory fixed; at d40a570 all 60 locked checks pass and the full suite passes under Python 3.15 and 3.9 (420 tests, 3 skipped each). The ship's reconcile exit 6 names only the glossary and ADR commit, the fix-pass files and ledger_import.py as undeclared writes, and the locked tests (written before the build) plus tests/test_retest.py and tests/test_skill_init_doctor.py as declared but unwritten. review/report-notes.txt holds what goes only to the final report.
 
 ## Next step
 
