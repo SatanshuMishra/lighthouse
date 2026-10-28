@@ -1,6 +1,6 @@
 # hr-lighthouse-executor: Run 4 of the harness-redesign program: lighthouse executes locked K1 lines and computes its verdict from K3 results
 Status: active
-Updated: 2026-10-28T09:20:04.097Z
+Updated: 2026-10-28T09:21:16.737Z
 Next ids: c7 D2 R3 S1
 
 ## Goal
@@ -18,7 +18,7 @@ Run 4 of the harness-redesign program (~/.mitosis/harness-redesign/PROGRAM.md, l
 
 ## Where things stand
 
-The checkout is at f4da7f7, which carries the CI fix (lighthouse#21), so the FEATURE branch cut from it needs no later merge for CI. interphase Phase 9: spec, record and items written and passing their checks (7 Steps, one MSP executor, 53 K1 acceptance lines, 24 assumptions); the one spec review is running; glossary terms and ADRs 0010 and 0011 are written; the run home holds worker-rules.txt, dispatch.zsh, run.zsh (FEATURE branch feat/hr-lighthouse-executor, mitosis 0.7.0) and graph.json, and CHARTER.md waits for the locked file list.
+interphase is handed off (record status handed-off). The FEATURE branch feat/hr-lighthouse-executor is pushed at f4da7f7, which carries the CI fix (lighthouse#21); the repository already commits receipts.config.json. Three fresh check authors write the locked tests in the worktree <run home>/checks-tree, where the referee schema copies are in place. CHARTER.md waits for the locked file list.
 
 ## Next step
 
