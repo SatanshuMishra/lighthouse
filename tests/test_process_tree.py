@@ -1,4 +1,5 @@
 import os
+import shlex
 import signal
 import subprocess
 import sys
@@ -156,6 +157,26 @@ def is_running(pid):
 
 def gone_by(pid, deadline):
     while is_running(pid):
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(POLL_SECONDS)
+    return True
+
+
+def is_zombie(pid):
+    listed = subprocess.run(
+        ["ps", "-o", "stat=", "-p", str(pid)],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        timeout=PID_SECONDS,
+        check=False,
+    )
+    return listed.stdout.decode("utf-8", errors="replace").strip().startswith("Z")
+
+
+def ended_by(pid, deadline):
+    while is_running(pid) and not is_zombie(pid):
         if time.monotonic() >= deadline:
             return False
         time.sleep(POLL_SECONDS)
@@ -341,6 +362,22 @@ class ProcessTreeTest(unittest.TestCase):
         self.assertEqual(len(steps), 1)
         self.assertIsNotNone(steps[0].returncode)
         self.assertFalse(process_tree.stop_begun.is_set())
+
+    def test_a_reaped_leader_still_has_its_group_stopped(self):
+        from lighthouse_tool import process_tree
+
+        folder = scratch.temporary_folder(self, "lh-tree-")
+        pids = os.path.join(folder, "background.pid")
+        self.addCleanup(kill_listed_quietly, pids)
+        command = ["/bin/sh", "-c", "sleep 30 >/dev/null 2>&1 & echo $! > {}".format(shlex.quote(pids))]
+        with process_tree.started(command, 0.0, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL) as process:
+            process.wait(timeout=HOST_SECONDS)
+        found = written_pids(pids, 1, PID_SECONDS)
+        self.assertIsNotNone(found, "the step never wrote its background pid")
+
+        ended = ended_by(found[0], time.monotonic() + INTERRUPT_GONE_SECONDS)
+
+        self.assertTrue(ended, "the background process {} outlived its reaped leader".format(found[0]))
 
     def test_started_restores_the_callers_handlers(self):
         from lighthouse_tool import process_tree
