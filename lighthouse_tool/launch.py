@@ -8,7 +8,8 @@ import sys
 import time
 from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
-from lighthouse_tool import metrics_writer, run_record, suite, verdict
+from lighthouse_tool import limits, metrics_writer, results as run_files, run_record, suite, verdict, wait
+from lighthouse_tool import repo as repository
 from lighthouse_tool.records import is_number, write_atomically
 from lighthouse_tool.repo import Parser, Refusal, require_root, toplevel
 
@@ -17,7 +18,8 @@ PLUGIN_ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 WORK = "work"
 CHILD = "child.json"
 LAUNCH = "launch.json"
-EARLIER_RUN_FILES = (LAUNCH, CHILD, *run_record.RESULTS_SOURCES)
+EARLIER_RUN_FILES = (LAUNCH, CHILD, run_files.LIMITS, *run_record.RESULTS_SOURCES)
+FEATURE_PROFILE = ".lighthouse/profile.json"
 CAFFEINATE = "caffeinate"
 SYSTEMD_INHIBIT = "systemd-inhibit"
 NO_KEEP_AWAKE = "none"
@@ -147,12 +149,13 @@ def launch(options: argparse.Namespace, recording: Optional[run_record.Recording
     work = os.path.join(os.path.abspath(options.results), WORK)
     os.makedirs(work, exist_ok=True)
     results = os.path.realpath(options.results)
+    found = write_limits(results, feature_profile(root, options.feature))
     keep_awake = keep_awake_tool()
-    child = run_child(child_command(options), work, keep_awake, child_environment(results))
+    child = run_child(child_command(options), work, keep_awake, child_environment(results), found.child_seconds)
     output = parsed_output(child.stdout)
     record = child_record(child, output, keep_awake)
     write_json(os.path.join(results, CHILD), record)
-    line = verdict_text(output)
+    line = verdict_text(output) if child.problem is None else None
     reason = None if line is not None else blocked_reason(child, output)
     printed = line if line is not None else blocked_text(reason)
     warnings = run_record.finished(recording, results, run_record.Ending(printed, reason, child.exit, record["session_id"]))
@@ -163,6 +166,31 @@ def launch(options: argparse.Namespace, recording: Optional[run_record.Recording
     summary = "lighthouse launch: the child exited {}".format(child.exit)
     told = summary if reason is None else "{}; blocked: {}".format(summary, reason)
     return 0, printed, with_warnings(told, warnings)
+
+
+def feature_profile(root: str, feature: str) -> Dict[str, Any]:
+    commit = repository.resolve_branch(root, feature)
+    if commit is None:
+        return {}
+    code, stdout, _ = repository.git(root, ["show", "{}:{}".format(commit, FEATURE_PROFILE)])
+    if code != 0:
+        return {}
+    try:
+        profile = json.loads(stdout)
+    except ValueError:
+        return {}
+    return profile if isinstance(profile, dict) else {}
+
+
+def write_limits(results: str, profile: Dict[str, Any]) -> limits.Limits:
+    found = limits.of(profile)
+    written = {
+        **found._asdict(),
+        "deadline": time.time() + found.run_seconds,
+        "measured": isinstance(profile.get("measured"), dict),
+    }
+    write_json(os.path.join(results, run_files.LIMITS), written)
+    return found
 
 
 def child_environment(results: str) -> Dict[str, str]:
@@ -218,7 +246,9 @@ def wrapped(command: List[str], keep_awake: str) -> List[str]:
     return command
 
 
-def run_child(command: List[str], work: str, keep_awake: str, environment: Dict[str, str]) -> ChildRun:
+def run_child(
+    command: List[str], work: str, keep_awake: str, environment: Dict[str, str], limit_seconds: float
+) -> ChildRun:
     started = time.monotonic()
     try:
         process = subprocess.Popen(
@@ -228,15 +258,31 @@ def run_child(command: List[str], work: str, keep_awake: str, environment: Dict[
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            start_new_session=True,
         )
     except OSError as error:
         return ChildRun(None, "", "the child session could not start: {}".format(error.strerror or error), 0.0)
     guard = awake_guard(process.pid) if keep_awake == CAFFEINATE else None
-    stdout, _ = process.communicate()
+    try:
+        stdout, _ = process.communicate(timeout=limit_seconds)
+        problem = None
+    except subprocess.TimeoutExpired:
+        stdout = stopped_output(process)
+        problem = "the child session ran past its time limit of {:g} seconds".format(limit_seconds)
     seconds = time.monotonic() - started
     if guard is not None:
         release_guard(guard)
-    return ChildRun(process.returncode, stdout.decode("utf-8", errors="replace"), None, seconds)
+    exit_status = process.returncode if problem is None else None
+    return ChildRun(exit_status, stdout.decode("utf-8", errors="replace"), problem, seconds)
+
+
+def stopped_output(process: "subprocess.Popen[bytes]") -> bytes:
+    wait.stop_group(process)
+    try:
+        stdout, _ = process.communicate(timeout=KEEP_AWAKE_GRACE_SECONDS)
+    except subprocess.TimeoutExpired as late:
+        return late.output or b""
+    return stdout or b""
 
 
 def awake_guard(pid: int) -> Optional["subprocess.Popen[bytes]"]:

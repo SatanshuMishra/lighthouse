@@ -2,6 +2,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 import unittest
 
 from tests import scratch
@@ -389,6 +390,21 @@ class UncreatableStateFolderTest(unittest.TestCase):
         line = json.loads(stdout.strip().splitlines()[-1])
         self.assertEqual((line["verdict"], line["reason"]), ("blocked", "x"))
         self.assertTrue(os.path.isfile(os.path.join(self.home, ".lighthouse")))
+
+
+class LaunchLimitsTest(unittest.TestCase):
+    def test_launch_bounds_a_run_without_a_feature_profile_by_the_default_limits(self):
+        before = time.time()
+        ran = launch(self, claude_output(GREEN_LINE))
+        self.assertEqual(ran["code"], 0, ran["stderr"])
+        written = read_json(os.path.join(ran["results"], "limits.json"))
+        self.assertEqual(
+            {field: written[field] for field in ("suite_seconds", "check_seconds", "child_seconds", "run_seconds")},
+            {"suite_seconds": 3600, "check_seconds": 3600, "child_seconds": 18000, "run_seconds": 18600},
+        )
+        self.assertIs(written["measured"], False)
+        self.assertGreaterEqual(written["deadline"], before + 18600)
+        self.assertLessEqual(written["deadline"], time.time() + 18600)
 
 
 if __name__ == "__main__":

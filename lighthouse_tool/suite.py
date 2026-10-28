@@ -12,7 +12,7 @@ import xml.etree.ElementTree as ElementTree
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable, Dict, List, NamedTuple, Optional, Set, Tuple, TypeVar
 
-from lighthouse_tool import credentials
+from lighthouse_tool import credentials, limits
 from lighthouse_tool import repo as repository
 from lighthouse_tool.records import write_atomically
 from lighthouse_tool.repo import Parser, Refusal, checked_git, require_root
@@ -20,6 +20,7 @@ from lighthouse_tool.repo import Parser, Refusal, checked_git, require_root
 Outcome = Tuple[int, Optional[str], Optional[str]]
 BUILDS = ("core", "feature")
 PREPARATION_STEPS = ("setup", "build")
+SUITE_STEPS = ("suite", "rerun")
 UNRUNNABLE_EXITS = (126, 127)
 WHOLE_SUITE = "suite"
 OWNER_MARK = "lighthouse-owned"
@@ -224,10 +225,13 @@ def runs_isolated(profile: Dict[str, Any]) -> bool:
     return profile["suite"].get("isolated") is True
 
 
-def timeout_minutes(profile: Dict[str, Any]) -> Optional[float]:
-    minutes = profile["suite"].get("timeout_minutes")
-    usable = isinstance(minutes, (int, float)) and not isinstance(minutes, bool) and minutes > 0
-    return minutes if usable else None
+def step_limit(step: str, profile: Dict[str, Any]) -> float:
+    found = limits.of(profile)
+    if step in PREPARATION_STEPS:
+        return found.build_seconds
+    if step in SUITE_STEPS:
+        return found.suite_seconds
+    return found.check_seconds
 
 
 def hidden_values(root: str, profile: Dict[str, Any]) -> credentials.Secrets:
@@ -237,7 +241,7 @@ def hidden_values(root: str, profile: Dict[str, Any]) -> credentials.Secrets:
 def run_step(
     step: str, command: str, worktree: str, build: str, log_path: str, profile: Dict[str, Any], hidden: credentials.Secrets
 ) -> StepRun:
-    minutes = timeout_minutes(profile)
+    seconds = step_limit(step, profile)
     append_log(log_path, "$ {}: {}\n".format(step, command), hidden)
     with tempfile.TemporaryFile() as output:
         try:
@@ -253,13 +257,13 @@ def run_step(
         except OSError as error:
             return StepRun(None, "{} could not start: {}".format(step, error.strerror or error))
         try:
-            exited_unreaped(process, minutes * 60 if minutes else None)
+            exited_unreaped(process, seconds)
             timed_out = False
         except subprocess.TimeoutExpired:
             timed_out = True
         stop(process)
         outcome = (
-            StepRun(None, "{} timed out after {} minutes".format(step, minutes))
+            StepRun(None, "{} timed out after its limit of {:g} seconds".format(step, seconds))
             if timed_out
             else StepRun(process.returncode, None)
         )

@@ -5,7 +5,9 @@ import socket
 import sys
 import time
 import unittest
+from unittest import mock
 
+from lighthouse_tool import limits, suite
 from tests import scratch
 
 JUNIT_SUITE = """set -e
@@ -792,6 +794,16 @@ class SuiteTest(unittest.TestCase):
         second = suite_in(self, work, home)
         self.assertIs(second["core"]["reused"], True)
         self.assertEqual(second["core"]["tests"], {"passed": ["tests.T.steady"], "failed": ["tests.T.flaky_one"]})
+
+    def test_each_step_stops_at_the_limit_its_name_selects(self):
+        work = scratch.temporary_folder(self, "lh-work-")
+        log_path = os.path.join(work, "step.log")
+        chosen = limits.Limits(suite_seconds=30, check_seconds=1, child_seconds=60, run_seconds=120, build_seconds=2)
+        with mock.patch("lighthouse_tool.limits.of", return_value=chosen):
+            build = suite.run_step("build", "sleep 30", work, "feature", log_path, scratch.sample_profile(), ())
+            reach = suite.run_step("reach", "sleep 30", work, "feature", log_path, scratch.sample_profile(), ())
+        self.assertEqual(build, suite.StepRun(None, "build timed out after its limit of 2 seconds"))
+        self.assertEqual(reach, suite.StepRun(None, "reach timed out after its limit of 1 seconds"))
 
 
 if __name__ == "__main__":
