@@ -1,6 +1,6 @@
 # hr-lighthouse-executor: Run 4 of the harness-redesign program: lighthouse executes locked K1 lines and computes its verdict from K3 results
 Status: parked
-Updated: 2026-10-28T20:17:27.914Z
+Updated: 2026-10-28T20:17:33.409Z
 Next ids: c7 D3 R4 S1
 
 ## Goal
@@ -18,7 +18,7 @@ Run 4 of the harness-redesign program (~/.mitosis/harness-redesign/PROGRAM.md, l
 
 ## Where things stand
 
-The FEATURE branch feat/hr-lighthouse-executor holds the CI fix (lighthouse#21) and the 60 locked tests at b9eabdc, each failing at f4da7f7 through accept.zsh; the receipt-lock line is in receipts-lock.txt. Integration runs: the MSP pull request https://github.com/SatanshuMishra/lighthouse/pull/22 is merged, so feat/hr-lighthouse-executor is at 77aad0e, integration-ready reports ready, and the integration worktree ~/.mitosis/runs/lighthouse/hr-lighthouse-executor/integration holds 77aad0e. The FEATURE suite passes there under Python 3.15 (420 tests, 3 skipped) and runs again under Python 3.9 into <run home>/integration-suite. lighthouse:test run 1 died with Claude Code mid-drive, leaving no findings.json, and its worktrees are released; run 2 (installed lighthouse 0.4.0, no --previous) tests main against FEATURE into <run home>/lighthouse/run-2. Review was green at round 5 with every advisory fixed. The ship's reconcile exit 6 names only the glossary and ADR commit, the fix-pass files and ledger_import.py as undeclared writes, and the locked tests (written before the build) plus tests/test_retest.py and tests/test_skill_init_doctor.py as declared but unwritten. review/report-notes.txt holds what goes only to the final report.
+The FEATURE branch feat/hr-lighthouse-executor holds the CI fix (lighthouse#21) and the 60 locked tests at b9eabdc, each failing at f4da7f7 through accept.zsh; the receipt-lock line is in receipts-lock.txt. Integration is green and the run awaits merge: feat/hr-lighthouse-executor is at 77aad0e (MSP pull request https://github.com/SatanshuMishra/lighthouse/pull/22 merged), its suite passes under Python 3.15 and 3.9 (420 tests, 3 skipped each, in <run home>/integration-suite), and lighthouse run-2 (installed 0.4.0) is green with 32 paths passed and opened the FEATURE pull request https://github.com/SatanshuMishra/lighthouse/pull/23 into main, ready, assigned to the owner, bound to this session with Auto-fix and comment handling on. Run 1 died with Claude Code mid-drive and left no findings. PROGRAM.md's run 4 row reads awaiting-merge with both links. The integration worktree ~/.mitosis/runs/lighthouse/hr-lighthouse-executor/integration holds 77aad0e for Clean-up to remove. The ship's reconcile exit 6 names only the glossary and ADR commit, the fix-pass files and ledger_import.py as undeclared writes, and the locked tests (written before the build) plus tests/test_retest.py and tests/test_skill_init_doctor.py as declared but unwritten. review/report-notes.txt holds what goes only to the final report.
 
 ## Next step
 
