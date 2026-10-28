@@ -79,6 +79,22 @@ A timed start or end line a session writes with lighthouse mark around a step, b
 The folder tree shared by the pipeline and its plugins, ~/.plugin-metrics or PLUGIN_METRICS_DIR, where lighthouse launch records every lighthouse:test run as two events and one run summary.
 _Avoid_: ledger, runs.jsonl
 
+**Acceptance line**:
+One criterion's runnable check in an interphase record, with an id such as C2.1, a surface, a command run from the repository root and what passing means; lighthouse runs it as a check named by that id.
+_Avoid_: acceptance test, criterion check
+
+**Check result**:
+One run of an acceptance line as lighthouse execute recorded it: its id, the FEATURE commit, pass, fail or could-not-run, its evidence, its seconds and its runner; the verdict judges acceptance lines only from these.
+
+**Could-not-run**:
+A check result or measurement that neither passed nor failed because the check could not decide, such as a command that hit its limit or a pixel sample too close to a threshold; it makes its check unproven, never failed.
+
+**Reach command**:
+A surface's command that exits 0 when this machine can drive that surface with its recorded driver; its exit sets the surface's available.
+
+**Measured durations**:
+The seconds lighthouse profile measure recorded in the profile for setup, build, the suite, the start command until ready and each reach command, from which every time limit is derived.
+
 **Run summary**:
 The one line per lighthouse:test run in the metrics store holding its verdict, suite, product paths and own spend, replaced whole when written again.
 
