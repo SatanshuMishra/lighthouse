@@ -1,6 +1,6 @@
 # hr-lighthouse-executor: Run 4 of the harness-redesign program: lighthouse executes locked K1 lines and computes its verdict from K3 results
 Status: active
-Updated: 2026-10-28T14:06:44.914Z
+Updated: 2026-10-28T14:09:55.662Z
 Next ids: c7 D2 R4 S1
 
 ## Goal
@@ -18,7 +18,7 @@ Run 4 of the harness-redesign program (~/.mitosis/harness-redesign/PROGRAM.md, l
 
 ## Where things stand
 
-The FEATURE branch feat/hr-lighthouse-executor holds the CI fix (lighthouse#21) and the 60 locked tests at b9eabdc, each failing at f4da7f7 through accept.zsh; the receipt-lock line is in receipts-lock.txt. The MSP executor is on mitosis/executor at 078fff4 (worktree ~/.mitosis/runs/lighthouse/hr-lighthouse-executor/trees/executor). Round 3's blocker S1 (inherited signal mask) and advisory C1 are fixed there: process_tree holds forwarded signals in Python with held() and never touches the kernel mask, the receipt was red at 960d4b3 and passes, the selecting checks are empty, the locked files are untouched, and there is no stash and no trailer. At 078fff4 all 60 locked checks pass (O4) and the full suite passes under Python 3.15 (419 tests, 3 skipped); under Python 3.9 it fails only the two tests.test_suite tests that fail from 312f746 on (a step's background process is still running), which round 4 records as suite finding U1. Both outputs are round 4's suite file. In review round 4 the code-reviewer and security-reviewer judge the fix diff from 960d4b3. review/report-notes.txt holds what goes only to the final report.
+The FEATURE branch feat/hr-lighthouse-executor holds the CI fix (lighthouse#21) and the 60 locked tests at b9eabdc, each failing at f4da7f7 through accept.zsh; the receipt-lock line is in receipts-lock.txt. The MSP executor is on mitosis/executor at 078fff4 (worktree ~/.mitosis/runs/lighthouse/hr-lighthouse-executor/trees/executor). Round 3's blocker S1 (inherited signal mask) and advisory C1 are fixed there: process_tree holds forwarded signals in Python with held() and never touches the kernel mask, the receipt was red at 960d4b3 and passes, the selecting checks are empty, the locked files are untouched, and there is no stash and no trailer. At 078fff4 all 60 locked checks pass (O4) and the full suite passes under Python 3.15 (419 tests, 3 skipped); under Python 3.9 it fails only the two tests.test_suite tests that fail from 312f746 on (a step's background process is still running), which round 4 records as suite finding U1. Both outputs are round 4's suite file. In review round 4, judging the fix diff from 960d4b3, the code-reviewer reports one HIGH candidate, C1, which names U1's cause: without os.waitid (macOS Python before 3.13), process_tree's exit fallbacks reap the child before released() stops its tree, so kill_tree returns early and every background process a step leaves running survives. The security-reviewer runs. review/report-notes.txt holds what goes only to the final report.
 
 ## Next step
 
