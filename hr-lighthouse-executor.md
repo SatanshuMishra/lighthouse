@@ -1,6 +1,6 @@
 # hr-lighthouse-executor: Run 4 of the harness-redesign program: lighthouse executes locked K1 lines and computes its verdict from K3 results
 Status: active
-Updated: 2026-10-28T11:50:01.406Z
+Updated: 2026-10-28T11:50:05.532Z
 Next ids: c7 D2 R3 S1
 
 ## Goal
@@ -22,7 +22,7 @@ The FEATURE branch feat/hr-lighthouse-executor holds the CI fix (lighthouse#21) 
 
 ## Next step
 
-When fix agent B reports, check its commits, locked files and suite, then dispatch agent C (wait exceeds tool timeout C3), then start review round 2 on the fix diff with previous head 400ec97.
+When fix agent C reports, check its commits, locked files and suite, then start review round 2 on the fix diff with previous head 400ec97.
 
 Needs: D1.
 
