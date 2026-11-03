@@ -264,6 +264,95 @@ class PytestConfiguration(unittest.TestCase):
         self.assertIn("cannot recognise", found[0].question)
 
 
+
+VITEST_OFF = "export default { test: { testTimeout: 0 } };\n"
+VITEST_ON = "export default { test: { testTimeout: 5000 } };\n"
+
+
+class ExplicitConfigFiles(unittest.TestCase):
+    def test_vitest_reads_the_config_file_its_argument_names(self):
+        for command in ("vitest run --config configs/unit.ts", "vitest run -c configs/unit.ts", "vitest run --config=configs/unit.ts"):
+            with self.subTest(command=command):
+                found = runners_and_files(self, command, {"configs/unit.ts": VITEST_OFF, "vitest.config.ts": VITEST_ON})
+                self.assertEqual(found, [("vitest", "configs/unit.ts")])
+
+    def test_a_bounded_named_vitest_config_overrides_the_discovered_one(self):
+        found = runners(self, "vitest run --config configs/unit.ts", {"configs/unit.ts": VITEST_ON, "vitest.config.ts": VITEST_OFF})
+
+        self.assertEqual(found, [])
+
+    def test_a_named_config_is_read_from_the_folder_of_its_package_script(self):
+        files = {"app/package.json": json.dumps({"scripts": {"test": "vitest -c unit.ts"}}), "app/unit.ts": VITEST_OFF}
+
+        self.assertEqual(runners_and_files(self, "cd app && npm test", files), [("vitest", "app/unit.ts")])
+
+    def test_a_named_config_that_does_not_exist_makes_the_runner_unrecognised(self):
+        found = bound_findings(project(self, {"vitest.config.ts": VITEST_ON}), "vitest --config missing.ts")
+
+        self.assertEqual([(entry.runner, entry.file) for entry in found], [("vitest", "missing.ts")])
+        self.assertIn("cannot recognise", found[0].question)
+
+    def test_jest_reads_the_config_file_its_argument_names(self):
+        files = {"configs/jest.js": "module.exports = { testTimeout: 0 };\n", "package.json": json.dumps({"jest": {"testTimeout": 5000}})}
+        for command in ("jest -c configs/jest.js", "jest --config configs/jest.js"):
+            with self.subTest(command=command):
+                self.assertEqual(runners_and_files(self, command, files), [("jest", "configs/jest.js")])
+
+    def test_a_named_jest_config_replaces_the_package_json_section(self):
+        files = {"configs/jest.js": "module.exports = { testTimeout: 5000 };\n", "package.json": json.dumps({"jest": {"testTimeout": 0}})}
+
+        self.assertEqual(runners(self, "jest --config configs/jest.js", files), [])
+
+    def test_a_named_package_json_is_read_for_its_jest_section(self):
+        files = {"configs/package.json": json.dumps({"jest": {"testTimeout": 0}})}
+
+        self.assertEqual(runners_and_files(self, "jest -c configs/package.json", files), [("jest", "configs/package.json")])
+
+    def test_a_json_jest_config_argument_is_judged_in_place(self):
+        self.assertEqual(runners_and_files(self, """jest --config '{"testTimeout": 0}'"""), [("jest", PROFILE_FILE)])
+        self.assertEqual(runners(self, """jest --config '{"testTimeout": 5000}'"""), [])
+        self.assertEqual(runners(self, "jest --config '{not json'"), ["jest"])
+
+    def test_playwright_reads_the_config_file_or_folder_its_argument_names(self):
+        files = {"configs/pw.ts": "export default defineConfig({ timeout: 0 });\n", "e2e/playwright.config.ts": "export default { timeout: 0 };\n"}
+        for command, expected in (
+            ("playwright test --config configs/pw.ts", "configs/pw.ts"),
+            ("playwright test -c configs/pw.ts", "configs/pw.ts"),
+            ("playwright test -c e2e", "e2e/playwright.config.ts"),
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(runners_and_files(self, command, files), [("playwright", expected)])
+
+    def test_mocha_reads_the_config_and_package_files_its_arguments_name(self):
+        files = {"configs/mocha.yml": "timeout: false\n", ".mocharc.yml": "timeout: 2000\n", "configs/package.json": json.dumps({"mocha": {"timeout": 0}})}
+
+        self.assertEqual(runners_and_files(self, "mocha --config configs/mocha.yml", files), [("mocha", "configs/mocha.yml")])
+        self.assertEqual(runners_and_files(self, "mocha --package configs/package.json", files), [("mocha", "configs/package.json")])
+
+    def test_pytest_reads_the_config_file_its_argument_names(self):
+        files = {"configs/pytest.ini": "[pytest]\ntimeout = 0\n", "pytest.ini": "[pytest]\ntimeout = 60\n"}
+        for command in ("pytest -c configs/pytest.ini", "pytest --config-file configs/pytest.ini", "pytest --config-file=configs/pytest.ini"):
+            with self.subTest(command=command):
+                self.assertEqual(runners_and_files(self, command, files), [("pytest", "configs/pytest.ini")])
+
+    def test_a_named_pytest_config_takes_its_section_from_its_extension(self):
+        cases = (
+            ("ci.cfg", "[tool:pytest]\ntimeout = 60\n", []),
+            ("ci.toml", "[tool.pytest.ini_options]\ntimeout = 60\n", []),
+            ("ci.ini", "[tool:pytest]\ntimeout = 60\n", ["pytest"]),
+        )
+        for name, text, expected in cases:
+            with self.subTest(name=name):
+                self.assertEqual(runners(self, "pytest -c " + name, {name: text, "pytest.ini": "[pytest]\n"}), expected)
+
+    def test_nextest_reads_the_config_file_its_argument_names(self):
+        bounded = '[profile.default]\nslow-timeout = { period = "60s", terminate-after = 3 }\n'
+        files = {".config/nextest.toml": bounded, "ci/nextest.toml": "[profile.default]\n"}
+        for command in ("cargo nextest run --config-file ci/nextest.toml", "cargo nextest run --config-file=ci/nextest.toml"):
+            with self.subTest(command=command):
+                self.assertEqual(runners(self, command, files), ["cargo-nextest"])
+
+
 class CommandWalk(unittest.TestCase):
     def test_a_cd_to_a_folder_it_cannot_read_makes_later_runners_unrecognised(self):
         self.assertEqual(runners(self, 'cd "$APP" && go test ./...'), ["go"])

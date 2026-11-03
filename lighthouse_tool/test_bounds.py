@@ -61,12 +61,15 @@ _ZERO_TIMEOUT = re.compile(r"""\btimeout\s*:\s*0(?![\w.])""")
 _MOCHA_TIMEOUT_OFF = re.compile(r"""\btimeout['"]?\s*[:=]\s*['"]?(?:0|false)(?![\w.])""")
 _DART_TIMEOUT_OFF = re.compile(r"""(?m)^\s*timeout\s*:\s*['"]?none['"]?\s*(?:#.*)?$""")
 _GO_ZERO_DURATION = re.compile(r"(?:0+(?:\.0*)?(?:ns|us|µs|ms|s|m|h)?)+")
+_PYPROJECT_SECTION = "tool.pytest.ini_options"
 _PYTEST_CONFIGS = (
     ("pytest.ini", "pytest"),
-    ("pyproject.toml", "tool.pytest.ini_options"),
+    ("pyproject.toml", _PYPROJECT_SECTION),
     ("tox.ini", "pytest"),
     ("setup.cfg", "tool:pytest"),
 )
+_PYTEST_SECTION_BY_EXTENSION = {".toml": _PYPROJECT_SECTION, ".cfg": "tool:pytest"}
+_CONFIG_OPTIONS = ("--config", "-c")
 _NEXTEST_CONFIG = ".config/nextest.toml"
 _ANSWER_VALUE = "<where each test is bounded>"
 
@@ -311,7 +314,7 @@ def _node_reaches(place: _Place, command: List[str]) -> List[_Reach]:
     script = script_argument(arguments, INTERPRETERS["node"])
     if script is None:
         return [_unrecognised(place, program)]
-    entry = _script_path(place, script)
+    entry = _given_path(place, script)
     texts = _script_texts(place.root, entry)
     if texts is None or not any(_starts_node_test(text) for text in texts):
         return [_unrecognised(place, program)]
@@ -320,11 +323,11 @@ def _node_reaches(place: _Place, command: List[str]) -> List[_Reach]:
     return [_reach(place, "node-test", _relative(place.root, os.path.realpath(entry)))]
 
 
-def _script_path(place: _Place, script: str) -> str:
+def _given_path(place: _Place, given: str) -> str:
     folders = place.folders or (place.root,)
-    if os.path.isabs(script):
-        return os.path.normpath(script)
-    candidates = [os.path.normpath(os.path.join(folder, script)) for folder in reversed(folders)]
+    if os.path.isabs(given):
+        return os.path.normpath(given)
+    candidates = [os.path.normpath(os.path.join(folder, given)) for folder in reversed(folders)]
     return next((candidate for candidate in candidates if os.path.lexists(candidate)), candidates[0])
 
 
@@ -394,10 +397,19 @@ def _bounding_run_timeout(value: str) -> bool:
     return number != 0 and number != math.inf
 
 
+def _given_config(place: _Place, arguments: List[str], names: Tuple[str, ...]) -> Optional[str]:
+    given = _option_value(arguments, names)
+    return _given_path(place, given) if given is not None else None
+
+
 def _config_reaches(
-    place: _Place, runner: str, prefixes: Tuple[str, ...], turned_off: Callable[[str], bool]
+    place: _Place,
+    runner: str,
+    prefixes: Tuple[str, ...],
+    turned_off: Callable[[str], bool],
+    given: Optional[str] = None,
 ) -> List[_Reach]:
-    for path in _config_files(place, prefixes):
+    for path in _config_files(place, prefixes, given):
         relative = _relative(place.root, path)
         text = _read_inside(place.root, path)
         if text is None:
@@ -407,38 +419,69 @@ def _config_reaches(
     return []
 
 
-def _config_files(place: _Place, prefixes: Tuple[str, ...]) -> List[str]:
+def _config_files(place: _Place, prefixes: Tuple[str, ...], given: Optional[str]) -> List[str]:
+    if given is not None:
+        within = _inside(place.root, os.path.realpath(given))
+        return _prefixed_files(given, prefixes) if within and os.path.isdir(given) else [given]
     for folder in reversed(place.folders or ()):
-        try:
-            names = sorted(os.listdir(folder))
-        except (FileNotFoundError, NotADirectoryError):
-            names = []
-        matching = [os.path.join(folder, name) for name in names if name.startswith(prefixes)]
+        matching = _prefixed_files(folder, prefixes)
         if matching:
             return matching
     return []
 
 
+def _prefixed_files(folder: str, prefixes: Tuple[str, ...]) -> List[str]:
+    try:
+        names = sorted(os.listdir(folder))
+    except (FileNotFoundError, NotADirectoryError):
+        names = []
+    return [os.path.join(folder, name) for name in names if name.startswith(prefixes)]
+
+
 def _vitest_reaches(place: _Place, command: List[str]) -> List[_Reach]:
-    if _zero(_option_value(command[1:], ("--testTimeout", "--test-timeout"))):
+    arguments = command[1:]
+    if _zero(_option_value(arguments, ("--testTimeout", "--test-timeout"))):
         return [_reach(place, "vitest")]
-    return _config_reaches(place, "vitest", ("vitest.config.", "vite.config."), _ZERO_TEST_TIMEOUT.search)
+    given = _given_config(place, arguments, _CONFIG_OPTIONS)
+    return _config_reaches(place, "vitest", ("vitest.config.", "vite.config."), _ZERO_TEST_TIMEOUT.search, given)
 
 
 def _jest_reaches(place: _Place, command: List[str]) -> List[_Reach]:
-    if _zero(_option_value(command[1:], ("--testTimeout",))):
+    arguments = command[1:]
+    if _zero(_option_value(arguments, ("--testTimeout",))):
         return [_reach(place, "jest")]
-    configured = _config_reaches(place, "jest", ("jest.config.",), _ZERO_TEST_TIMEOUT.search)
-    if configured:
-        return configured
-    return _package_setting_reaches(place, "jest", lambda section: section.get("testTimeout") == 0)
+    given = _option_value(arguments, _CONFIG_OPTIONS)
+    if given is None:
+        configured = _config_reaches(place, "jest", ("jest.config.",), _ZERO_TEST_TIMEOUT.search)
+        return configured or _package_setting_reaches(place, "jest", _jest_section_turns_off)
+    if given.lstrip().startswith("{"):
+        return _inline_jest_reaches(place, given)
+    if posixpath.basename(given) == "package.json":
+        return _package_setting_reaches(place, "jest", _jest_section_turns_off, _given_path(place, given))
+    return _config_reaches(place, "jest", ("jest.config.",), _ZERO_TEST_TIMEOUT.search, _given_path(place, given))
 
 
-def _package_setting_reaches(place: _Place, runner: str, turned_off: Callable[[Dict[str, Any]], bool]) -> List[_Reach]:
+def _jest_section_turns_off(section: Dict[str, Any]) -> bool:
+    return section.get("testTimeout") == 0
+
+
+def _inline_jest_reaches(place: _Place, given: str) -> List[_Reach]:
+    try:
+        section = json.loads(given)
+    except ValueError:
+        return [_unrecognised(place, "jest")]
+    if not isinstance(section, dict):
+        return [_unrecognised(place, "jest")]
+    return [_reach(place, "jest")] if _jest_section_turns_off(section) else []
+
+
+def _package_setting_reaches(
+    place: _Place, runner: str, turned_off: Callable[[Dict[str, Any]], bool], given: Optional[str] = None
+) -> List[_Reach]:
     found = _last_holding(place, "package.json")
-    if found is None:
+    path = given if given is not None else found[1] if found is not None else None
+    if path is None:
         return []
-    path = found[1]
     relative = _relative(place.root, path)
     if _read_inside(place.root, path) is None:
         return [_unrecognised(place, runner, relative)]
@@ -452,10 +495,12 @@ def _mocha_reaches(place: _Place, command: List[str]) -> List[_Reach]:
     value = _option_value(arguments, ("--timeout", "-t"))
     if "--no-timeouts" in arguments or _zero(value) or value == "false":
         return [_reach(place, "mocha")]
-    configured = _config_reaches(place, "mocha", (".mocharc.",), _MOCHA_TIMEOUT_OFF.search)
+    given = _given_config(place, arguments, ("--config",))
+    configured = _config_reaches(place, "mocha", (".mocharc.",), _MOCHA_TIMEOUT_OFF.search, given)
     if configured:
         return configured
-    return _package_setting_reaches(place, "mocha", _mocha_section_turns_off)
+    package = _given_config(place, arguments, ("--package",))
+    return _package_setting_reaches(place, "mocha", _mocha_section_turns_off, package)
 
 
 def _mocha_section_turns_off(section: Dict[str, Any]) -> bool:
@@ -466,9 +511,11 @@ def _mocha_section_turns_off(section: Dict[str, Any]) -> bool:
 def _playwright_reaches(place: _Place, command: List[str]) -> List[_Reach]:
     if command[1:2] != ["test"]:
         return [_unrecognised(place, command[0])]
-    if _zero(_option_value(command[2:], ("--timeout",))):
+    arguments = command[2:]
+    if _zero(_option_value(arguments, ("--timeout",))):
         return [_reach(place, "playwright")]
-    return _config_reaches(place, "playwright", ("playwright.config.",), _ZERO_TIMEOUT.search)
+    given = _given_config(place, arguments, _CONFIG_OPTIONS)
+    return _config_reaches(place, "playwright", ("playwright.config.",), _ZERO_TIMEOUT.search, given)
 
 
 def _go_reaches(place: _Place, command: List[str]) -> List[_Reach]:
@@ -497,31 +544,43 @@ def _dart_family_reaches(place: _Place, command: List[str]) -> List[_Reach]:
 
 
 def _pytest_reaches(place: _Place, command: List[str]) -> List[_Reach]:
-    given = _option_value(command[1:], ("--timeout",))
+    arguments = command[1:]
+    timeout = _option_value(arguments, ("--timeout",))
+    if timeout is not None:
+        return [] if _positive(timeout) else [_reach(place, "pytest")]
+    given = _given_config(place, arguments, ("-c", "--config-file"))
     if given is not None:
-        return [] if _positive(given) else [_reach(place, "pytest")]
+        section = _PYTEST_SECTION_BY_EXTENSION.get(posixpath.splitext(given)[1], "pytest")
+        return _pytest_file_reaches(place, given, section, True) or []
     for folder in reversed(place.folders or ()):
         for name, section in _PYTEST_CONFIGS:
             path = os.path.join(folder, name)
             if not os.path.lexists(path):
                 continue
-            relative = _relative(place.root, path)
-            text = _read_inside(place.root, path)
-            if text is None:
-                return [_unrecognised(place, "pytest", relative)]
-            try:
-                holds, value = _pytest_setting(name, section, text)
-            except configparser.Error:
-                return [_unrecognised(place, "pytest", relative)]
-            if holds or name == "pytest.ini":
-                if _positive(value):
-                    return []
-                return [_reach(place, "pytest", relative if value is not None else None)]
+            decided = _pytest_file_reaches(place, path, section, name == "pytest.ini")
+            if decided is not None:
+                return decided
     return [_reach(place, "pytest")]
 
 
-def _pytest_setting(name: str, section: str, text: str) -> Tuple[bool, Optional[str]]:
-    if name == "pyproject.toml":
+def _pytest_file_reaches(place: _Place, path: str, section: str, decides: bool) -> Optional[List[_Reach]]:
+    relative = _relative(place.root, path)
+    text = _read_inside(place.root, path)
+    if text is None:
+        return [_unrecognised(place, "pytest", relative)]
+    try:
+        holds, value = _pytest_setting(section, text)
+    except configparser.Error:
+        return [_unrecognised(place, "pytest", relative)]
+    if not (holds or decides):
+        return None
+    if _positive(value):
+        return []
+    return [_reach(place, "pytest", relative if value is not None else None)]
+
+
+def _pytest_setting(section: str, text: str) -> Tuple[bool, Optional[str]]:
+    if section == _PYPROJECT_SECTION:
         return _pyproject_timeout(text)
     parser = configparser.ConfigParser(interpolation=None, strict=False)
     parser.read_string(text)
@@ -538,7 +597,7 @@ def _pyproject_timeout(text: str) -> Tuple[bool, Optional[str]]:
     for line in text.splitlines():
         stripped = line.split("#", 1)[0].strip()
         if stripped.startswith("["):
-            within = stripped == "[tool.pytest.ini_options]"
+            within = stripped == "[{}]".format(_PYPROJECT_SECTION)
             holds = holds or within
         elif within and "=" in stripped:
             key, raw = stripped.split("=", 1)
@@ -556,12 +615,14 @@ def _cargo_reaches(place: _Place, command: List[str]) -> List[_Reach]:
         return [_reach(place, "cargo-test")]
     if command[1:3] != ["nextest", "run"]:
         return [_unrecognised(place, command[0])]
+    given = _given_config(place, command[3:], ("--config-file",))
     found = _last_holding(place, _NEXTEST_CONFIG)
-    if found is None:
+    path = given if given is not None else found[1] if found is not None else None
+    if path is None:
         return [_reach(place, "cargo-nextest")]
-    text = _read_inside(place.root, found[1])
+    text = _read_inside(place.root, path)
     if text is None:
-        return [_unrecognised(place, command[0], _relative(place.root, found[1]))]
+        return [_unrecognised(place, command[0], _relative(place.root, path))]
     settings = [line.split("#", 1)[0] for line in text.splitlines()]
     return [] if any("terminate-after" in line for line in settings) else [_reach(place, "cargo-nextest")]
 
