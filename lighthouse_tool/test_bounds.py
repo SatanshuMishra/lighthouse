@@ -5,7 +5,7 @@ import os
 import posixpath
 import re
 import shlex
-from typing import Any, Callable, Dict, FrozenSet, List, NamedTuple, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, FrozenSet, List, NamedTuple, Optional, Sequence, Tuple, TypeVar, Union
 
 from lighthouse_tool.profile import (
     INTERPRETERS,
@@ -38,9 +38,11 @@ class _Place(NamedTuple):
     file: str
     trail: Tuple[str, ...]
     scripts: FrozenSet[Tuple[str, str]]
+    assignments: Tuple[str, ...] = ()
 
 
 _Runner = Callable[[_Place, List[str]], List[_Reach]]
+_Judged = TypeVar("_Judged")
 
 _LAUNCHERS = frozenset(["npx", "bunx"])
 _TWO_WORD_LAUNCHERS = frozenset([("pnpm", "exec"), ("yarn", "exec"), ("uv", "run"), ("poetry", "run"), ("pipenv", "run")])
@@ -50,12 +52,23 @@ _PYTHON_VALUE_OPTIONS = INTERPRETERS["python"][0]
 _IMPORT_EXTENSIONS = (".js", ".mjs", ".cjs", ".ts", ".mts", ".cts")
 _RELATIVE_SPECIFIER = re.compile(r"""(?:\bfrom|\bimport|\brequire)\s*\(?\s*['"](\.{1,2}/[^'"]+)['"]""")
 _QUOTED_TEST_FLAG = re.compile(r"""(['"`])--test\1""")
-_IMPORTS_NODE_TEST_RUN = re.compile(
-    r"""import\s*\{[^}]*\brun\b[^}]*\}\s*from\s*['"]node:test['"]"""
-    r"""|\{[^}]*\brun\b[^}]*\}\s*=\s*require\(\s*['"]node:test['"]\s*\)"""
+_NODE_TEST = r"""['"`]node:test['"`]"""
+_REQUIRED = r"require\(\s*" + _NODE_TEST + r"\s*\)"
+_IMPORTED = r"import\(\s*" + _NODE_TEST + r"\s*\)"
+_RUN_BY_NAME = re.compile(
+    r"\{[^}]*\brun\b[^}]*\}\s*(?:from\s*" + _NODE_TEST + r"|=\s*(?:" + _REQUIRED + r"|await\s+" + _IMPORTED + r"))"
 )
+_RUN_CHAINED = re.compile(r"(?:" + _REQUIRED + r"|\(\s*await\s+" + _IMPORTED + r"\s*\))\s*\.\s*run\b")
+_MODULE_BINDING = re.compile(
+    r"import\s+(?:\*\s*as\s+)?([\w$]+)\s*(?:,\s*\{[^}]*\}\s*)?from\s*" + _NODE_TEST
+    + r"|(?:const|let|var)\s+([\w$]+)\s*=\s*(?:" + _REQUIRED + r"|await\s+" + _IMPORTED + r")"
+)
+_RE_EXPORTS_RUN = re.compile(r"export\s*(?:\*|\{[^}]*\brun\b[^}]*\})\s*from\s*" + _NODE_TEST)
 _TEXT_TEST_TIMEOUT = re.compile(r"""--test-timeout(?:=|['"`]\s*,\s*['"`]?)\s*([0-9][0-9_.eE+]*|Infinity)""")
-_RUN_TIMEOUT = re.compile(r"""\btimeout\s*:\s*([^,}\s)]+)""")
+_RUN_TIMEOUT = re.compile(r"""[{,]\s*timeout\s*:\s*([^,}\s)]+)""")
+_NOT_A_BOUND = frozenset(
+    ["Infinity", "Number.POSITIVE_INFINITY", "undefined", "null", "number", "string", "any", "unknown", "never", "void"]
+)
 _ZERO_TEST_TIMEOUT = re.compile(r"""\btestTimeout['"]?\s*:\s*0(?![\w.])""")
 _ZERO_TIMEOUT = re.compile(r"""\btimeout\s*:\s*0(?![\w.])""")
 _MOCHA_TIMEOUT_OFF = re.compile(r"""\btimeout['"]?\s*[:=]\s*['"]?(?:0|false)(?![\w.])""")
@@ -71,6 +84,11 @@ _PYTEST_CONFIGS = (
 _PYTEST_SECTION_BY_EXTENSION = {".toml": _PYPROJECT_SECTION, ".cfg": "tool:pytest"}
 _CONFIG_OPTIONS = ("--config", "-c")
 _NEXTEST_CONFIG = ".config/nextest.toml"
+_NEXTEST_PROFILE_VARIABLE = "NEXTEST_PROFILE="
+_NEXTEST_DEFAULT_PROFILE = "default"
+_NEXTEST_TIMEOUT_KEY = re.compile(r"profile\.([^.]+)\.slow-timeout(\.[^.]+)?")
+_NEXTEST_TERMINATE_KEY = ".terminate-after"
+_TERMINATE_AFTER = re.compile(r"\bterminate-after\s*=\s*([0-9]+)")
 _ANSWER_VALUE = "<where each test is bounded>"
 
 
@@ -127,8 +145,13 @@ def _command_reaches(place: _Place, command: str, appended: Tuple[str, ...]) -> 
     joined = [*raw[:-1], [*raw[-1], *appended]] if raw and appended else raw
     reaches: List[_Reach] = []
     folders = place.folders
-    for words in (program_words(segment) for segment in joined):
+    exported = place.assignments
+    for segment in joined:
+        words = program_words(segment)
         if not words:
+            continue
+        if words[0] == "export":
+            exported = (*exported, *words[1:])
             continue
         if words[0] == "cd":
             entered = folders_after_cd(place.root, list(folders), words[1:]) if folders is not None else None
@@ -136,7 +159,8 @@ def _command_reaches(place: _Place, command: str, appended: Tuple[str, ...]) -> 
             continue
         if words[0] in SHELL_BUILTINS:
             continue
-        here = place._replace(folders=folders, trail=(*place.trail, " ".join(words)))
+        prefix = segment[: len(segment) - len(words)]
+        here = place._replace(folders=folders, trail=(*place.trail, " ".join(words)), assignments=(*exported, *prefix))
         reaches = [*reaches, *_segment_reaches(here, words)]
     return reaches
 
@@ -265,10 +289,20 @@ def _read_inside(root: str, path: str) -> Optional[str]:
         return None
 
 
+def _judged_file(
+    place: _Place, word: str, path: str, judge: Callable[[str, str], _Judged]
+) -> Union[_Judged, List[_Reach]]:
+    relative = _relative(place.root, path)
+    text = _read_inside(place.root, path)
+    return [_unrecognised(place, word, relative)] if text is None else judge(text, relative)
+
+
 def _json_object(root: str, path: str) -> Optional[Dict[str, Any]]:
     text = _read_inside(root, path)
-    if text is None:
-        return None
+    return None if text is None else _loaded_object(text)
+
+
+def _loaded_object(text: str) -> Optional[Dict[str, Any]]:
     try:
         loaded = json.loads(text)
     except ValueError:
@@ -375,26 +409,30 @@ def _resolved_import(root: str, folder: str, specifier: str) -> Optional[str]:
     return real if _inside(root, real) else None
 
 
+def _reaches_run(text: str) -> bool:
+    return bool(_RUN_BY_NAME.search(text) or _RUN_CHAINED.search(text) or _module_binding_calls_run(text))
+
+
+def _module_binding_calls_run(text: str) -> bool:
+    names = [first or second for first, second in _MODULE_BINDING.findall(text)]
+    return any(re.search(r"(?<![\w$.])" + re.escape(name) + r"\s*\.\s*run\b", text) for name in names)
+
+
 def _starts_node_test(text: str) -> bool:
-    return bool(_QUOTED_TEST_FLAG.search(text) or _IMPORTS_NODE_TEST_RUN.search(text))
+    return bool(_QUOTED_TEST_FLAG.search(text) or _reaches_run(text) or _RE_EXPORTS_RUN.search(text))
 
 
 def _node_test_bounded(texts: Tuple[str, ...]) -> bool:
     flagged = any(_positive(value) for text in texts for value in _TEXT_TEST_TIMEOUT.findall(text))
-    passed = any(
-        _bounding_run_timeout(value)
-        for text in texts
-        if _IMPORTS_NODE_TEST_RUN.search(text)
-        for value in _RUN_TIMEOUT.findall(text)
-    )
-    return flagged or passed
+    calling = texts if any(_RE_EXPORTS_RUN.search(text) for text in texts) else tuple(filter(_reaches_run, texts))
+    return flagged or any(_bounding_run_timeout(value) for text in calling for value in _RUN_TIMEOUT.findall(text))
 
 
 def _bounding_run_timeout(value: str) -> bool:
+    if value in _NOT_A_BOUND:
+        return False
     number = _number(value)
-    if number is None:
-        return value != "Infinity"
-    return number != 0 and number != math.inf
+    return number is None or 0 < number < math.inf
 
 
 def _given_config(place: _Place, arguments: List[str], names: Tuple[str, ...]) -> Optional[str]:
@@ -409,13 +447,13 @@ def _config_reaches(
     turned_off: Callable[[str], bool],
     given: Optional[str] = None,
 ) -> List[_Reach]:
+    def judged(text: str, relative: str) -> List[_Reach]:
+        return [_reach(place, runner, relative)] if turned_off(text) else []
+
     for path in _config_files(place, prefixes, given):
-        relative = _relative(place.root, path)
-        text = _read_inside(place.root, path)
-        if text is None:
-            return [_unrecognised(place, runner, relative)]
-        if turned_off(text):
-            return [_reach(place, runner, relative)]
+        found = _judged_file(place, runner, path, judged)
+        if found:
+            return found
     return []
 
 
@@ -482,12 +520,11 @@ def _package_setting_reaches(
     path = given if given is not None else found[1] if found is not None else None
     if path is None:
         return []
-    relative = _relative(place.root, path)
-    if _read_inside(place.root, path) is None:
-        return [_unrecognised(place, runner, relative)]
-    manifest = _json_object(place.root, path) or {}
-    section = manifest.get(runner)
-    return [_reach(place, runner, relative)] if isinstance(section, dict) and turned_off(section) else []
+    def judged(text: str, relative: str) -> List[_Reach]:
+        section = (_loaded_object(text) or {}).get(runner)
+        return [_reach(place, runner, relative)] if isinstance(section, dict) and turned_off(section) else []
+
+    return _judged_file(place, runner, path, judged)
 
 
 def _mocha_reaches(place: _Place, command: List[str]) -> List[_Reach]:
@@ -536,11 +573,10 @@ def _dart_family_reaches(place: _Place, command: List[str]) -> List[_Reach]:
     found = _last_holding(place, "dart_test.yaml")
     if found is None:
         return []
-    relative = _relative(place.root, found[1])
-    text = _read_inside(place.root, found[1])
-    if text is None:
-        return [_unrecognised(place, program, relative)]
-    return [_reach(place, runner, relative)] if _DART_TIMEOUT_OFF.search(text) else []
+    def judged(text: str, relative: str) -> List[_Reach]:
+        return [_reach(place, runner, relative)] if _DART_TIMEOUT_OFF.search(text) else []
+
+    return _judged_file(place, program, found[1], judged)
 
 
 def _pytest_reaches(place: _Place, command: List[str]) -> List[_Reach]:
@@ -564,10 +600,12 @@ def _pytest_reaches(place: _Place, command: List[str]) -> List[_Reach]:
 
 
 def _pytest_file_reaches(place: _Place, path: str, section: str, decides: bool) -> Optional[List[_Reach]]:
-    relative = _relative(place.root, path)
-    text = _read_inside(place.root, path)
-    if text is None:
-        return [_unrecognised(place, "pytest", relative)]
+    return _judged_file(
+        place, "pytest", path, lambda text, relative: _pytest_text_reaches(place, text, relative, section, decides)
+    )
+
+
+def _pytest_text_reaches(place: _Place, text: str, relative: str, section: str, decides: bool) -> Optional[List[_Reach]]:
     try:
         holds, value = _pytest_setting(section, text)
     except configparser.Error:
@@ -620,11 +658,53 @@ def _cargo_reaches(place: _Place, command: List[str]) -> List[_Reach]:
     path = given if given is not None else found[1] if found is not None else None
     if path is None:
         return [_reach(place, "cargo-nextest")]
-    text = _read_inside(place.root, path)
-    if text is None:
-        return [_unrecognised(place, command[0], _relative(place.root, path))]
-    settings = [line.split("#", 1)[0] for line in text.splitlines()]
-    return [] if any("terminate-after" in line for line in settings) else [_reach(place, "cargo-nextest")]
+    def judged(text: str, relative: str) -> List[_Reach]:
+        return [] if _nextest_profile_bounded(text, _nextest_profile(place, command[3:])) else [_reach(place, "cargo-nextest")]
+
+    return _judged_file(place, command[0], path, judged)
+
+
+def _nextest_profile(place: _Place, arguments: List[str]) -> str:
+    attached = [word[2:] for word in arguments if word.startswith("-P") and len(word) > 2]
+    named = _option_value(arguments, ("--profile", "-P"))
+    assigned = [word[len(_NEXTEST_PROFILE_VARIABLE) :] for word in place.assignments if word.startswith(_NEXTEST_PROFILE_VARIABLE)]
+    return named or (attached[-1] if attached else assigned[-1] if assigned else _NEXTEST_DEFAULT_PROFILE)
+
+
+def _nextest_profile_bounded(text: str, profile: str) -> bool:
+    timeouts = _nextest_timeouts(text)
+    return timeouts.get(profile, timeouts.get(_NEXTEST_DEFAULT_PROFILE, False))
+
+
+def _nextest_timeouts(text: str) -> Dict[str, bool]:
+    timeouts: Dict[str, bool] = {}
+    section: Optional[str] = ""
+    for line in text.splitlines():
+        stripped = line.split("#", 1)[0].strip()
+        if stripped.startswith("[["):
+            section = None
+        elif stripped.startswith("["):
+            section = stripped.strip("[] ")
+        elif section is not None and "=" in stripped:
+            key, value = stripped.split("=", 1)
+            timeouts = _with_nextest_setting(timeouts, _dotted(section, key), value)
+    return timeouts
+
+
+def _dotted(section: str, key: str) -> str:
+    return ".".join(part for part in (section, key.strip()) if part).replace('"', "").replace("'", "")
+
+
+def _with_nextest_setting(timeouts: Dict[str, bool], path: str, value: str) -> Dict[str, bool]:
+    found = _NEXTEST_TIMEOUT_KEY.fullmatch(path)
+    if found is None:
+        return timeouts
+    profile, member = found.groups()
+    if member is None:
+        inline = _TERMINATE_AFTER.search(value)
+        return {**timeouts, profile: inline is not None and _positive(inline.group(1))}
+    terminates = member == _NEXTEST_TERMINATE_KEY and _positive(value.strip())
+    return {**timeouts, profile: timeouts.get(profile, False) or terminates}
 
 
 _RUNNERS: Dict[str, _Runner] = {

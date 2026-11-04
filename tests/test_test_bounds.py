@@ -396,5 +396,124 @@ class CommandWalk(unittest.TestCase):
         self.assertEqual([entry.runner for entry in found], ["make", "cargo-test"])
 
 
+NEXTEST_BOUNDED_DEFAULT = '[profile.default]\nslow-timeout = { period = "60s", terminate-after = 3 }\n'
+
+
+class NextestProfiles(unittest.TestCase):
+    def nextest(self, command, config):
+        return runners(self, command, {".config/nextest.toml": config})
+
+    def test_a_timeout_the_active_profile_does_not_read_never_bounds_it(self):
+        for name, config in (
+            ("only another profile", '[profile.ci]\nslow-timeout = { period = "60s", terminate-after = 3 }\n'),
+            ("a string default", '[profile.default]\nslow-timeout = "60s"\n[profile.ci]\nslow-timeout = { period = "60s", terminate-after = 3 }\n'),
+            ("only an override", '[[profile.default.overrides]]\nfilter = "test(x)"\nslow-timeout = { period = "1s", terminate-after = 2 }\n'),
+            ("a table after an override", '[[profile.default.overrides]]\nfilter = "test(x)"\n[profile.default.slow-timeout]\nperiod = "1s"\n'),
+            ("zero", '[profile.default]\nslow-timeout = { period = "60s", terminate-after = 0 }\n'),
+        ):
+            with self.subTest(case=name):
+                self.assertEqual(self.nextest("cargo nextest run", config), ["cargo-nextest"])
+
+    def test_the_active_profile_replaces_a_bounded_default(self):
+        unbounded_ci = NEXTEST_BOUNDED_DEFAULT + '[profile.ci]\nslow-timeout = "60s"\n'
+        for command in (
+            "cargo nextest run --profile ci",
+            "cargo nextest run -P ci",
+            "cargo nextest run --profile=ci",
+            "cargo nextest run -Pci",
+            "NEXTEST_PROFILE=ci cargo nextest run",
+            "export NEXTEST_PROFILE=ci; cargo nextest run",
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(self.nextest(command, unbounded_ci), ["cargo-nextest"])
+
+    def test_a_timeout_table_of_the_active_profile_replaces_a_bounded_default(self):
+        config = NEXTEST_BOUNDED_DEFAULT + '[profile.ci.slow-timeout]\nperiod = "60s"\n'
+        self.assertEqual(self.nextest("cargo nextest run --profile ci", config), ["cargo-nextest"])
+
+    def test_the_argument_outranks_the_environment(self):
+        config = NEXTEST_BOUNDED_DEFAULT + '[profile.ci]\nslow-timeout = "60s"\n'
+        self.assertEqual(self.nextest("NEXTEST_PROFILE=ci cargo nextest run --profile default", config), [])
+
+    def test_a_timeout_the_active_profile_reads_bounds_it(self):
+        for name, command, config in (
+            ("inline", "cargo nextest run", NEXTEST_BOUNDED_DEFAULT),
+            ("table", "cargo nextest run", '[profile.default.slow-timeout]\nperiod = "60s"\nterminate-after = 3\n'),
+            ("dotted key", "cargo nextest run", "[profile.default]\nslow-timeout.terminate-after = 3\n"),
+            ("named profile", "cargo nextest run --profile ci", '[profile.ci]\nslow-timeout = { period = "60s", terminate-after = 3 }\n'),
+            ("default read through", "cargo nextest run --profile ci", NEXTEST_BOUNDED_DEFAULT + "[profile.ci]\nretries = 2\n"),
+            ("environment", "NEXTEST_PROFILE=ci cargo nextest run", '[profile.ci]\nslow-timeout = { period = "60s", terminate-after = 3 }\n'),
+        ):
+            with self.subTest(case=name):
+                self.assertEqual(self.nextest(command, config), [])
+
+
+class NodeTestImportForms(unittest.TestCase):
+    FORMS = (
+        ("named", "import { run } from 'node:test';\n", "run"),
+        ("named alias", "import { run as go } from 'node:test';\n", "go"),
+        ("default plus named", "import test, { run } from 'node:test';\n", "run"),
+        ("namespace", "import * as nt from 'node:test';\n", "nt.run"),
+        ("default member", "import nt from 'node:test';\n", "nt.run"),
+        ("require destructured", "const { run } = require('node:test');\n", "run"),
+        ("require member", "const nt = require('node:test');\n", "nt.run"),
+        ("require chained", "", "require('node:test').run"),
+        ("dynamic destructured", "const { run } = await import('node:test');\n", "run"),
+        ("dynamic member", "const nt = await import('node:test');\n", "nt.run"),
+        ("dynamic chained", "", "(await import('node:test')).run"),
+    )
+
+    def script_runners(self, text, extra=None):
+        return runners(self, "node scripts/run.mjs", dict({"scripts/run.mjs": text}, **(extra or {})))
+
+    def test_every_form_without_a_timeout_is_the_node_test_runner(self):
+        for name, opening, call in self.FORMS:
+            with self.subTest(form=name):
+                self.assertEqual(self.script_runners(opening + call + "({ files });\n"), ["node-test"])
+
+    def test_every_form_with_a_timeout_is_bounded(self):
+        for name, opening, call in self.FORMS:
+            with self.subTest(form=name):
+                self.assertEqual(self.script_runners(opening + call + "({ files, timeout: 1000 });\n"), [])
+
+    def test_a_module_binding_that_never_calls_run_starts_no_runner(self):
+        self.assertEqual(self.script_runners("import * as nt from 'node:test';\nnt.test('x', () => {});\n"), ["node"])
+
+    def test_a_relative_re_export_of_run_is_followed(self):
+        for name, helper in (("named", "export { run } from 'node:test';\n"), ("all", "export * from 'node:test';\n")):
+            with self.subTest(form=name):
+                caller = "import { run } from '../helper.mjs';\nrun({ files{timeout} });\n"
+                self.assertEqual(self.script_runners(caller.replace("{timeout}", ""), {"helper.mjs": helper}), ["node-test"])
+                self.assertEqual(self.script_runners(caller.replace("{timeout}", ", timeout: 1000"), {"helper.mjs": helper}), [])
+
+
+class RunTimeoutProperty(unittest.TestCase):
+    def judged_script(self, body):
+        return runners(self, "node run.mjs", {"run.mjs": "import { run } from 'node:test';\n" + body})
+
+    def test_what_is_no_timeout_of_a_call_never_bounds_it(self):
+        for body in (
+            "function wait(timeout: number) {}\nrun({ files });\n",
+            "function wait(a, timeout: number) {}\nrun({ files });\n",
+            "run({ timeout: undefined });\n",
+            "run({ timeout: null });\n",
+            "run({ timeout: -1 });\n",
+            "run({ timeout: 0 });\n",
+            "run({ timeout: Infinity });\n",
+            "run({ timeout: Number.POSITIVE_INFINITY });\n",
+        ):
+            with self.subTest(body=body):
+                self.assertEqual(self.judged_script(body), ["node-test"])
+
+    def test_a_timeout_property_with_a_value_bounds_it(self):
+        for body in (
+            "run({ timeout: 1000 });\n",
+            "run({ files, timeout: TIMEOUT_MS });\n",
+            "run({\n  files,\n  timeout: 60 * 1000,\n});\n",
+        ):
+            with self.subTest(body=body):
+                self.assertEqual(self.judged_script(body), [])
+
+
 if __name__ == "__main__":
     unittest.main()
