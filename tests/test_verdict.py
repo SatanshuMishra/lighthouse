@@ -155,7 +155,9 @@ class SpendTest(unittest.TestCase):
             self, spend_findings({"tokens": 10, "minutes": 2, "dollars": -1}), files=["evidence/export.txt"]
         )
         self.assertEqual(code, 2)
-        self.assertEqual(json.loads(stdout)["key"], "spend.dollars")
+        printed = json.loads(stdout)
+        self.assertEqual(printed["key"], "#/spend/dollars")
+        self.assertIn("h14-lighthouse-findings", printed["error"])
 
 
 def checked_path(check, kind="new", name="export writes a csv"):
@@ -195,7 +197,9 @@ class CheckTest(unittest.TestCase):
     def test_path_without_check_is_refused(self):
         code, stdout, _, results = lighthouse_verdict(self, check_findings([checked_path(None)]), files=["evidence/export.txt"])
         self.assertEqual(code, 2)
-        self.assertEqual(json.loads(stdout)["key"], "paths[0].check")
+        printed = json.loads(stdout)
+        self.assertEqual(printed["key"], "#/paths/0/check")
+        self.assertIn("the lighthouse:test child session", printed["error"])
         self.assertFalse(os.path.exists(os.path.join(results, "verdict.json")))
 
     def test_check_kind_outside_the_three_is_refused(self):
@@ -203,7 +207,7 @@ class CheckTest(unittest.TestCase):
             self, check_findings([checked_path({"kind": "glance", "why": "it looked right"})]), files=["evidence/export.txt"]
         )
         self.assertEqual(code, 2)
-        self.assertEqual(json.loads(stdout)["key"], "paths[0].check.kind")
+        self.assertEqual(json.loads(stdout)["key"], "#/paths/0/check/kind")
 
     def test_suite_check_naming_no_test_is_refused(self):
         code, stdout, _, _ = lighthouse_verdict(
@@ -212,14 +216,14 @@ class CheckTest(unittest.TestCase):
             files=["evidence/export.txt"],
         )
         self.assertEqual(code, 2)
-        self.assertEqual(json.loads(stdout)["key"], "paths[0].check.tests")
+        self.assertEqual(json.loads(stdout)["key"], "#/paths/0/check/tests")
 
     def test_empty_why_is_refused(self):
         code, stdout, _, _ = lighthouse_verdict(
             self, check_findings([checked_path({"kind": "drive", "why": " "})]), files=["evidence/export.txt"]
         )
         self.assertEqual(code, 2)
-        self.assertEqual(json.loads(stdout)["key"], "paths[0].check.why")
+        self.assertEqual(json.loads(stdout)["key"], "#/paths/0/check/why")
 
     def test_suite_check_whose_tests_passed_proves_the_path(self):
         check = {"kind": "suite", "why": "test_export asserts the header row", "tests": ["tests.T.test_export"]}
@@ -319,7 +323,6 @@ class CheckTest(unittest.TestCase):
             "failures": [],
             "pre_existing": [],
             "flaky": [],
-            "passed": ["tests.T.test_export"],
             "core": None,
             "feature": {"tests": {"passed": ["tests.T.test_export"], "failed": []}},
         }
@@ -622,9 +625,17 @@ class VerdictTest(unittest.TestCase):
         results = results_folder(self, ["evidence/export.txt", "previous/evidence/import.txt"])
         self.assert_retest_not_driven(results, ["./previous/evidence/import.txt"])
 
-    def test_retest_path_with_copied_evidence_spelled_absolute_is_unproven(self):
+    def test_retest_path_with_evidence_spelled_absolute_is_refused(self):
         results = results_folder(self, ["evidence/export.txt", "previous/evidence/import.txt"])
-        self.assert_retest_not_driven(results, [os.path.join(results, "previous", "evidence", "import.txt")])
+        absolute = os.path.join(results, "previous", "evidence", "import.txt")
+
+        code, stdout, _, _ = verdict_in(self, results, retest_findings([absolute]), RETEST_PLAN)
+
+        self.assertEqual(code, 2, stdout)
+        printed = json.loads(stdout)
+        self.assertEqual(printed["key"], "#/paths/1/evidence/0")
+        self.assertIn("h14-lighthouse-findings", printed["error"])
+        self.assertFalse(os.path.exists(os.path.join(results, "verdict.json")))
 
     def test_retest_path_whose_evidence_is_not_in_the_results_folder_is_unproven(self):
         self.assert_retest_not_driven(results_folder(self, ["evidence/export.txt"]), ["evidence/import.txt"])
@@ -639,6 +650,110 @@ class VerdictTest(unittest.TestCase):
         results = results_folder(self, ["evidence/export.txt", "previous/evidence/import.txt"])
         self.assert_retest_not_driven(results, ["PREVIOUS/evidence/import.txt"])
 
+
+
+def h14_findings(**changes):
+    return {**check_findings([checked_path(DIRECT_CHECK)]), **changes}
+
+
+class ProducerCheckTest(unittest.TestCase):
+    def test_blocked_reason_spanning_two_lines_is_refused(self):
+        results = scratch.temporary_folder(self, "lh-results-")
+        env = scratch.environment(scratch.make_home(self))
+
+        code, stdout, stderr = scratch.run_lighthouse(
+            ["verdict", "--blocked", "the build stopped\nat step two", "--results", results], env
+        )
+
+        self.assertEqual(code, 2, stderr)
+        printed = json.loads(stdout.strip().splitlines()[-1])
+        self.assertEqual(sorted(printed), ["error"])
+        self.assertIn("h13-lighthouse-verdict-line", printed["error"])
+        self.assertIn("the blocked line", printed["error"])
+        self.assertIn("/reason", printed["error"])
+        self.assertEqual(os.listdir(results), [])
+
+    def test_a_verdict_line_breaking_h13_writes_neither_file(self):
+        suite = {"result": "failures", "reason": None, "failures": ["tests.T\ntest_export"], "pre_existing": [], "flaky": [], "core": None, "feature": None}
+
+        code, stdout, stderr, results = lighthouse_verdict(self, h14_findings(suite=suite))
+
+        self.assertEqual(code, 2, stderr)
+        printed = json.loads(stdout.strip().splitlines()[-1])
+        self.assertIn("h13-lighthouse-verdict-line", printed["error"])
+        self.assertIn("verdict.json with the verdict line", printed["error"])
+        self.assertIn("/failures/0", printed["error"])
+        self.assertFalse(os.path.exists(os.path.join(results, "verdict.json")))
+        self.assertFalse(os.path.exists(os.path.join(results, "report.md")))
+
+
+class ConsumerCheckTest(unittest.TestCase):
+    def test_a_path_key_h14_does_not_define_is_refused(self):
+        findings = h14_findings(paths=[{**checked_path(DIRECT_CHECK), "note": "seen twice"}])
+
+        code, stdout, stderr, results = lighthouse_verdict(self, findings)
+
+        self.assertEqual(code, 2, stderr)
+        printed = json.loads(stdout)
+        self.assertEqual(printed["key"], "#/paths/0/note")
+        self.assertIn("findings.json from the lighthouse:test child session fails h14-lighthouse-findings", printed["error"])
+        self.assertIn("note", printed["error"])
+        self.assertFalse(os.path.exists(os.path.join(results, "verdict.json")))
+
+    def test_suite_entries_are_test_ids_only(self):
+        suite = {"result": "failures", "reason": None, "failures": [{"id": "tests.T.test_export"}], "pre_existing": [], "flaky": [], "core": None, "feature": None}
+
+        code, stdout, stderr, results = lighthouse_verdict(self, h14_findings(suite=suite))
+
+        self.assertEqual(code, 2, stderr)
+        self.assertEqual(json.loads(stdout)["key"], "#/suite/failures/0")
+        self.assertFalse(os.path.exists(os.path.join(results, "verdict.json")))
+
+    def test_every_h14_error_is_named(self):
+        findings = h14_findings(build={"result": "maybe", "reason": None}, spend={"tokens": -1, "minutes": 1})
+
+        code, stdout, stderr, _ = lighthouse_verdict(self, findings)
+
+        self.assertEqual(code, 2, stderr)
+        printed = json.loads(stdout)
+        self.assertEqual(printed["key"], "#/build/result")
+        self.assertIn("#/build/result enum", printed["error"])
+        self.assertIn("#/spend/tokens minimum", printed["error"])
+
+    def test_trials_passing_more_often_than_they_ran_are_refused(self):
+        path = {**checked_path(DIRECT_CHECK), "trials": {"count": 2, "feature_passed": 3, "core_passed": None}}
+
+        code, stdout, stderr, _ = lighthouse_verdict(self, h14_findings(paths=[path]))
+
+        self.assertEqual(code, 2, stderr)
+        self.assertEqual(json.loads(stdout)["key"], "#/paths/0/trials/feature_passed")
+
+    def test_evidence_linked_out_of_the_results_folder_is_refused(self):
+        results = results_folder(self, [])
+        outside = scratch.temporary_folder(self, "lh-outside-")
+        with open(os.path.join(outside, "export.txt"), "w", encoding="utf-8") as handle:
+            handle.write("export\n")
+        os.symlink(os.path.join(outside, "export.txt"), os.path.join(results, "evidence", "export.txt"))
+
+        code, stdout, stderr, _ = verdict_in(self, results, h14_findings())
+
+        self.assertEqual(code, 2, stderr)
+        self.assertEqual(json.loads(stdout)["key"], "#/paths/0/evidence/0")
+        self.assertFalse(os.path.exists(os.path.join(results, "verdict.json")))
+
+    def test_a_check_id_planned_twice_is_refused(self):
+        results = results_folder(self, ["evidence/export.txt"])
+        plan = {"checks": [{"id": "C2.4", "kind": "exact", "trials": 1}, {"id": "C2.4", "kind": "judged", "trials": 3}], "neighbours": [], "reach": {}}
+        write_json(results, "plan.json", plan)
+
+        code, stdout, stderr, _ = verdict_in(self, results, h14_findings())
+
+        self.assertEqual(code, 2, stderr)
+        printed = json.loads(stdout)
+        self.assertEqual(printed["key"], "#/checks/1/id")
+        self.assertIn("C2.4", printed["error"])
+        self.assertIn("plan.json from lighthouse execute", printed["error"])
+        self.assertFalse(os.path.exists(os.path.join(results, "verdict.json")))
 
 
 class MixedRunsTest(unittest.TestCase):

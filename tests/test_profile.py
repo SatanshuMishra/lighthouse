@@ -412,8 +412,87 @@ class ProfileMeasureTest(unittest.TestCase):
                 with open(shared_path, encoding="utf-8") as handle:
                     self.assertEqual(handle.read(), shared)
 
+    def test_measure_names_every_problem_and_writes_nothing(self):
+        work, _ = scratch.make_repo(self)
+        base = scratch.sample_profile()
+        surface = {**base["surfaces"][0], "trials": 0, "paths": ["docs/gone.md"]}
+        profile = scratch.sample_profile(suite={"command": "true", "junit": None}, surfaces=[surface])
+        outside = scratch.temporary_folder(self, "lh-outside-")
+        profile_file = os.path.join(outside, "profile.json")
+        text = json.dumps(profile, indent=2) + "\n"
+        with open(profile_file, "w", encoding="utf-8") as handle:
+            handle.write(text)
+
+        code, printed = self.measure(work, "--profile", profile_file)
+
+        self.assertEqual(code, 2, printed)
+        self.assertEqual(
+            printed["problems"],
+            [
+                {"kind": "schema", "detail": "surfaces[0].trials is 0, and must be at least 1"},
+                {"kind": "path", "detail": "docs/gone.md does not exist in the repository"},
+            ],
+        )
+        self.assertIn("refusing to write " + profile_file, printed["error"])
+        self.assertIn("surfaces[0].trials is 0", printed["error"])
+        self.assertIn("docs/gone.md does not exist", printed["error"])
+        with open(profile_file, encoding="utf-8") as handle:
+            self.assertEqual(handle.read(), text)
+        self.assertEqual(os.listdir(outside), ["profile.json"])
+
 
 class ProfilePublishTest(unittest.TestCase):
+    def test_publish_refuses_a_broken_profile_and_commits_nothing(self):
+        work, remote = scratch.make_repo(self)
+        scratch.run_git(work, "checkout", "-q", "-b", "feat/x")
+        scratch.commit_files(work, {"a.py": "A = 1\n"}, "add a")
+        scratch.run_git(work, "push", "-q", "origin", "feat/x")
+        scratch.run_git(work, "checkout", "-q", "main")
+        local_before = scratch.run_git(work, "rev-parse", "feat/x").strip()
+        remote_before = scratch.run_git(remote, "rev-parse", "feat/x").strip()
+        base = scratch.sample_profile()
+        surface = {**base["surfaces"][0], "trials": 0}
+        scratch.write_profile(work, scratch.sample_profile(surfaces=[surface]))
+        checkout_before = checkout_state(work)
+
+        code, stdout, stderr = scratch.run_lighthouse(
+            ["profile", "publish", "--repo", work, "--feature", "feat/x"],
+            scratch.environment(scratch.make_home(self)),
+        )
+
+        self.assertEqual(code, 2, stderr)
+        printed = json.loads(stdout)
+        self.assertEqual(printed["problems"], [{"kind": "schema", "detail": "surfaces[0].trials is 0, and must be at least 1"}])
+        self.assertIn(".lighthouse/profile.json on feat/x", printed["error"])
+        self.assertEqual(scratch.run_git(work, "rev-parse", "feat/x").strip(), local_before)
+        self.assertEqual(scratch.run_git(remote, "rev-parse", "feat/x").strip(), remote_before)
+        self.assertEqual(checkout_state(work), checkout_before)
+
+    def test_publish_checks_paths_against_the_feature_branch(self):
+        work, remote = scratch.make_repo(self)
+        scratch.commit_files(work, {"core-only.md": "only on main\n"}, "add a core file")
+        scratch.run_git(work, "push", "-q", "origin", "main")
+        scratch.run_git(work, "checkout", "-q", "-b", "feat/x", "HEAD^")
+        scratch.commit_files(work, {"a.py": "A = 1\n"}, "add a")
+        scratch.run_git(work, "push", "-q", "origin", "feat/x")
+        scratch.run_git(work, "checkout", "-q", "main")
+        remote_before = scratch.run_git(remote, "rev-parse", "feat/x").strip()
+        base = scratch.sample_profile()
+        surface = {**base["surfaces"][0], "paths": ["core-only.md"]}
+        scratch.write_profile(work, scratch.sample_profile(surfaces=[surface]))
+
+        code, stdout, stderr = scratch.run_lighthouse(
+            ["profile", "publish", "--repo", work, "--feature", "feat/x"],
+            scratch.environment(scratch.make_home(self)),
+        )
+
+        self.assertEqual(code, 2, stderr)
+        self.assertEqual(
+            json.loads(stdout)["problems"],
+            [{"kind": "path", "detail": "core-only.md does not exist in the repository"}],
+        )
+        self.assertEqual(scratch.run_git(remote, "rev-parse", "feat/x").strip(), remote_before)
+
     def test_publish_commits_to_the_feature_branch(self):
         work, remote = scratch.make_repo(self)
         scratch.run_git(work, "checkout", "-q", "-b", "feat/x")

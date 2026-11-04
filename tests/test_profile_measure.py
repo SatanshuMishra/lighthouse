@@ -103,7 +103,7 @@ class ProfileMeasureTest(unittest.TestCase):
         flag = os.path.join(scratch.temporary_folder(self, "lh-flag-"), "started.flag")
         quoted_flag = shlex.quote(flag)
         profile = scratch.sample_profile(
-            suite={"command": "true", "junit": None, "timeout_minutes": 0.01},
+            suite={"command": "true", "junit": None},
             start={
                 "command": "sleep 3 && touch {} && exec sleep 30".format(quoted_flag),
                 "ready": "test -f {}".format(quoted_flag),
@@ -135,6 +135,23 @@ class ProfileMeasureTest(unittest.TestCase):
         status = scratch.run_git(work, "status", "--porcelain", "--untracked-files=all", "--ignored")
 
         self.assertEqual([line[3:] for line in status.splitlines()], [PROFILE_PATH])
+
+    def test_measure_refuses_to_write_a_profile_the_check_refuses(self):
+        work, _ = scratch.make_repo(self)
+        profile = scratch.sample_profile(suite={"command": "true", "junit": None, "timeout_minutes": 15})
+        text = json.dumps(profile, indent=2) + "\n"
+        scratch.commit_files(work, {PROFILE_PATH: text}, "record a profile holding the retired key")
+
+        code, stdout, stderr = lighthouse(self, "profile", "measure", "--repo", work)
+
+        self.assertEqual(code, 2, stdout + stderr)
+        printed = json.loads(stdout)
+        self.assertEqual([item["kind"] for item in printed["problems"]], ["retired"])
+        self.assertIn("suite.timeout_minutes is retired", printed["error"])
+        self.assertIn("nothing was written", printed["error"])
+        with open(os.path.join(work, PROFILE_PATH), encoding="utf-8") as handle:
+            self.assertEqual(handle.read(), text)
+        self.assertEqual(scratch.run_git(work, "status", "--porcelain", "--untracked-files=all"), "")
 
     def test_missing_measurement_is_an_upgrade(self):
         work, _ = scratch.make_repo(self)

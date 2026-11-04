@@ -1,8 +1,8 @@
 import json
 import os
+import re
 from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 from lighthouse_tool import handoff, record_lines
-from lighthouse_tool.records import is_number
 from lighthouse_tool.repo import Parser, Refusal
 from lighthouse_tool.results import CHECKS, PLAN, RECORD
 
@@ -15,13 +15,19 @@ SUITE = "suite.json"
 COMMITS = "commits.json"
 PROFILE = "profile.json"
 K3_SCHEMA = "k3-check-result.schema.json"
+H13 = "h13-lighthouse-verdict-line"
+H14 = "h14-lighthouse-findings"
+FINDINGS_PRODUCER = "the lighthouse:test child session"
+PLAN_PRODUCER = "lighthouse execute"
+RETEST_PRODUCER = "lighthouse retest"
+ROOT_POINTER = "#"
+ERROR_POINTER = re.compile(r"^(#.*?) [A-Za-z$]+: ")
 BUILDS = ("core", "feature")
 FEATURE = "feature"
 SUITE_PHASES = ("prepare_minutes", "suite_minutes", "rerun_minutes")
 SUITE_FIELDS = ("result", "reason", "failures", "pre_existing", "flaky")
 PATH_KINDS = ("new", "neighbour")
 PATH_STATUSES = ("passed", "failed", "unproven")
-RUN_OUTCOMES = ("passed", "failed", None)
 BUILD_RESULTS = ("ok", "blocked")
 CHECK_KINDS = ("suite", "direct", "drive")
 CHECK_RUN_KINDS = ("exact", "judged")
@@ -45,10 +51,22 @@ JudgedPath = Tuple[Dict[str, Any], str, Optional[str]]
 
 
 class Malformed(Refusal):
-    def __init__(self, key: str, problem: str, source: str = FINDINGS) -> None:
-        super().__init__("{} in {}: {}".format(key, source, problem))
+    def __init__(self, key: str, message: str) -> None:
+        super().__init__(message)
         self.key = key
-        self.source = source
+
+
+def broken_rule(source: str, producer: str, pointer: str, problem: str) -> Malformed:
+    return Malformed(pointer, "{} from {}: {} {}".format(source, producer, pointer, problem))
+
+
+def findings_rule(pointer: str, problem: str) -> Malformed:
+    return broken_rule(FINDINGS, FINDINGS_PRODUCER, pointer, problem)
+
+
+def pointer_of(error: str) -> str:
+    found = ERROR_POINTER.match(error)
+    return found.group(1) if found else ROOT_POINTER
 
 
 class JudgedCheck(NamedTuple):
@@ -87,17 +105,24 @@ def parser() -> Parser:
 def blocked_line(reason: str) -> Tuple[int, Optional[str], Optional[str]]:
     if not reason.strip():
         raise Refusal("--blocked needs the reason the run stopped")
-    line = {
-        "verdict": "blocked",
-        "failures": [],
-        "unproven": [],
-        "flaky": [],
-        "tokens": 0,
-        "minutes": 0,
-        "pr": None,
-        "reason": reason.strip(),
-    }
+    line = checked_line(
+        "the blocked line",
+        {
+            "verdict": "blocked",
+            "failures": [],
+            "unproven": [],
+            "flaky": [],
+            "tokens": 0,
+            "minutes": 0,
+            "pr": None,
+            "reason": reason.strip(),
+        },
+    )
     return 0, json.dumps(line), "lighthouse verdict: blocked: {}".format(reason.strip())
+
+
+def checked_line(target: str, line: Dict[str, Any]) -> Dict[str, Any]:
+    return handoff.check_before_writing("{} {}".format(target, json.dumps(line)), H13, line)
 
 
 def run(argv: List[str]) -> Tuple[int, Optional[str], Optional[str]]:
@@ -109,24 +134,16 @@ def run(argv: List[str]) -> Tuple[int, Optional[str], Optional[str]]:
             return blocked_line(options.blocked)
         results = os.path.realpath(options.results)
         judgement = judged_run(results)
-        line = verdict_line(judgement)
+        line = checked_line("{} with the verdict line".format(VERDICT), verdict_line(judgement))
         write_text(os.path.join(results, VERDICT), json.dumps(line) + "\n")
         write_text(os.path.join(results, REPORT), report(judgement, line))
     except Malformed as malformed:
-        return (
-            2,
-            json.dumps({"error": schema_error(malformed.source), "key": malformed.key}),
-            "lighthouse verdict: {}".format(malformed),
-        )
+        return 2, json.dumps({"error": str(malformed), "key": malformed.key}), "lighthouse verdict: {}".format(malformed)
     except Refusal as refusal:
         return 2, json.dumps({"error": str(refusal)}), "lighthouse verdict: {}".format(refusal)
     return 0, json.dumps(line), "lighthouse verdict: {}; report at {}".format(
         line["verdict"], os.path.join(results, REPORT)
     )
-
-
-def schema_error(source: str) -> str:
-    return "findings do not match their schema" if source == FINDINGS else "{} does not match its schema".format(source)
 
 
 def judged_run(results: str) -> Judgement:
@@ -153,36 +170,44 @@ def judged_run(results: str) -> Judgement:
     )
 
 
-def read_json_file(path: str, source: str) -> Any:
+def read_json_file(path: str, source: str, producer: str) -> Any:
     try:
         with open(path, encoding="utf-8") as handle:
             text = handle.read()
     except OSError as error:
-        raise Malformed(source, "cannot be read: {}".format(error.strerror or error), source)
+        raise broken_rule(source, producer, ROOT_POINTER, "cannot be read: {}".format(error.strerror or error))
     try:
         return json.loads(text)
     except ValueError:
-        raise Malformed(source, "is not JSON", source)
+        raise broken_rule(source, producer, ROOT_POINTER, "is not JSON")
 
 
 def read_findings(results: str) -> Dict[str, Any]:
-    return checked_findings(read_json_file(os.path.join(results, FINDINGS), FINDINGS), results)
+    found = read_json_file(os.path.join(results, FINDINGS), FINDINGS, FINDINGS_PRODUCER)
+    return checked_findings(through_h14(found), results)
+
+
+def through_h14(findings: Any) -> Dict[str, Any]:
+    try:
+        return handoff.read_through(FINDINGS_PRODUCER, FINDINGS, H14, findings)
+    except handoff.FormatRefusal as refusal:
+        raise Malformed(pointer_of(refusal.errors[0]), str(refusal))
 
 
 def read_retest(results: str) -> Optional[Dict[str, Any]]:
     path = os.path.join(results, RETEST)
     if not os.path.exists(path):
         return None
-    return checked_retest(read_json_file(path, RETEST))
+    return checked_retest(read_json_file(path, RETEST, RETEST_PRODUCER))
 
 
 def checked_retest(plan: Any) -> Dict[str, Any]:
     names = plan.get("retest") if isinstance(plan, dict) else None
     if not (isinstance(names, list) and all(isinstance(name, str) for name in names)):
-        raise Malformed(RETEST, "must be a JSON object with a retest list of path names", RETEST)
+        raise broken_rule(RETEST, RETEST_PRODUCER, "#/retest", "must be a list of path names in a JSON object")
     carried = plan.get("carried_paths", [])
     if not (isinstance(carried, list) and all(isinstance(path, dict) for path in carried)):
-        raise Malformed("carried_paths", "must be a list of path objects", RETEST)
+        raise broken_rule(RETEST, RETEST_PRODUCER, "#/carried_paths", "must be a list of path objects")
     return {"retest": unique(names), "carried_paths": carried}
 
 
@@ -194,7 +219,7 @@ def read_execute_plan(results: str) -> Optional[Dict[str, Any]]:
     path = os.path.join(results, PLAN)
     if not os.path.exists(path):
         return None
-    return checked_execute_plan(read_json_file(path, PLAN))
+    return checked_execute_plan(read_json_file(path, PLAN, PLAN_PRODUCER))
 
 
 def is_planned_check(check: Any) -> bool:
@@ -210,16 +235,29 @@ def is_planned_check(check: Any) -> bool:
 def checked_execute_plan(plan: Any) -> Dict[str, Any]:
     checks = plan.get("checks") if isinstance(plan, dict) else None
     if not (isinstance(checks, list) and all(is_planned_check(check) for check in checks)):
-        raise Malformed(PLAN, "must be a JSON object with a checks list of id, kind and trials", PLAN)
+        raise broken_rule(PLAN, PLAN_PRODUCER, "#/checks", "must be a list of checks with id, kind and trials in a JSON object")
     neighbours = plan.get("neighbours", [])
     if not (isinstance(neighbours, list) and all(isinstance(name, str) for name in neighbours)):
-        raise Malformed("neighbours", "must be a list of surface names", PLAN)
+        raise broken_rule(PLAN, PLAN_PRODUCER, "#/neighbours", "must be a list of surface names")
     reach = plan.get("reach", {})
     if not (isinstance(reach, dict) and all(isinstance(reached, bool) for reached in reach.values())):
-        raise Malformed("reach", "must map surface names to true or false", PLAN)
-    ids = unique([check["id"] for check in checks])
-    first = [next(check for check in checks if check["id"] == check_id) for check_id in ids]
-    return {"checks": first, "neighbours": unique(neighbours), "reach": reach}
+        raise broken_rule(PLAN, PLAN_PRODUCER, "#/reach", "must map surface names to true or false")
+    refuse_repeated_checks([check["id"] for check in checks])
+    return {"checks": checks, "neighbours": unique(neighbours), "reach": reach}
+
+
+def refuse_repeated_checks(ids: List[str]) -> None:
+    repeats = [index for index, check_id in enumerate(ids) if check_id in ids[:index]]
+    if repeats:
+        repeated = repeats[0]
+        raise broken_rule(
+            PLAN,
+            PLAN_PRODUCER,
+            "#/checks/{}/id".format(repeated),
+            "repeats the check id {} of #/checks/{}/id; each planned check needs its own id".format(
+                ids[repeated], ids.index(ids[repeated])
+            ),
+        )
 
 
 def record_check_ids(results: str) -> List[str]:
@@ -374,7 +412,7 @@ def is_suite(recorded: Any) -> bool:
     return (
         isinstance(recorded["result"], str)
         and (recorded["reason"] is None or isinstance(recorded["reason"], str))
-        and all(isinstance(entries, list) and all(suite_test_id(entry) is not None for entry in entries) for entries in lists)
+        and all(isinstance(entries, list) and all(isinstance(entry, str) for entry in entries) for entries in lists)
     )
 
 
@@ -409,90 +447,18 @@ def is_count(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
-def required(record: Any, key: str, where: str) -> Any:
-    if not isinstance(record, dict):
-        raise Malformed(where, "must be an object")
-    if key not in record:
-        raise Malformed(qualified(where, key), "is missing")
-    return record[key]
-
-
-def qualified(where: str, key: str) -> str:
-    return key if where == FINDINGS else "{}.{}".format(where, key)
-
-
-def expect(condition: bool, key: str, problem: str) -> None:
-    if not condition:
-        raise Malformed(key, problem)
-
-
-def checked_findings(findings: Any, results: str) -> Dict[str, Any]:
-    expect(isinstance(findings, dict), FINDINGS, "must be a JSON object")
-    expect(required(findings, "version", FINDINGS) == 1, "version", "must be 1")
-    check_suite(required(findings, "suite", FINDINGS))
-    check_build(required(findings, "build", FINDINGS))
-    paths = required(findings, "paths", FINDINGS)
-    expect(isinstance(paths, list), "paths", "must be a list")
-    for index, path in enumerate(paths):
-        check_path(path, "paths[{}]".format(index), results)
-    check_spend(required(findings, "spend", FINDINGS))
+def checked_findings(findings: Dict[str, Any], results: str) -> Dict[str, Any]:
+    for index, path in enumerate(findings["paths"]):
+        check_evidence(path["evidence"], "#/paths/{}/evidence".format(index), results)
+        if path["trials"] is not None:
+            check_trials(path["trials"], "#/paths/{}/trials".format(index))
     return findings
 
 
-def check_suite(suite: Any) -> None:
-    result = required(suite, "result", "suite")
-    expect(isinstance(result, str), "suite.result", "must be a string")
-    reason = required(suite, "reason", "suite")
-    expect(reason is None or isinstance(reason, str), "suite.reason", "must be a string or null")
-    for key in ("failures", "pre_existing", "flaky"):
-        entries = required(suite, key, "suite")
-        expect(isinstance(entries, list), "suite." + key, "must be a list")
-        for index, entry in enumerate(entries):
-            expect(
-                suite_test_id(entry) is not None,
-                "suite.{}[{}]".format(key, index),
-                "must be a test id or an object with a string id",
-            )
-
-
-def suite_test_id(entry: Any) -> Optional[str]:
-    if isinstance(entry, str):
-        return entry
-    if isinstance(entry, dict) and isinstance(entry.get("id"), str):
-        return entry["id"]
-    return None
-
-
-def check_build(build: Any) -> None:
-    expect(required(build, "result", "build") in BUILD_RESULTS, "build.result", "must be ok or blocked")
-    reason = required(build, "reason", "build")
-    expect(reason is None or isinstance(reason, str), "build.reason", "must be a string or null")
-
-
-def check_path(path: Any, where: str, results: str) -> None:
-    for key in ("name", "surface", "expected"):
-        expect(isinstance(required(path, key, where), str), "{}.{}".format(where, key), "must be a string")
-    expect(required(path, "kind", where) in PATH_KINDS, where + ".kind", "must be new or neighbour")
-    expect(
-        required(path, "status", where) in PATH_STATUSES,
-        where + ".status",
-        "must be passed, failed or unproven",
-    )
-    for key in ("retry", "core"):
-        expect(
-            required(path, key, where) in RUN_OUTCOMES,
-            "{}.{}".format(where, key),
-            "must be passed, failed or null",
-        )
-    evidence = required(path, "evidence", where)
-    expect(isinstance(evidence, list), where + ".evidence", "must be a list")
-    for index, item in enumerate(evidence):
-        expect(
-            isinstance(item, str) and is_under(results, item),
-            "{}.evidence[{}]".format(where, index),
-            "must be a path under the results folder",
-        )
-    check_trials(required(path, "trials", where), where + ".trials")
+def check_evidence(evidence: List[str], pointer: str, results: str) -> None:
+    outside = [index for index, item in enumerate(evidence) if not is_under(results, item)]
+    if outside:
+        raise findings_rule("{}/{}".format(pointer, outside[0]), "must be a path under the results folder")
 
 
 def is_under(results: str, item: str) -> bool:
@@ -502,57 +468,22 @@ def is_under(results: str, item: str) -> bool:
     return os.path.commonpath([results, located]) == results
 
 
-def check_trials(trials: Any, where: str) -> None:
-    if trials is None:
-        return
-    count = required(trials, "count", where)
-    expect(is_count(count) and count >= 1, where + ".count", "must be a whole number of at least 1")
-    feature_passed = required(trials, "feature_passed", where)
-    expect(
-        is_count(feature_passed) and feature_passed <= count,
-        where + ".feature_passed",
-        "must be a whole number no larger than count",
-    )
-    core_passed = required(trials, "core_passed", where)
-    expect(
-        core_passed is None or (is_count(core_passed) and core_passed <= count),
-        where + ".core_passed",
-        "must be null or a whole number no larger than count",
-    )
+def check_trials(trials: Dict[str, Any], pointer: str) -> None:
+    count = trials["count"]
+    if trials["feature_passed"] > count:
+        raise findings_rule(pointer + "/feature_passed", "must be no larger than count")
+    if trials["core_passed"] is not None and trials["core_passed"] > count:
+        raise findings_rule(pointer + "/core_passed", "must be null or no larger than count")
 
 
 def check_checks(findings: Dict[str, Any], carried: List[Dict[str, Any]]) -> None:
-    for index, path in enumerate(findings["paths"]):
-        if path not in carried:
-            check_check(required(path, "check", "paths[{}]".format(index)), "paths[{}].check".format(index))
-
-
-def check_check(check: Any, where: str) -> None:
-    kind = required(check, "kind", where)
-    expect(kind in CHECK_KINDS, where + ".kind", "must be suite, direct or drive")
-    why = required(check, "why", where)
-    expect(isinstance(why, str) and bool(why.strip()), where + ".why", "must be a non-empty string")
-    if kind == SUITE_CHECK:
-        tests = required(check, "tests", where)
-        expect(
-            isinstance(tests, list) and bool(tests) and all(isinstance(test, str) and test for test in tests),
-            where + ".tests",
-            "must name at least one test id for a suite check",
+    unchecked = [
+        index for index, path in enumerate(findings["paths"]) if path not in carried and "check" not in path
+    ]
+    if unchecked:
+        raise findings_rule(
+            "#/paths/{}/check".format(unchecked[0]), "is missing; every path driven this run names its check"
         )
-    else:
-        expect(
-            check.get("tests") in (None, []),
-            where + ".tests",
-            "must be absent or empty for a direct or drive check",
-        )
-
-
-def check_spend(spend: Any) -> None:
-    expect(is_count(required(spend, "tokens", "spend")), "spend.tokens", "must be a whole number")
-    minutes = required(spend, "minutes", "spend")
-    expect(is_number(minutes) and minutes >= 0, "spend.minutes", "must be a number")
-    dollars = spend.get("dollars")
-    expect(dollars is None or (is_number(dollars) and dollars >= 0), "spend.dollars", "must be a number or null")
 
 
 def evidence_problem(evidence: List[str], results: str) -> Optional[str]:
@@ -694,7 +625,7 @@ def checks_classified(checks: Tuple[JudgedCheck, ...], classification: str) -> L
 
 
 def suite_ids(suite: Dict[str, Any], key: str) -> List[str]:
-    return ["suite: {}".format(suite_test_id(entry)) for entry in suite[key]]
+    return ["suite: {}".format(entry) for entry in suite[key]]
 
 
 def unproven_neighbours(judgement: Judgement) -> List[str]:

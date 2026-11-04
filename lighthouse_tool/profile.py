@@ -87,6 +87,12 @@ SCRIPT_SUFFIXES = (".sh", ".py", ".js", ".mjs", ".ts", ".rb", ".pl")
 
 InterpreterOptions = Tuple[frozenset, frozenset]
 
+
+class ProfileRefusal(Refusal):
+    def __init__(self, message: str, problems: List[Problem]) -> None:
+        super().__init__(message)
+        self.problems = problems
+
 PYTHON_OPTIONS = (frozenset(["-W", "-X", "--check-hash-based-pycs"]), frozenset(["-m", "-c"]))
 SHELL_OPTIONS = (frozenset(["-o", "-O", "--rcfile", "--init-file"]), frozenset(["-c"]))
 NODE_OPTIONS = (
@@ -146,6 +152,9 @@ def run(argv: List[str]) -> Outcome:
         )
     try:
         return handlers[action](argv[2:])
+    except ProfileRefusal as refusal:
+        printed = {"error": str(refusal), "problems": refusal.problems}
+        return 2, json.dumps(printed), "lighthouse profile {}: {}".format(action, refusal)
     except Refusal as refusal:
         return 2, json.dumps({"error": str(refusal)}), "lighthouse profile {}: {}".format(action, refusal)
 
@@ -196,6 +205,10 @@ def check_profile(repo: str, path: Optional[str] = None) -> List[Problem]:
         return [problem("malformed", "{} is not valid JSON: {}".format(profile_path, error))]
     except OSError as error:
         return [problem("malformed", "{} cannot be read: {}".format(profile_path, error))]
+    return profile_problems(root, profile)
+
+
+def profile_problems(root: str, profile: Any) -> List[Problem]:
     schema = load_schema()
     if not isinstance(profile, dict):
         return [problem("schema", "the profile must be a JSON object")]
@@ -212,6 +225,17 @@ def check_profile(repo: str, path: Optional[str] = None) -> List[Problem]:
         *rerun_problems(profile),
         *unrecorded_problems(root, profile),
     ]
+
+
+def checked_before_writing(target: str, root: str, profile: Dict[str, Any]) -> Dict[str, Any]:
+    problems = profile_problems(root, profile)
+    if problems:
+        named = "; ".join("{}: {}".format(item["kind"], item["detail"]) for item in problems)
+        raise ProfileRefusal(
+            "refusing to write {}: the profile fails the profile checks, so nothing was written: {}".format(target, named),
+            problems,
+        )
+    return profile
 
 
 def retired_problems(profile: Dict[str, Any]) -> List[Problem]:
@@ -562,6 +586,7 @@ def commit_profile(root: str, worktree: str, feature: str, commit: str, profile:
                 os.path.relpath(linked[0], worktree), feature
             )
         )
+    checked_before_writing("{} on {}".format(PROFILE_PATH, feature), worktree, profile)
     os.makedirs(os.path.dirname(target), exist_ok=True)
     descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o644)
     with os.fdopen(descriptor, "w", encoding="utf-8") as profile_file:
@@ -616,7 +641,9 @@ def measure_command(args: List[str]) -> Outcome:
         measured, available = measure(root, unmeasured, holder)
     finally:
         shutil.rmtree(holder, ignore_errors=True)
-    written = {**with_availability(profile, available), "measured": measured}
+    written = checked_before_writing(
+        profile_path, root, {**with_availability(profile, available), "measured": measured}
+    )
     write_atomically(profile_path, json.dumps(written, indent=2) + "\n")
     reported = {
         item["name"]: item["available"]
