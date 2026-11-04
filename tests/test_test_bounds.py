@@ -524,6 +524,58 @@ class NodeTestImportForms(unittest.TestCase):
                 self.assertEqual(self.script_runners(caller.replace("{timeout}", ", timeout: 1000"), {"helper.mjs": helper}), [])
 
 
+class NodeTestReExports(unittest.TestCase):
+    NODE_TEST_RUN = "import { run } from 'node:test';\n"
+    STAR = "export * from 'node:test';\n"
+
+    def judged_main(self, files):
+        return runners(self, "node main.mjs", files)
+
+    def test_a_timeout_of_an_unrelated_run_never_bounds_node_tests_run(self):
+        cases = (
+            ("star beside an unrelated run", {
+                "main.mjs": self.NODE_TEST_RUN + "import './helper.mjs';\nimport './retry.mjs';\nrun({ files: ['a.test.mjs'] });\n",
+                "helper.mjs": self.STAR,
+                "retry.mjs": "import { run } from './other.mjs';\nrun({ timeout: 5000 });\n",
+                "other.mjs": "export function run(o) { return o; }\n",
+            }),
+            ("named beside an unrelated run", {
+                "main.mjs": self.NODE_TEST_RUN + "run({ files: ['a.test.mjs'] });\nimport './h.mjs';\nimport { run as r2 } from './x.mjs';\n",
+                "h.mjs": "export { run, test } from 'node:test';\n",
+                "x.mjs": "const { run } = require('./y.cjs');\nrun({ timeout: 100 });\nexport const run2 = 1;\n",
+                "y.cjs": "module.exports = { run() {} };\n",
+            }),
+            ("run taken from the star beside a database run", {
+                "main.mjs": "import { run } from './h.mjs';\nimport './db.mjs';\nrun({ files: ['a.test.mjs'] });\n",
+                "h.mjs": self.STAR,
+                "db.mjs": "import { run } from './sql.mjs';\nrun('select 1', { timeout: 5000 });\n",
+                "sql.mjs": "export function run() {}\n",
+            }),
+        )
+        for name, files in cases:
+            with self.subTest(form=name):
+                self.assertEqual(self.judged_main(files), ["node-test"])
+
+    def test_a_re_export_nothing_calls_run_through_starts_no_runner(self):
+        for name, helper in (("star", self.STAR), ("named", "export { run, test } from 'node:test';\n")):
+            with self.subTest(form=name):
+                self.assertEqual(self.judged_main({"main.mjs": "import { test } from './h.mjs';\ntest('x', () => {});\n", "h.mjs": helper}), ["node"])
+
+    def test_run_is_followed_through_every_re_export_form(self):
+        two_hops = {"a.mjs": "export * from './b.mjs';\n", "b.mjs": self.STAR}
+        renamed = {"h.mjs": "export { run as go } from 'node:test';\n"}
+        namespace = {"h.mjs": "export * as nt from 'node:test';\n"}
+        cases = (
+            ("two hops", "import { run } from './a.mjs';\nrun({ files: []{bound} });\n", two_hops),
+            ("renamed", "import { go } from './h.mjs';\ngo({ files: []{bound} });\n", renamed),
+            ("namespace", "import { nt } from './h.mjs';\nnt.run({ files: []{bound} });\n", namespace),
+        )
+        for name, caller, helpers in cases:
+            with self.subTest(form=name):
+                self.assertEqual(self.judged_main(dict(helpers, **{"main.mjs": caller.replace("{bound}", "")})), ["node-test"])
+                self.assertEqual(self.judged_main(dict(helpers, **{"main.mjs": caller.replace("{bound}", ", timeout: 1000")})), [])
+
+
 class WhatIsNotNodeTestsRun(unittest.TestCase):
     IMPORTS_RUN = "import { run } from 'node:test';\nimport './lib.mjs';\nrun({ files });\n"
 

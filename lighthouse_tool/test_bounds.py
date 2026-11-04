@@ -80,8 +80,10 @@ _RUN_FROM_NODE_TEST = re.compile(
     + r"|" + _IMPORTED + _THEN + r"\(\s*" + _RUN_IN_BRACES
     + r"|(?:" + _REQUIRED + r"|\(\s*await\s+" + _IMPORTED + r"\s*\))" + _RUN_MEMBER
 )
-_RE_EXPORTS_RUN = re.compile(r"\bexport\s*(?:\*|" + _RUN_IN_BRACES + r")\s*from\s*" + _NODE_TEST)
-_IMPORTS_RUN_BY_NAME = re.compile(_RUN_IN_BRACES + r"\s*(?:from\b|=)")
+_RE_EXPORT_CLAUSE = re.compile(r"""\bexport\s*(?:\*\s*(?:as\s*([\w$]+)\s*)?|(\{[^{}]*\})\s*)from\s*['"`]([^'"`]+)['"`]""")
+_IMPORT_CLAUSE = re.compile(r"""\bimport\s*\{([^{}]*)\}\s*from\s*(['"])(\.{1,2}/[^'"]+)\2\s*;?""")
+_RE_EXPORT_STATEMENT = re.compile(r"""\bexport\s*(?:\*(?:\s*as\s*[\w$]+)?|\{[^{}]*\})\s*from\s*['"`][^'"`]*['"`]""")
+_RELATIVE_SOURCE = re.compile(r"""((?:\bfrom|\bimport|\brequire)\s*\(?\s*)(['"])(\.{1,2}/[^'"]+)\2""")
 _TEXT_TEST_TIMEOUT = re.compile(r"""--test-timeout(?:=|['"`]\s*,\s*['"`]?)\s*([0-9][0-9_.eE+]*|Infinity)""")
 _RUN_TIMEOUT = re.compile(r"""[{,]\s*timeout\s*:\s*([^,}\s)]+)""")
 _NOT_A_BOUND = frozenset(
@@ -401,11 +403,11 @@ def _script_texts(root: str, entry: str) -> Optional[Tuple[str, ...]]:
     start = os.path.realpath(entry)
     seen = {start}
     pending = [(start, first)]
-    texts: List[str] = []
+    read: List[Tuple[str, str]] = []
     while pending:
         path, text = pending[0]
         pending = pending[1:]
-        texts = [*texts, text]
+        read = [*read, (path, text)]
         for target in _import_targets(root, path, text):
             if target in seen:
                 continue
@@ -413,7 +415,82 @@ def _script_texts(root: str, entry: str) -> Optional[Tuple[str, ...]]:
             imported = _read_inside(root, target)
             if imported is not None:
                 pending = [*pending, (target, imported)]
-    return tuple(texts)
+    exports = _node_test_exports(root, read)
+    return tuple(_imports_of_node_test_named(root, path, text, exports) for path, text in read)
+
+
+class _NodeTestNames(NamedTuple):
+    run: FrozenSet[str]
+    module: FrozenSet[str]
+
+
+_NO_NAMES = _NodeTestNames(frozenset(), frozenset())
+_NODE_TEST_ITSELF = _NodeTestNames(frozenset(["run"]), frozenset())
+
+
+def _node_test_exports(root: str, read: List[Tuple[str, str]]) -> Dict[str, _NodeTestNames]:
+    statements = [(path, _RE_EXPORT_CLAUSE.findall(_without_comments(text))) for path, text in read]
+    exports: Dict[str, _NodeTestNames] = {}
+    grown = True
+    while grown:
+        found = {path: _exported_names(root, path, clauses, exports) for path, clauses in statements}
+        grown = found != exports
+        exports = found
+    return exports
+
+
+def _exported_names(root: str, path: str, clauses: List[Tuple[str, str, str]], exports: Dict[str, _NodeTestNames]) -> _NodeTestNames:
+    run: FrozenSet[str] = frozenset()
+    module: FrozenSet[str] = frozenset()
+    for namespace, braces, specifier in clauses:
+        source = _source_names(root, path, specifier, exports)
+        if specifier == "node:test" and namespace:
+            module = module | {namespace}
+        elif braces is not None and braces.startswith("{"):
+            pairs = [_renamed(entry) for entry in braces[1:-1].split(",") if entry.strip()]
+            run = run | {exported for original, exported in pairs if original in source.run}
+            module = module | {exported for original, exported in pairs if original in source.module}
+        elif not namespace:
+            run = run | source.run
+            module = module | source.module
+    return _NodeTestNames(run, module)
+
+
+def _source_names(root: str, path: str, specifier: str, exports: Dict[str, _NodeTestNames]) -> _NodeTestNames:
+    if specifier == "node:test":
+        return _NODE_TEST_ITSELF
+    if not specifier.startswith("."):
+        return _NO_NAMES
+    return exports.get(_resolved_import(root, os.path.dirname(path), specifier) or "", _NO_NAMES)
+
+
+def _renamed(entry: str) -> Tuple[str, str]:
+    words = entry.split()
+    return (words[0], words[-1]) if len(words) == 3 and words[1] == "as" else (entry.strip(), entry.strip())
+
+
+def _imports_of_node_test_named(root: str, path: str, text: str, exports: Dict[str, _NodeTestNames]) -> str:
+    folder = os.path.dirname(path)
+
+    def names_of(specifier: str) -> _NodeTestNames:
+        return exports.get(_resolved_import(root, folder, specifier) or "", _NO_NAMES)
+
+    def clause(statement: "re.Match[str]") -> str:
+        braces, quote, specifier = statement.groups()
+        names = names_of(specifier)
+        if not (names.run or names.module):
+            return statement.group(0)
+        pairs = [_renamed(entry) for entry in braces.split(",") if entry.strip()]
+        runs = ["run as " + local for original, local in pairs if original in names.run]
+        modules = ["import * as {} from {}node:test{};".format(local, quote, quote) for original, local in pairs if original in names.module]
+        imported = ["import {{ {} }} from {}node:test{};".format(", ".join(runs), quote, quote)] if runs else []
+        return " ".join(imported + modules) or statement.group(0)
+
+    def source(found: "re.Match[str]") -> str:
+        lead, quote, specifier = found.groups()
+        return lead + quote + "node:test" + quote if "run" in names_of(specifier).run else found.group(0)
+
+    return _RELATIVE_SOURCE.sub(source, _IMPORT_CLAUSE.sub(clause, text))
 
 
 def _import_targets(root: str, path: str, text: str) -> List[str]:
@@ -465,7 +542,8 @@ def _names_bound_to_node_test(code: str) -> FrozenSet[str]:
     return frozenset(bound)
 
 
-def _binds_node_test_run(code: str) -> bool:
+def _binds_node_test_run(text_code: str) -> bool:
+    code = _RE_EXPORT_STATEMENT.sub(" ", text_code)
     if _RUN_FROM_NODE_TEST.search(code):
         return True
     names = _names_bound_to_node_test(code)
@@ -481,14 +559,13 @@ def _uses_run_of(name: str, code: str) -> bool:
 def _starts_node_test(texts: Tuple[str, ...]) -> bool:
     flagged = any(_QUOTED_TEST_FLAG.search(_without_comments(text)) for text in texts)
     codes = tuple(_code_of(text) for text in texts)
-    return flagged or any(_binds_node_test_run(code) or _RE_EXPORTS_RUN.search(code) for code in codes)
+    return flagged or any(_binds_node_test_run(code) for code in codes)
 
 
 def _node_test_bounded(texts: Tuple[str, ...]) -> bool:
     flagged = any(_positive(value) for text in texts for value in _TEXT_TEST_TIMEOUT.findall(_without_comments(text)))
     codes = tuple(_code_of(text) for text in texts)
-    re_exported = any(_RE_EXPORTS_RUN.search(code) for code in codes)
-    calling = tuple(code for code in codes if _binds_node_test_run(code) or (re_exported and _IMPORTS_RUN_BY_NAME.search(code)))
+    calling = tuple(code for code in codes if _binds_node_test_run(code))
     return flagged or any(_bounding_run_timeout(value) for code in calling for value in _RUN_TIMEOUT.findall(code))
 
 
