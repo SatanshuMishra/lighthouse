@@ -14,7 +14,7 @@ CHECK_SURFACE = {"family": "cli", "target": "bin/lighthouse verdict"}
 DIRECT_CHECK = {"kind": "direct", "why": "the command prints the written file"}
 PATH_NAME = "export writes the file"
 PATH_EVIDENCE = "evidence/export.txt"
-LAUNCH_PR = "https://example.invalid/pr/1"
+LAUNCH_PR = "https://github.com/o/r/pull/1"
 
 
 def passing_suite(failures=()):
@@ -156,9 +156,10 @@ results = words[words.index("--results") + 1]
 record = os.path.join(results, "record.json")
 if os.path.exists(record):
     shutil.copyfile(record, os.path.join(folder, "record-seen-by-child.json"))
-verdict_file = os.path.join(folder, "verdict-to-write.json")
-if os.path.exists(verdict_file):
-    shutil.copyfile(verdict_file, os.path.join(results, "verdict.json"))
+for name in ("verdict", "findings"):
+    to_write = os.path.join(folder, name + "-to-write.json")
+    if os.path.exists(to_write):
+        shutil.copyfile(to_write, os.path.join(results, name + ".json"))
 with open(os.path.join(folder, "claude-output.txt"), encoding="utf-8") as output:
     sys.stdout.write(output.read())
 sys.exit(0)
@@ -185,11 +186,12 @@ def write_stub(folder, name, text):
     os.chmod(path, 0o755)
 
 
-def claude_reply(result):
+def claude_reply(result, line):
     return json.dumps(
         {
             "type": "result",
             "result": result,
+            "structured_output": {"verdict_line": json.loads(line)},
             "session_id": "child-session-k3",
             "duration_ms": 1000,
             "modelUsage": {},
@@ -197,7 +199,7 @@ def claude_reply(result):
     )
 
 
-def stub_folder(test, reply, verdict_to_write=None):
+def stub_folder(test, reply, verdict_to_write=None, findings_to_write=None):
     folder = scratch.temporary_folder(test, "lh-k3-stubs-")
     write_stub(folder, "claude", CLAUDE_STUB)
     write_stub(folder, "caffeinate", CAFFEINATE_STUB)
@@ -206,6 +208,8 @@ def stub_folder(test, reply, verdict_to_write=None):
         handle.write(reply)
     if verdict_to_write is not None:
         write_json(folder, "verdict-to-write.json", verdict_to_write)
+    if findings_to_write is not None:
+        write_json(folder, "findings-to-write.json", findings_to_write)
     return folder
 
 
@@ -451,7 +455,16 @@ class K3VerdictTest(unittest.TestCase):
                 "pr": LAUNCH_PR,
             }
         )
-        stubs = stub_folder(self, claude_reply("Every check passed.\n" + childs_line), verdict_to_write=written)
+        findings = {
+            "version": 1,
+            "suite": passing_suite(),
+            "build": {"result": "ok", "reason": None},
+            "paths": [new_path()],
+            "spend": {"tokens": 100, "minutes": 1, "dollars": None},
+        }
+        stubs = stub_folder(
+            self, claude_reply("Every check passed.", childs_line), verdict_to_write=written, findings_to_write=findings
+        )
         completed, results = run_launch(self, stubs)
         self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
         printed = json.loads(completed.stdout.strip().splitlines()[-1])
@@ -483,7 +496,7 @@ class K3VerdictTest(unittest.TestCase):
                 "reason": "the profile is broken",
             }
         )
-        stubs = stub_folder(self, claude_reply(blocked_line))
+        stubs = stub_folder(self, claude_reply(blocked_line, blocked_line))
         completed, results = run_launch(self, stubs, ["--spec", spec])
         self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
         expected = read_bytes(record_path)

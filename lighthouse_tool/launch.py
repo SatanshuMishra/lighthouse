@@ -6,11 +6,13 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 from contextlib import ExitStack
 from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
-from lighthouse_tool import metrics_writer, noninteractive, process_tree, results as run_files, run_record, suite, verdict
+from lighthouse_tool import child_reply, findings as findings_tool, metrics_writer, noninteractive, process_tree
+from lighthouse_tool import results as run_files, run_record, suite, verdict
 from lighthouse_tool.records import is_number, write_atomically
 from lighthouse_tool.repo import Parser, Refusal, require_root, toplevel
 
@@ -18,15 +20,19 @@ Outcome = Tuple[int, Optional[str], Optional[str]]
 PLUGIN_ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 WORK = "work"
 CHILD = "child.json"
+CHILD_OUT = "child.out"
 LAUNCH = "launch.json"
 EARLIER_RUN_FILES = (
     LAUNCH,
     CHILD,
+    CHILD_OUT,
+    findings_tool.FINDINGS,
+    findings_tool.DRAFT,
     verdict.VERDICT,
     run_files.CHECKS,
     run_files.PLAN,
     run_files.RECORD,
-    *run_record.RESULTS_SOURCES,
+    *(name for name in run_record.RESULTS_SOURCES if name != findings_tool.FINDINGS),
 )
 CAFFEINATE = "caffeinate"
 SYSTEMD_INHIBIT = "systemd-inhibit"
@@ -38,9 +44,37 @@ CHILD_STORE = "plugin-metrics"
 
 class ChildRun(NamedTuple):
     exit: Optional[int]
-    stdout: str
+    output: bytes
     problem: Optional[str]
     seconds: float
+
+
+class Child(NamedTuple):
+    work: str
+    keep_awake: str
+    environment: Dict[str, str]
+
+
+class Call(NamedTuple):
+    run: ChildRun
+    envelope: Optional[Dict[str, Any]]
+
+
+class Answer(NamedTuple):
+    line: Optional[Dict[str, Any]]
+    reason: Optional[str]
+    faults: Tuple[child_reply.Fault, ...]
+
+
+class Conversation(NamedTuple):
+    calls: Tuple[Call, ...]
+    line: Optional[Dict[str, Any]]
+    reason: Optional[str]
+
+
+class ModelCosts(NamedTuple):
+    cost: Dict[str, float]
+    unpriced: Tuple[str, ...]
 
 
 def parser() -> Parser:
@@ -159,21 +193,75 @@ def launch(options: argparse.Namespace, recording: Optional[run_record.Recording
     results = os.path.realpath(options.results)
     copy_record(results, options)
     keep_awake = keep_awake_tool()
-    child = run_child(child_command(options), work, keep_awake, child_environment(results))
-    output = parsed_output(child.stdout)
-    record = child_record(child, output, keep_awake)
+    schema = child_reply.reply_schema()
+    talk = conversation(options, schema, Child(work, keep_awake, child_environment(results)), results)
+    costs = model_costs(talk.calls)
+    record = child_record(talk.calls, costs, keep_awake)
     write_json(os.path.join(results, CHILD), record)
-    line = None if child.problem is not None else printed_verdict(results, childs_line(output))
-    reason = None if line is not None else blocked_reason(child)
-    printed = line if line is not None else blocked_text(reason)
-    warnings = run_record.finished(recording, results, run_record.Ending(printed, reason, child.exit, record["session_id"]))
+    last = talk.calls[-1].run
+    session = record["session_id"]
+    try:
+        printed = printed_line(talk)
+    except Refusal as problem:
+        reason = str(problem)
+        ending = run_record.Ending(blocked_text(reason), reason, last.exit, session)
+        return refused(results, reason, run_record.finished(recording, results, ending))
+    warnings = run_record.finished(recording, results, run_record.Ending(printed, talk.reason, last.exit, session))
     try:
         write_text(os.path.join(results, LAUNCH), printed + "\n")
     except Refusal as problem:
         return refused(results, str(problem), warnings)
-    summary = "lighthouse launch: the child exited {}".format(child.exit)
-    told = summary if reason is None else "{}; blocked: {}".format(summary, reason)
-    return 0, printed, with_warnings(told, warnings)
+    summary = summary_text(talk)
+    told = summary if talk.reason is None else "{}; blocked: {}".format(summary, talk.reason)
+    return 0, printed, with_warnings(told, (*unpriced_warnings(costs.unpriced), *warnings))
+
+
+def conversation(options: argparse.Namespace, schema: Dict[str, Any], child: Child, results: str) -> Conversation:
+    first = called(child_command(options, schema), child)
+    answer = answered(first, results, schema)
+    if not answer.faults:
+        return Conversation((first,), answer.line, answer.reason)
+    session = first.envelope[child_reply.SESSION_ID] if first.envelope is not None else ""
+    second = called(resumed_command(session, child_reply.re_ask_prompt(answer.faults), schema), child)
+    again = answered(second, results, schema)
+    reason = child_reply.blocked_reason(again.faults) if again.faults else again.reason
+    return Conversation((first, second), again.line if not again.faults else None, reason)
+
+
+def called(command: List[str], child: Child) -> Call:
+    ran = run_child(command, child.work, child.keep_awake, child.environment)
+    return Call(ran, child_reply.envelope_of(ran.output) if ran.problem is None else None)
+
+
+def answered(call: Call, results: str, schema: Dict[str, Any]) -> Answer:
+    if call.run.problem is not None:
+        return Answer(None, call.run.problem, ())
+    if call.envelope is None:
+        kept = os.path.join(results, CHILD_OUT)
+        write_bytes(kept, call.run.output)
+        return Answer(None, child_reply.no_json_reason(kept), ())
+    reading = child_reply.read_reply(call.envelope, results, schema)
+    return Answer(reading.line, None, reading.faults)
+
+
+def printed_line(talk: Conversation) -> str:
+    if talk.line is not None:
+        return json.dumps(verdict.checked_line("the line lighthouse launch prints", talk.line))
+    return blocked_text(talk.reason or "the child session gave no reply")
+
+
+def summary_text(talk: Conversation) -> str:
+    exits = [call.run.exit for call in talk.calls]
+    if len(exits) == 1:
+        return "lighthouse launch: the child exited {}".format(exits[0])
+    return "lighthouse launch: the child exited {}, was re-asked once in the same session and exited {}".format(*exits)
+
+
+def unpriced_warnings(unpriced: Tuple[str, ...]) -> Tuple[str, ...]:
+    return tuple(
+        "lighthouse launch: the child's cost report gives no number costUSD for {}; child.json lists it under unpriced".format(model)
+        for model in unpriced
+    )
 
 
 def copy_record(results: str, options: argparse.Namespace) -> None:
@@ -215,11 +303,16 @@ def test_flags(options: argparse.Namespace) -> List[str]:
     return quoted + (["--final"] if options.final else [])
 
 
-def child_command(options: argparse.Namespace) -> List[str]:
+def child_command(options: argparse.Namespace, schema: Dict[str, Any]) -> List[str]:
+    return ["claude", "-p", " ".join(["/lighthouse:test", "--child", *test_flags(options)]), *child_flags(schema)]
+
+
+def resumed_command(session: str, prompt: str, schema: Dict[str, Any]) -> List[str]:
+    return ["claude", "-p", prompt, "--resume", session, *child_flags(schema)]
+
+
+def child_flags(schema: Dict[str, Any]) -> List[str]:
     return [
-        "claude",
-        "-p",
-        " ".join(["/lighthouse:test", "--child", *test_flags(options)]),
         "--model",
         "opus",
         "--plugin-dir",
@@ -230,6 +323,8 @@ def child_command(options: argparse.Namespace) -> List[str]:
         "AskUserQuestion",
         "--output-format",
         "json",
+        "--json-schema",
+        child_reply.schema_argument(schema),
     ]
 
 
@@ -263,13 +358,13 @@ def run_child(command: List[str], work: str, keep_awake: str, environment: Dict[
                 )
             )
         except OSError as error:
-            return ChildRun(None, "", "the child session could not start: {}".format(error.strerror or error), 0.0)
+            return ChildRun(None, b"", "the child session could not start: {}".format(error.strerror or error), 0.0)
         guard = awake_guard(process.pid) if keep_awake == CAFFEINATE else None
         if guard is not None:
             guarding.callback(release_guard, guard)
         stdout, _ = process.communicate()
     seconds = time.monotonic() - started
-    return ChildRun(process.returncode, (stdout or b"").decode("utf-8", errors="replace"), None, seconds)
+    return ChildRun(process.returncode, stdout or b"", None, seconds)
 
 
 def awake_guard(pid: int) -> Optional["subprocess.Popen[bytes]"]:
@@ -291,28 +386,35 @@ def release_guard(guard: "subprocess.Popen[bytes]") -> None:
     guard.wait()
 
 
-def parsed_output(stdout: str) -> Optional[Dict[str, Any]]:
-    try:
-        output = json.loads(stdout)
-    except ValueError:
-        return None
-    return output if isinstance(output, dict) else None
+def model_usage(call: Call) -> List[Tuple[str, Any]]:
+    usage = call.envelope.get("modelUsage") if call.envelope is not None else None
+    return list(usage.items()) if isinstance(usage, dict) else []
 
 
-def model_costs(output: Optional[Dict[str, Any]]) -> Dict[str, float]:
-    usage = output.get("modelUsage") if output is not None else None
-    if not isinstance(usage, dict):
-        return {}
-    return {
-        model: entry["costUSD"]
-        for model, entry in usage.items()
-        if isinstance(entry, dict) and is_number(entry.get("costUSD"))
-    }
+def cost_of(entry: Any) -> Optional[float]:
+    cost = entry.get("costUSD") if isinstance(entry, dict) else None
+    return cost if is_number(cost) else None
+
+
+def model_costs(calls: Tuple[Call, ...]) -> ModelCosts:
+    entries = [(model, cost_of(entry)) for call in calls for model, entry in model_usage(call)]
+    priced = [(model, cost) for model, cost in entries if cost is not None]
+    cost = {model: sum(amount for name, amount in priced if name == model) for model, _ in priced}
+    unpriced = tuple(dict.fromkeys(model for model, amount in entries if amount is None))
+    return ModelCosts(cost, unpriced)
 
 
 def child_minutes(child: ChildRun, output: Optional[Dict[str, Any]]) -> float:
     duration = output.get("duration_ms") if output is not None else None
     return round(duration / 60000 if is_number(duration) else child.seconds / 60, 3)
+
+
+def call_record(call: Call) -> Dict[str, Any]:
+    return {
+        "session_id": call.envelope[child_reply.SESSION_ID] if call.envelope is not None else None,
+        "minutes": child_minutes(call.run, call.envelope),
+        "exit": call.run.exit,
+    }
 
 
 def background_priority() -> Optional[bool]:
@@ -328,58 +430,22 @@ def priority() -> Dict[str, Any]:
     return {"nice": os.getpriority(os.PRIO_PROCESS, 0), "background": background_priority()}
 
 
-def child_record(child: ChildRun, output: Optional[Dict[str, Any]], keep_awake: str) -> Dict[str, Any]:
-    session = output.get("session_id") if output is not None else None
+def child_record(calls: Tuple[Call, ...], costs: ModelCosts, keep_awake: str) -> Dict[str, Any]:
+    recorded = [call_record(call) for call in calls]
     return {
-        "session_id": session if isinstance(session, str) else None,
-        "cost": model_costs(output),
-        "minutes": child_minutes(child, output),
-        "exit": child.exit,
+        "session_id": recorded[0]["session_id"],
+        "cost": costs.cost,
+        "unpriced": list(costs.unpriced),
+        "minutes": round(sum(entry["minutes"] for entry in recorded), 3),
+        "exit": recorded[-1]["exit"],
+        "calls": recorded,
         "keep_awake": keep_awake,
         "priority": priority(),
     }
 
 
-def childs_line(output: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-    result = output.get("result") if output is not None else None
-    if not isinstance(result, str):
-        return None
-    lines = [verdict_object(text.strip()) for text in result.splitlines()]
-    found = [line for line in lines if line is not None]
-    return found[-1] if found else None
-
-
-def verdict_object(text: str) -> Optional[Dict[str, Any]]:
-    try:
-        line = json.loads(text)
-    except ValueError:
-        return None
-    return line if isinstance(line, dict) and "verdict" in line else None
-
-
-def written_verdict(results: str) -> Optional[Dict[str, Any]]:
-    line = verdict.optional_json(os.path.join(results, verdict.VERDICT))
-    return line if isinstance(line, dict) and line.get("verdict") in verdict.VERDICTS else None
-
-
-def printed_verdict(results: str, childs_line: Optional[Dict[str, Any]]) -> Optional[str]:
-    written = written_verdict(results)
-    if written is not None:
-        pr = childs_line.get("pr") if childs_line is not None else None
-        return json.dumps({**written, "pr": pr if isinstance(pr, str) else None})
-    if childs_line is not None and childs_line.get("verdict") == "blocked":
-        return json.dumps(childs_line)
-    return None
-
-
-def blocked_reason(child: ChildRun) -> str:
-    if child.problem is not None:
-        return child.problem
-    return "the child session exited {} without writing {}".format(child.exit, verdict.VERDICT)
-
-
 def blocked_text(reason: str) -> str:
-    _, line, _ = verdict.blocked_line(reason)
+    _, line, _ = verdict.blocked_line(child_reply.one_line(reason))
     return line or ""
 
 
@@ -392,3 +458,16 @@ def write_text(path: str, text: str) -> None:
         write_atomically(path, text)
     except OSError as error:
         raise Refusal("cannot write {}: {}".format(path, error.strerror or error))
+
+
+def write_bytes(path: str, data: bytes) -> None:
+    descriptor, staging = tempfile.mkstemp(prefix="." + os.path.basename(path) + "-", dir=os.path.dirname(path))
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(data)
+        os.replace(staging, path)
+    except OSError as error:
+        raise Refusal("cannot write {}: {}".format(path, error.strerror or error))
+    finally:
+        if os.path.exists(staging):
+            os.remove(staging)
