@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "harness-redesign/k2-locked.schema.json",
+  "title": "K2 locked checks",
+  "description": "The record's locked field and the receipts lock that seals it. No Worker write-set may include a locked path, nor any test configuration, baseline, allowlist, snapshot or skip list.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["locked", "receipt_lock", "commit"],
+  "properties": {
+    "locked": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^(?!/)(?!.*\\.\\./).+$"}
+    },
+    "receipt_lock": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"}
+  }
+}
