@@ -52,12 +52,40 @@ _PYTHON_VALUE_OPTIONS = INTERPRETERS["python"][0]
 _IMPORT_EXTENSIONS = (".js", ".mjs", ".cjs", ".ts", ".mts", ".cts")
 _RELATIVE_SPECIFIER = re.compile(r"""(?:\bfrom|\bimport|\brequire)\s*\(?\s*['"](\.{1,2}/[^'"]+)['"]""")
 _QUOTED_TEST_FLAG = re.compile(r"""(['"`])--test\1""")
-_LOADS_NODE_TEST = re.compile(r"""['"`]node:test['"`]""")
-_NAMES_RUN = re.compile(r"\brun\b")
+_SOURCE_TOKEN = re.compile(
+    r"""("(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`)|//[^\n]*|/\*.*?\*/""", re.DOTALL
+)
+_KEPT_LITERALS = frozenset(["node:test", "run"])
+_BLANK_LITERAL = '""'
+_NAME = r"([\w$]+)"
+_NODE_TEST = r"""['"`]node:test['"`]"""
+_REQUIRED = r"require\(\s*" + _NODE_TEST + r"\s*\)"
+_IMPORTED = r"import\(\s*" + _NODE_TEST + r"\s*\)"
+_LOADED = r"(?:" + _REQUIRED + r"|(?:await\s+)?" + _IMPORTED + r")"
+_RUN_IN_BRACES = r"\{[^{}]*\brun\b[^{}]*\}"
+_RUN_MEMBER = r"""\s*(?:\.\s*run\b|\[\s*['"`]run['"`]\s*\])"""
+_THEN = r"\s*\.\s*then\(\s*(?:async\s+)?"
+_NODE_TEST_BINDINGS = tuple(
+    re.compile(pattern)
+    for pattern in (
+        r"\bimport\s+(?:\*\s*as\s+)?" + _NAME + r"\s*(?:,\s*\{[^{}]*\}\s*)?from\s*" + _NODE_TEST,
+        r"\bimport\s+" + _NAME + r"\s*=\s*" + _REQUIRED,
+        r"\b(?:const|let|var)\s+" + _NAME + r"\s*=\s*" + _LOADED,
+        _IMPORTED + _THEN + r"\(?\s*" + _NAME + r"\s*[,)=]",
+    )
+)
+_ALIAS = re.compile(r"\b(?:const|let|var)\s+" + _NAME + r"\s*=\s*(?:await\s+)?" + _NAME + r"\s*(?:;|$)", re.MULTILINE)
+_RUN_FROM_NODE_TEST = re.compile(
+    _RUN_IN_BRACES + r"\s*(?:from\s*" + _NODE_TEST + r"|=\s*" + _LOADED + r")"
+    + r"|" + _IMPORTED + _THEN + r"\(\s*" + _RUN_IN_BRACES
+    + r"|(?:" + _REQUIRED + r"|\(\s*await\s+" + _IMPORTED + r"\s*\))" + _RUN_MEMBER
+)
+_RE_EXPORTS_RUN = re.compile(r"\bexport\s*(?:\*|" + _RUN_IN_BRACES + r")\s*from\s*" + _NODE_TEST)
+_IMPORTS_RUN_BY_NAME = re.compile(_RUN_IN_BRACES + r"\s*(?:from\b|=)")
 _TEXT_TEST_TIMEOUT = re.compile(r"""--test-timeout(?:=|['"`]\s*,\s*['"`]?)\s*([0-9][0-9_.eE+]*|Infinity)""")
 _RUN_TIMEOUT = re.compile(r"""[{,]\s*timeout\s*:\s*([^,}\s)]+)""")
 _NOT_A_BOUND = frozenset(
-    ["Infinity", "Number.POSITIVE_INFINITY", "undefined", "null", "number", "string", "any", "unknown", "never", "void"]
+    [_BLANK_LITERAL, "Infinity", "Number.POSITIVE_INFINITY", "undefined", "null", "number", "string", "any", "unknown", "never", "void"]
 )
 _ZERO_TEST_TIMEOUT = re.compile(r"""\btestTimeout['"]?\s*:\s*0(?![\w.])""")
 _ZERO_TIMEOUT = re.compile(r"""\btimeout\s*:\s*0(?![\w.])""")
@@ -410,16 +438,58 @@ def _resolved_import(root: str, folder: str, specifier: str) -> Optional[str]:
     return real if _inside(root, real) else None
 
 
+def _without_comments(text: str) -> str:
+    return _SOURCE_TOKEN.sub(lambda token: token.group(1) or " ", text)
+
+
+def _code_of(text: str) -> str:
+    return _SOURCE_TOKEN.sub(_code_token, text)
+
+
+def _code_token(token: "re.Match[str]") -> str:
+    literal = token.group(1)
+    if literal is None:
+        return " "
+    return literal if literal[1:-1] in _KEPT_LITERALS else _BLANK_LITERAL
+
+
+def _names_bound_to_node_test(code: str) -> FrozenSet[str]:
+    direct = {name for pattern in _NODE_TEST_BINDINGS for name in pattern.findall(code)}
+    aliases = _ALIAS.findall(code)
+    bound = set(direct)
+    grown = True
+    while grown:
+        added = {name for name, source in aliases if source in bound} - bound
+        bound = bound | added
+        grown = bool(added)
+    return frozenset(bound)
+
+
+def _binds_node_test_run(code: str) -> bool:
+    if _RUN_FROM_NODE_TEST.search(code):
+        return True
+    names = _names_bound_to_node_test(code)
+    return bool(names) and any(_uses_run_of(re.escape(name), code) for name in names)
+
+
+def _uses_run_of(name: str, code: str) -> bool:
+    member = r"(?<![\w$.])" + name + _RUN_MEMBER
+    destructured = _RUN_IN_BRACES + r"\s*=\s*(?:await\s+)?" + name + r"(?![\w$])"
+    return bool(re.search(member, code) or re.search(destructured, code))
+
+
 def _starts_node_test(texts: Tuple[str, ...]) -> bool:
-    flagged = any(_QUOTED_TEST_FLAG.search(text) for text in texts)
-    loaded = any(_LOADS_NODE_TEST.search(text) for text in texts)
-    return flagged or (loaded and any(_NAMES_RUN.search(text) for text in texts))
+    flagged = any(_QUOTED_TEST_FLAG.search(_without_comments(text)) for text in texts)
+    codes = tuple(_code_of(text) for text in texts)
+    return flagged or any(_binds_node_test_run(code) or _RE_EXPORTS_RUN.search(code) for code in codes)
 
 
 def _node_test_bounded(texts: Tuple[str, ...]) -> bool:
-    flagged = any(_positive(value) for text in texts for value in _TEXT_TEST_TIMEOUT.findall(text))
-    calling = tuple(text for text in texts if _NAMES_RUN.search(text))
-    return flagged or any(_bounding_run_timeout(value) for text in calling for value in _RUN_TIMEOUT.findall(text))
+    flagged = any(_positive(value) for text in texts for value in _TEXT_TEST_TIMEOUT.findall(_without_comments(text)))
+    codes = tuple(_code_of(text) for text in texts)
+    re_exported = any(_RE_EXPORTS_RUN.search(code) for code in codes)
+    calling = tuple(code for code in codes if _binds_node_test_run(code) or (re_exported and _IMPORTS_RUN_BY_NAME.search(code)))
+    return flagged or any(_bounding_run_timeout(value) for code in calling for value in _RUN_TIMEOUT.findall(code))
 
 
 def _bounding_run_timeout(value: str) -> bool:

@@ -524,6 +524,43 @@ class NodeTestImportForms(unittest.TestCase):
                 self.assertEqual(self.script_runners(caller.replace("{timeout}", ", timeout: 1000"), {"helper.mjs": helper}), [])
 
 
+class WhatIsNotNodeTestsRun(unittest.TestCase):
+    IMPORTS_RUN = "import { run } from 'node:test';\nimport './lib.mjs';\nrun({ files });\n"
+
+    def script_runners(self, text, extra=None):
+        return runners(self, "node s.mjs", dict({"s.mjs": text}, **(extra or {})))
+
+    def test_a_timeout_in_a_file_that_does_not_bind_run_never_bounds_it(self):
+        for name, helper in (
+            ("comment naming run", "// run the server\nexport const server = { port: 3000, timeout: 5000 };\n"),
+            ("helper's own run", "export function run(options) {}\nrun({ timeout: 5000 });\n"),
+        ):
+            with self.subTest(case=name):
+                self.assertEqual(self.script_runners(self.IMPORTS_RUN, {"lib.mjs": helper}), ["node-test"])
+
+    def test_the_word_run_outside_code_never_starts_the_runner(self):
+        for name, text in (
+            ("test title", "import test from 'node:test';\ntest('can run offline', () => {});\n"),
+            ("comment and another timeout", "import test from 'node:test';\n// run it\nget(url, { timeout: 5000 });\n"),
+            ("another object's run", "import test from 'node:test';\ndb.run(sql, { timeout: 5000 });\n"),
+            ("a local run", "import test from 'node:test';\nfunction run(options) {}\nrun({ timeout: 5000 });\n"),
+            ("run bound from another module", "import test from 'node:test';\nimport { run } from './lib.mjs';\nrun({ timeout: 5000 });\n"),
+        ):
+            with self.subTest(case=name):
+                self.assertEqual(self.script_runners(text, {"lib.mjs": "export function run() {}\n"}), ["node"])
+
+    def test_a_comment_is_never_a_bound_or_a_test_flag(self):
+        self.assertEqual(self.script_runners("import { run } from 'node:test';\n// run({ timeout: 5000 });\nrun({ files });\n"), ["node-test"])
+        self.assertEqual(self.script_runners("import { run } from 'node:test';\n/* '--test-timeout=5000' */\nrun({ files });\n"), ["node-test"])
+        self.assertEqual(self.script_runners("// spawn('node', ['--test'])\nconsole.log('x');\n"), ["node"])
+
+    def test_a_url_in_a_string_never_hides_what_follows_it(self):
+        self.assertEqual(self.script_runners("const a = 'http://x';\nimport { run } from 'node:test';\nrun({ timeout: 5000 });\n"), [])
+
+    def test_a_name_bound_through_a_function_parameter_of_another_module_is_not_bound(self):
+        self.assertEqual(self.script_runners("import test from 'node:test';\nload().then((nt) => nt.run({ timeout: 5000 }));\n"), ["node"])
+
+
 class RunTimeoutProperty(unittest.TestCase):
     def judged_script(self, body):
         return runners(self, "node run.mjs", {"run.mjs": "import { run } from 'node:test';\n" + body})
