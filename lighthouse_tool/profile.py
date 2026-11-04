@@ -11,7 +11,7 @@ import time
 from contextlib import ExitStack
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from lighthouse_tool import credentials, process_tree, suite, wait
+from lighthouse_tool import credentials, noninteractive, process_tree, suite, wait
 from lighthouse_tool import repo as repository
 from lighthouse_tool.records import is_number, utc_now, write_atomically
 from lighthouse_tool.repo import Parser, Refusal, checked_git, require_root
@@ -707,7 +707,7 @@ def started_ready(root: str, profile: Dict[str, Any], start_log: str) -> Tuple[O
                     ["/bin/sh", "-c", command],
                     STOP_GRACE_SECONDS,
                     cwd=root,
-                    env={**os.environ, "LIGHTHOUSE_BUILD": "feature"},
+                    env={**noninteractive.environment(os.environ), "LIGHTHOUSE_BUILD": "feature"},
                     stdin=subprocess.DEVNULL,
                     stdout=output,
                     stderr=subprocess.STDOUT,

@@ -1,7 +1,9 @@
 import json
+import os
 import subprocess
 from typing import Any, Dict, List, Optional, Tuple
 
+from lighthouse_tool import noninteractive
 from lighthouse_tool import repo as repository
 from lighthouse_tool.repo import Parser, Refusal, checked_git, require_root
 
@@ -85,7 +87,14 @@ def merged_pull_requests(root: str, feature: str) -> Tuple[List[Dict[str, Any]],
         "--limit", "1000",
     ]
     try:
-        completed = subprocess.run(command, cwd=root, stdin=subprocess.DEVNULL, capture_output=True, text=True)
+        completed = subprocess.run(
+            command,
+            cwd=root,
+            env=noninteractive.environment(os.environ),
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+        )
     except FileNotFoundError:
         return [], "gh is not installed"
     except OSError as error:

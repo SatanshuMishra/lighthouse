@@ -7,6 +7,8 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from typing import Any, Callable, Dict, Iterator, List, NamedTuple, Optional, Sequence, Set
 
+from lighthouse_tool import noninteractive
+
 FORWARDED_SIGNALS = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
 SIGNAL_EXIT_BASE = 128
 LISTING = ["ps", "-A", "-o", "pid=,ppid="]
@@ -29,6 +31,7 @@ def parents() -> Dict[int, int]:
     try:
         listed = subprocess.run(
             LISTING,
+            env=noninteractive.environment(os.environ),
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,

@@ -10,7 +10,7 @@ import time
 from contextlib import ExitStack
 from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
-from lighthouse_tool import metrics_writer, process_tree, results as run_files, run_record, suite, verdict
+from lighthouse_tool import metrics_writer, noninteractive, process_tree, results as run_files, run_record, suite, verdict
 from lighthouse_tool.records import is_number, write_atomically
 from lighthouse_tool.repo import Parser, Refusal, require_root, toplevel
 
@@ -191,7 +191,10 @@ def spec_path(options: argparse.Namespace) -> Optional[str]:
 
 
 def child_environment(results: str) -> Dict[str, str]:
-    return {**run_record.environment_without_parent(), metrics_writer.ROOT_VARIABLE: os.path.join(results, CHILD_STORE)}
+    return {
+        **noninteractive.environment(run_record.environment_without_parent()),
+        metrics_writer.ROOT_VARIABLE: os.path.join(results, CHILD_STORE),
+    }
 
 
 def test_flags(options: argparse.Namespace) -> List[str]:
@@ -273,6 +276,7 @@ def awake_guard(pid: int) -> Optional["subprocess.Popen[bytes]"]:
     try:
         return subprocess.Popen(
             [CAFFEINATE, "-i", "-w", str(pid)],
+            env=noninteractive.environment(os.environ),
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,

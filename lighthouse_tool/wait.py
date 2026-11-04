@@ -9,7 +9,7 @@ import urllib.parse
 import urllib.request
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from lighthouse_tool import process_tree
+from lighthouse_tool import noninteractive, process_tree
 from lighthouse_tool.ports import port_map, port_pair, url_with_build_ports, with_build_ports
 from lighthouse_tool.repo import Parser, Refusal, read_json_or_refuse
 
@@ -131,6 +131,7 @@ def check_passes(check: str) -> bool:
     with process_tree.started(
         ["/bin/sh", "-c", check],
         0.0,
+        env=noninteractive.environment(os.environ),
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,

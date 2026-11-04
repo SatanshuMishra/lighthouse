@@ -11,7 +11,7 @@ import xml.etree.ElementTree as ElementTree
 from contextlib import ExitStack
 from typing import Any, Callable, Dict, List, NamedTuple, Optional, Set, Tuple, TypeVar
 
-from lighthouse_tool import credentials, process_tree
+from lighthouse_tool import credentials, noninteractive, process_tree
 from lighthouse_tool import repo as repository
 from lighthouse_tool.records import write_atomically
 from lighthouse_tool.repo import Parser, Refusal, checked_git, require_root
@@ -266,7 +266,7 @@ def run_step(
                         ["/bin/sh", "-c", command],
                         0.0,
                         cwd=worktree,
-                        env={**os.environ, "LIGHTHOUSE_BUILD": build},
+                        env={**noninteractive.environment(os.environ), "LIGHTHOUSE_BUILD": build},
                         stdin=subprocess.DEVNULL,
                         stdout=output,
                         stderr=subprocess.STDOUT,

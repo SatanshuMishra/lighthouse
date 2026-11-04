@@ -8,6 +8,7 @@ import subprocess
 import urllib.parse
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+from lighthouse_tool import noninteractive
 from lighthouse_tool import repo as repository
 from lighthouse_tool.ports import port_map, port_pair, with_build_ports
 from lighthouse_tool.repo import Parser, Refusal, require_root
@@ -339,7 +340,12 @@ def with_credentials(arguments: List[str]) -> Outcome:
         completed = subprocess.run(
             command,
             cwd=options.cwd or root,
-            env={**os.environ, **filled, FILLED_VARIABLE: ",".join(dict.fromkeys([*filled_names(), *filled]))},
+            env={
+                **noninteractive.environment(os.environ),
+                **filled,
+                FILLED_VARIABLE: ",".join(dict.fromkeys([*filled_names(), *filled])),
+            },
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
             errors="replace",
