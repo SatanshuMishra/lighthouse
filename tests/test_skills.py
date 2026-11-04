@@ -85,6 +85,7 @@ class SkillsTest(unittest.TestCase):
             "suite",
             "with-credentials",
             "spend",
+            "findings",
             "verdict",
             "pr",
             "release",
@@ -440,7 +441,7 @@ class SkillsTest(unittest.TestCase):
                 self.assertIn("Everything a run needs from lighthouse is in this skill and in what its commands print", texts[name])
 
     def test_test_skill_carries_a_command_reference(self):
-        from lighthouse_tool import change, contrast, credentials, execute, launch, mark, pr, profile, retest, spend, suite, verdict, wait
+        from lighthouse_tool import change, contrast, credentials, execute, findings, launch, mark, pr, profile, retest, spend, suite, verdict, wait
 
         raw = scratch.read_text(scratch.skill_path("test"))
         self.assertLess(raw.index("## Never"), raw.index("## Command reference"))
@@ -460,6 +461,7 @@ class SkillsTest(unittest.TestCase):
             "suite": suite.parser("suite"),
             "with-credentials": credentials.with_credentials_parser(),
             "spend": spend.parser(),
+            "findings": findings.parser(),
             "verdict": verdict.parser(),
             "pr": pr.parser(),
             "release": suite.parser("release"),
@@ -483,7 +485,8 @@ class SkillsTest(unittest.TestCase):
             "execute": ["checks", "neighbours"],
             "contrast": ["ratio", "threshold", "status", "source", "reason"],
             "profile measure": ["measured", "available"],
-            "pr": ["draft"],
+            "pr": ["title", "body", "base", "head", "draft", "error", "schema", "errors"],
+            "findings": ["written", "error", "schema", "errors"],
             "retest": ["full", "changed", "retest", "surfaces", "carried"],
             "profile check": ["problems", "upgrades"],
             "profile publish": ["committed"],
@@ -553,6 +556,123 @@ class SkillsTest(unittest.TestCase):
             for retired in ["lighthouse wait", ".done", "600000"]:
                 with self.subTest(path=path, retired=retired, line=line[:80]):
                     self.assertNotIn(retired, line)
+
+    def test_findings_reach_findings_json_only_through_lighthouse_findings(self):
+        text = scratch.skill_text("test")
+        writing = text.split("8. Run lighthouse spend", 1)[1].split("10. When the verdict", 1)[0]
+
+        self.assertIn("9. Write the findings as the draft <results>/findings.draft.json:", writing)
+        self.assertIn("Then run lighthouse findings --results <results>, marked as the verdict step", writing)
+        self.assertIn("fix the draft by every error it names and run it again, until it exits 0", writing)
+        self.assertIn("Never write <results>/findings.json yourself", writing)
+        self.assertNotIn("Write <results>/findings.json", text)
+        self.assertLess(writing.index("lighthouse findings --results"), writing.index("lighthouse verdict --results"))
+
+        results = scratch.temporary_folder(self, "lighthouse-skill-findings-")
+        draft = {
+            "version": 1,
+            "suite": {"result": "passed", "reason": None, "failures": [], "pre_existing": [], "flaky": [], "core": None, "feature": None},
+            "build": {"result": "ok", "reason": None},
+            "paths": [
+                {
+                    "name": "export writes a csv",
+                    "kind": "new",
+                    "surface": "cli",
+                    "expected": "a csv with a header row",
+                    "evidence": ["evidence/export.txt"],
+                    "status": "skipped",
+                    "retry": None,
+                    "core": None,
+                    "trials": None,
+                    "check": {"kind": "direct", "why": "the command prints the outcome"},
+                }
+            ],
+            "spend": {"tokens": 6000, "minutes": 2, "dollars": None},
+        }
+        with open(os.path.join(results, "findings.draft.json"), "w", encoding="utf-8") as handle:
+            json.dump(draft, handle)
+        env = scratch.environment(scratch.make_home(self))
+        code, stdout, stderr = scratch.run_lighthouse(["findings", "--results", results], env)
+
+        self.assertEqual(code, 2, stderr)
+        printed = json.loads(stdout.strip().splitlines()[-1])
+        self.assertEqual(sorted(printed), ["error", "errors", "schema"])
+        self.assertEqual(printed["schema"], "h14-lighthouse-findings")
+        self.assertTrue(any("/paths/0/status" in error for error in printed["errors"]))
+        self.assertFalse(os.path.exists(os.path.join(results, "findings.json")))
+
+    def test_test_skill_composes_the_pull_request_from_a_fields_draft(self):
+        text = scratch.skill_text("test")
+        opening = text.split("10. When the verdict", 1)[1].split("11. Run lighthouse release", 1)[0]
+
+        self.assertIn("Write the pull request's prose as the fields draft <results>/pr-draft.json", opening)
+        self.assertIn("each starting with a capital letter and ending with a full stop, with no markup, no links and no @", opening)
+        self.assertIn("Name every failures, unproven and flaky name of the verdict line, exactly as the line spells it, in a tradeoffs sentence", opening)
+        self.assertIn(
+            "lighthouse pr --repo <repo> --core <core> --feature <feature> --results <results> --summary '<a lowercase summary of the feature>' --draft-fields <results>/pr-draft.json",
+            opening,
+        )
+        self.assertIn("When it exits 2, it prints error, and schema and errors when the fields break their format: fix the draft by every error it names and run it again", opening)
+        self.assertNotIn("--why", text)
+
+    def test_the_skills_example_fields_draft_meets_h15(self):
+        from lighthouse_tool import handoff, pr_fields
+
+        raw = scratch.read_text(scratch.skill_path("test"))
+        opening = raw.split("10. When the verdict", 1)[1].split("11. Run `lighthouse release", 1)[0]
+        example = json.loads(opening.split("For example: `", 1)[1].split("`.", 1)[0])
+        line = {"verdict": "unproven", "failures": [], "unproven": ["export of a large table"], "flaky": [], "tokens": 0, "minutes": 0, "dollars": None, "pr": None}
+        findings = {"suite": {"result": "passed"}}
+        title = pr_fields.compose_title("feat", "exports", "keep rows with an empty date")
+        fields = pr_fields.build_fields(title, example, pr_fields.testing_rows(line, findings))
+
+        self.assertEqual(sorted(example), ["change", "impact", "problem", "tradeoffs"])
+        self.assertEqual(handoff.schema_errors("h15-pr-fields", fields), [])
+        self.assertEqual(pr_fields.missing_names(line, fields), [])
+
+    def test_test_skill_opens_the_pull_request_only_through_create_pull_request(self):
+        text = scratch.skill_text("test")
+        opening = text.split("10. When the verdict", 1)[1].split("11. Run lighthouse release", 1)[0]
+
+        self.assertIn(
+            "open the pull request only through the GitHub MCP create_pull_request tool, with the printed title, body, base and head unchanged, as a draft when draft is true and ready for review otherwise",
+            opening,
+        )
+        self.assertIn("When this session has no create_pull_request tool, or the remote is not on GitHub, open nothing and say why in one line", opening)
+        for path in instruction_files() + [os.path.join(scratch.ROOT, "README.md")]:
+            with self.subTest(path=os.path.relpath(path, scratch.ROOT)):
+                self.assertNotIn("gh pr create", " ".join(scratch.read_text(path).split()))
+
+    def test_the_child_ends_with_its_verdict_line_as_structured_output(self):
+        text = scratch.skill_text("test")
+        ending = text.split("12. When publish exited non-zero", 1)[1].split("## Stopping early", 1)[0]
+        stopping = text.split("## Stopping early", 1)[1].split("## Cost", 1)[0]
+
+        self.assertIn("End the reply with the verdict line as structured output: set verdict_line to the line from <results>/verdict.json", ending)
+        self.assertIn("pr, set to the pull request's URL or null", ending)
+        self.assertIn("reads the reply only from that structured output, never from the reply's text", ending)
+        self.assertIn("running lighthouse findings --results <results> and then lighthouse verdict --results <results> again", ending)
+        self.assertIn("It asks once; a second failure blocks the run.", ending)
+        self.assertNotIn("as the last line of the reply", ending)
+        self.assertIn("end the reply with its line as structured output: set verdict_line to the blocked line it printed", stopping)
+        self.assertNotIn("as the last line of the reply", stopping)
+
+    def test_readme_describes_the_owned_hand_offs(self):
+        readme = " ".join(scratch.read_text(os.path.join(scratch.ROOT, "README.md")).replace("`", "").split())
+
+        for phrase in [
+            "It writes its findings as <results>/findings.draft.json and runs lighthouse findings --results <results>",
+            "| findings | --results <dir>:",
+            "--draft-fields <file> the fields draft",
+            "The child session hands its verdict line to lighthouse launch as structured output, never as text",
+            "whose required verdict_line is h13-lighthouse-verdict-line's verdict or blocked form",
+            "launch asks the same session once more with --resume and every error",
+            "The child opens the pull request only through the GitHub MCP create_pull_request tool",
+        ]:
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, readme)
+        self.assertNotIn("gh pr create", readme)
+
 
 if __name__ == "__main__":
     unittest.main()
