@@ -80,9 +80,9 @@ _RUN_FROM_NODE_TEST = re.compile(
     + r"|" + _IMPORTED + _THEN + r"\(\s*" + _RUN_IN_BRACES
     + r"|(?:" + _REQUIRED + r"|\(\s*await\s+" + _IMPORTED + r"\s*\))" + _RUN_MEMBER
 )
-_RE_EXPORT_CLAUSE = re.compile(r"""\bexport\s*(?:\*\s*(?:as\s*([\w$]+)\s*)?|(\{[^{}]*\})\s*)from\s*['"`]([^'"`]+)['"`]""")
-_IMPORT_CLAUSE = re.compile(r"""\bimport\s*\{([^{}]*)\}\s*from\s*(['"])(\.{1,2}/[^'"]+)\2\s*;?""")
-_RE_EXPORT_STATEMENT = re.compile(r"""\bexport\s*(?:\*(?:\s*as\s*[\w$]+)?|\{[^{}]*\})\s*from\s*['"`][^'"`]*['"`]""")
+_RE_EXPORT_CLAUSE = re.compile(r"""\bexport\s*(?:\*\s*(?:as\s*([\w$]+)\s*)?|(\{[^{}]*\})\s*)from\s*['"`]([^'"`]*)['"`]""")
+_IMPORT_CLAUSE = re.compile(r"""\bimport\s*(?:[\w$]+\s*,\s*)?\{([^{}]*)\}\s*from\s*(['"])(\.{1,2}/[^'"]+)\2\s*;?""")
+_NAMESPACE_IMPORT = re.compile(r"""\bimport\s*\*\s*as\s*([\w$]+)\s*from\s*(['"])(\.{1,2}/[^'"]+)\2""")
 _RELATIVE_SOURCE = re.compile(r"""((?:\bfrom|\bimport|\brequire)\s*\(?\s*)(['"])(\.{1,2}/[^'"]+)\2""")
 _TEXT_TEST_TIMEOUT = re.compile(r"""--test-timeout(?:=|['"`]\s*,\s*['"`]?)\s*([0-9][0-9_.eE+]*|Infinity)""")
 _RUN_TIMEOUT = re.compile(r"""[{,]\s*timeout\s*:\s*([^,}\s)]+)""")
@@ -416,7 +416,7 @@ def _script_texts(root: str, entry: str) -> Optional[Tuple[str, ...]]:
             if imported is not None:
                 pending = [*pending, (target, imported)]
     exports = _node_test_exports(root, read)
-    return tuple(_imports_of_node_test_named(root, path, text, exports) for path, text in read)
+    return tuple(_with_re_exports_resolved_to_node_test(root, path, text, exports) for path, text in read)
 
 
 class _NodeTestNames(NamedTuple):
@@ -444,7 +444,7 @@ def _exported_names(root: str, path: str, clauses: List[Tuple[str, str, str]], e
     module: FrozenSet[str] = frozenset()
     for namespace, braces, specifier in clauses:
         source = _source_names(root, path, specifier, exports)
-        if specifier == "node:test" and namespace:
+        if namespace and "run" in source.run:
             module = module | {namespace}
         elif braces is not None and braces.startswith("{"):
             pairs = [_renamed(entry) for entry in braces[1:-1].split(",") if entry.strip()]
@@ -469,7 +469,7 @@ def _renamed(entry: str) -> Tuple[str, str]:
     return (words[0], words[-1]) if len(words) == 3 and words[1] == "as" else (entry.strip(), entry.strip())
 
 
-def _imports_of_node_test_named(root: str, path: str, text: str, exports: Dict[str, _NodeTestNames]) -> str:
+def _with_re_exports_resolved_to_node_test(root: str, path: str, text: str, exports: Dict[str, _NodeTestNames]) -> str:
     folder = os.path.dirname(path)
 
     def names_of(specifier: str) -> _NodeTestNames:
@@ -486,11 +486,18 @@ def _imports_of_node_test_named(root: str, path: str, text: str, exports: Dict[s
         imported = ["import {{ {} }} from {}node:test{};".format(", ".join(runs), quote, quote)] if runs else []
         return " ".join(imported + modules) or statement.group(0)
 
+    def members_renamed(rewritten: str) -> str:
+        for namespace, _, specifier in _NAMESPACE_IMPORT.findall(text):
+            for renamed in names_of(specifier).run - {"run"}:
+                member = r"(?<![\w$.])" + re.escape(namespace) + r"\s*\.\s*" + re.escape(renamed) + r"(?![\w$])"
+                rewritten = re.sub(member, namespace + ".run", rewritten)
+        return rewritten
+
     def source(found: "re.Match[str]") -> str:
         lead, quote, specifier = found.groups()
-        return lead + quote + "node:test" + quote if "run" in names_of(specifier).run else found.group(0)
+        return lead + quote + "node:test" + quote if names_of(specifier).run else found.group(0)
 
-    return _RELATIVE_SOURCE.sub(source, _IMPORT_CLAUSE.sub(clause, text))
+    return _RELATIVE_SOURCE.sub(source, members_renamed(_IMPORT_CLAUSE.sub(clause, text)))
 
 
 def _import_targets(root: str, path: str, text: str) -> List[str]:
@@ -543,7 +550,7 @@ def _names_bound_to_node_test(code: str) -> FrozenSet[str]:
 
 
 def _binds_node_test_run(text_code: str) -> bool:
-    code = _RE_EXPORT_STATEMENT.sub(" ", text_code)
+    code = _RE_EXPORT_CLAUSE.sub(" ", text_code)
     if _RUN_FROM_NODE_TEST.search(code):
         return True
     names = _names_bound_to_node_test(code)

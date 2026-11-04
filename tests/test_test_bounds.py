@@ -565,7 +565,11 @@ class NodeTestReExports(unittest.TestCase):
         two_hops = {"a.mjs": "export * from './b.mjs';\n", "b.mjs": self.STAR}
         renamed = {"h.mjs": "export { run as go } from 'node:test';\n"}
         namespace = {"h.mjs": "export * as nt from 'node:test';\n"}
+        relative_namespace = {"h.mjs": "export * as nt from './b.mjs';\n", "b.mjs": self.STAR}
         cases = (
+            ("namespace of a relative re-exporter", "import { nt } from './h.mjs';\nnt.run({ files: []{bound} });\n", relative_namespace),
+            ("namespace import of a renamed run", "import * as h from './h.mjs';\nh.go({ files: []{bound} });\n", renamed),
+            ("default beside a renamed run", "import d, { go } from './h.mjs';\ngo({ files: []{bound} });\n", renamed),
             ("two hops", "import { run } from './a.mjs';\nrun({ files: []{bound} });\n", two_hops),
             ("renamed", "import { go } from './h.mjs';\ngo({ files: []{bound} });\n", renamed),
             ("namespace", "import { nt } from './h.mjs';\nnt.run({ files: []{bound} });\n", namespace),
