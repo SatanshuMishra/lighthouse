@@ -23,12 +23,12 @@ Everything a run needs from lighthouse is in this skill and in what its commands
 3. Write the profile as version 1 JSON with an indent of 2, holding:
    - `version`: 1.
    - `sources`: every file read in step 2.
-   - `suite`: `command`, the command the project's CI or README uses to run its tests, run from the repository root; `junit`, the repository-relative JUnit XML path when the project already writes one, otherwise null; `timeout_minutes`, a number when CI states one, otherwise null; and always both `rerun` and `isolated`:
+   - `suite`: `command`, the command the project's CI or README uses to run its tests, run from the repository root; `junit`, the repository-relative JUnit XML path when the project already writes one, otherwise null; and always both `rerun` and `isolated`:
      - `suite.rerun`: the command run instead of the whole suite to rerun only the failing tests, from the repository root, writing the same JUnit report as `suite.command`. lighthouse replaces `{tests}` with the failing test ids (classname.name) and `{names_regex}` with a regular expression matching their names, shell-quoting each value itself, so leave each placeholder unquoted. For unittest, `python3 -m unittest {tests}` through the same runner and report options as `suite.command`; for pytest, `suite.command` plus `--lf`; for jest and vitest, `suite.command` plus `-t {names_regex}`; for go test, `suite.command` plus `-run {names_regex}`; null for any runner without a way to select failures.
      - `suite.isolated`: true only when the suite uses no fixed ports, shared databases or shared folders, so core's and FEATURE's suites may run at the same time; otherwise false.
    - `setup`: `command` that installs dependencies in a fresh checkout, when the project needs one.
    - `build`: `command`, when the product builds.
-   - `start`: `command` and `ready`, a URL, log line or command that shows the product is up, when the product runs.
+   - `start`: `command` and `ready`, a URL, log line or command that shows the product is up, when the product runs. The start command stays in the foreground until it is stopped, such as `docker compose up` and never `docker compose up -d`, so lighthouse can stop it and knows when it exits.
    - Leave `setup`, `build` or `start` out of the profile entirely when the project has no such step. Never write one with a null, empty or placeholder field: each field it holds is a string.
    - `surfaces`: one entry for every way a person or calling program uses the product, such as each command, page or flow, endpoint group, public module, skill or device feature. Give each:
      - `name` and `kind`, in plain words.
@@ -56,7 +56,6 @@ Everything a run needs from lighthouse is in this skill and in what its commands
      "suite": {
        "command": "npx jest --ci --reporters=default --reporters=jest-junit",
        "junit": "junit.xml",
-       "timeout_minutes": 15,
        "rerun": "npx jest --ci --reporters=default --reporters=jest-junit -t {names_regex}",
        "isolated": true
      },
@@ -90,7 +89,7 @@ Everything a run needs from lighthouse is in this skill and in what its commands
    ```
 4. When any surface needs signing in, run `lighthouse credentials init --repo <repo>`. It creates the credentials file with empty values, or uses the project's own file.
 5. Run `lighthouse profile check --repo <repo>`. When it reports problems, fix each once in the profile and run the check once more. When it still fails, stop and report every remaining problem, so a caller treats the profile as blocked.
-6. When the check passes, run `lighthouse profile measure --repo <repo>` in the background, with run_in_background, so a measure that outlives the Bash tool's 600000 ms ceiling is never moved to the background while you carry on without it. First make a folder outside the repository with `mktemp -d` and use the path it prints as `<folder>`, so the repository gains no file. Start `lighthouse profile measure --repo <repo> > <folder>/measure.out 2>&1; touch <folder>/measure.done` with run_in_background, the done marker written after `;` so it exists even when measure fails. Then run `lighthouse wait --until 'test -e <folder>/measure.done'` in the foreground, with the Bash tool's timeout set to 600000 ms, calling it again, the same way, each time it returns ready false, and run nothing else meanwhile. Once it returns ready true, read `<folder>/measure.out` for what measure printed. It runs the suite, the start command, the readiness check and each surface's `reach` command once, records their durations in the profile's `measured` object, sets each surface's `available` from its `reach` command's exit, stops the started process and writes no file but `.lighthouse/profile.json`. Those durations set the time limits of every later lighthouse:test run.
+6. When the check passes, run `lighthouse profile measure --repo <repo>` in the background, with run_in_background, and wait for its completion notice. First make a folder outside the repository with `mktemp -d` and use the path it prints as `<folder>`, so the repository gains no file. Start `lighthouse profile measure --repo <repo> > <folder>/measure.out 2>&1 < /dev/null` with run_in_background, then wait for that command's completion notice, running nothing else meanwhile, never polling it, never sleeping and never stopping it. Once the notice arrives, read `<folder>/measure.out` for what measure printed. It runs the suite, the start command, the readiness check and each surface's `reach` command once, records their durations in the profile's `measured` object, sets each surface's `available` from its `reach` command's exit, stops the started process and writes no file but `.lighthouse/profile.json`.
 
 ## Asking
 

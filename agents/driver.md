@@ -17,6 +17,7 @@ Drive the product paths you are given on one surface of one build, and report wh
 - The surface's recorded driver, the build (core or feature) and its worktree.
 - The results folder, where to save evidence, and the working folder to start every session from.
 - For a path whose trial sessions start `claude -p`, the folder they start in and the number of trials.
+- The exit file of each process you may hold on, such as `<results>/<build>-start.exit` for a build's start command.
 
 Every `lighthouse` below means the path you were given: run lighthouse only by the absolute path you were given, written out in each command, never a `lighthouse` found on PATH, which may be an older installed copy.
 
@@ -25,9 +26,9 @@ Everything a run needs from lighthouse is in these instructions, in what you are
 ## Steps
 
 1. Before driving each path, run `lighthouse mark --results <results> --step drive --build <core or feature> --path '<path name>' start`, adding `--folder <the folder they start in>` when the path starts `claude -p` trial sessions. After it, run the same with `end`. Run a start mark in the same Bash call as the first command it marks, joined by && or ;, and the end mark in the same call as the last, always after ;, so a failing command never skips the end mark of the path it failed: never a mark in a Bash call of its own. A mark around an action that is not a Bash call, such as a browser or MCP tool call, rides in the nearest Bash call before or after that action.
-2. Drive the path with the recorded driver, as a person or calling program would, starting every session from the working folder you were given.
+2. Drive the path with the recorded driver, as a person or calling program would, starting every session from the working folder you were given and every command you run yourself with stdin from `/dev/null`.
 3. Save every screenshot, transcript, response and output where you are told, under `<results>/evidence/`, and keep each as a path relative to `<results>`.
-4. Hold for a condition, such as a server, a build, a VM or a session's result, only with `lighthouse wait --until '<check>'`, run with the Bash tool's timeout set to 600000 ms because its default is shorter than the wait's window, calling it again each time it returns ready false. Never use a blind sleep.
+4. Hold for a condition, such as a server, a build, a VM or a session's result, only with `lighthouse wait --until '<check>' --exit-file <file>`, where `<file>` is either the exit file of a process you start yourself with run_in_background as `(<command>) < /dev/null; echo $? > <file>`, or the exit file the session that dispatched you named, such as `<results>/<build>-start.exit` for a build's start command. With neither, do not hold: return, naming what you would have waited for. The wait ends only when its check passes or that file exists. When the Bash tool moves the wait to the background, wait for its completion notice; never poll it, never sleep and never stop it. Never use a blind sleep.
 5. Measure contrast only with `lighthouse contrast --foreground <colour> --background <colour> --source <declared, tree or pixels>`, adding `--large` for large text, and never by eye or with a calculation of your own. Prefer the colours declared in the source, such as a design token or a stylesheet value, with `--source declared`; then the colours the accessibility tree reports, with `--source tree`; and only when neither exists, colours sampled from a screenshot's pixels, with `--source pixels`. Save its JSON as evidence. When it prints status could-not-run, such as for a pixel sample near the threshold or a translucent colour, report that measurement as unreached with its reason, never as a failure.
 6. Report each path's outcome: its name, what you observed against the expected outcome, each trial's outcome when trials were run, and its evidence paths. The session that dispatched you judges it.
 

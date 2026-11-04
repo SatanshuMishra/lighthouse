@@ -204,8 +204,9 @@ class SkillsTest(unittest.TestCase):
             "Start lighthouse launch <the flags you were given> --repo <repo> --parent <plugin>/<run> in the background, with run_in_background",
             launching,
         )
-        self.assertIn("Run lighthouse wait --until 'test -s <results>/launch.json' --limits <results>/limits.json in the foreground", launching)
-        self.assertIn("Each time it returns with ready false, call it again, the same way, until it returns ready true", launching)
+        self.assertIn("Wait for that command's completion notice, and run nothing else meanwhile", launching)
+        self.assertIn("Once the notice arrives, read <results>/launch.json", launching)
+        self.assertNotIn("lighthouse wait", launching)
         self.assertIn("Print the line in <results>/launch.json, unchanged, as the last line of the reply", launching)
         self.assertIn("With --child, run the Steps below", launching)
         self.assertNotIn("LIGHTHOUSE_CHILD", text)
@@ -264,13 +265,68 @@ class SkillsTest(unittest.TestCase):
                 line = next(line for line in building.splitlines() if call in line)
                 self.assertIn("--port <profile port>=<build port>", line)
 
-    def test_every_wait_instruction_sets_the_bash_timeout_to_its_ceiling(self):
+    def test_every_wait_instruction_names_the_exit_file_of_its_process(self):
         for path in (scratch.skill_path("test"), os.path.join(scratch.ROOT, "agents", "driver.md")):
             holds = [line for line in scratch.read_text(path).splitlines() if "lighthouse wait --" in line]
             with self.subTest(path=path):
                 self.assertTrue(holds)
                 for line in holds:
-                    self.assertIn("600000", line)
+                    self.assertIn("--exit-file", line)
+                    self.assertNotIn("ready false", line)
+
+    def test_each_start_command_writes_its_pid_and_exit_file(self):
+        text = scratch.skill_text("test")
+        building = text.split("6. Build and start", 1)[1].split("7. Prove each path", 1)[0]
+
+        self.assertIn(
+            "starting it with run_in_background as (<start command>) > <results>/<build>-start.log 2>&1 < /dev/null & echo $! > <results>/<build>-start.pid; wait $!; echo $? > <results>/<build>-start.exit",
+            building,
+        )
+        self.assertIn("--exit-file <results>/<build>-start.exit", building)
+        self.assertIn("When that wait prints exited true with a status other than 0, the build did not start", building)
+        self.assertIn("a profile problem for lighthouse:doctor, never a build that does not start", building)
+
+    def test_release_stops_every_start_command_in_every_ending(self):
+        text = scratch.skill_text("test")
+        releasing = text.split("11. Run lighthouse release", 1)[1].split("12. When publish", 1)[0]
+        stopping = section(text, "## Stopping early", "## Cost")
+
+        self.assertIn("It also stops every start command the run started", releasing)
+        self.assertIn(
+            "whenever step 2 ran, run lighthouse release --repo <repo> --results <results>, so no started server keeps the session waiting",
+            stopping,
+        )
+        self.assertLess(stopping.index("lighthouse release"), stopping.index("lighthouse verdict --blocked"))
+
+    def test_a_moved_foreground_call_is_held_by_its_completion_notice(self):
+        for text in (scratch.skill_text("test"), driver_text()):
+            self.assertIn("never poll", text)
+            self.assertIn("never sleep", text)
+            self.assertIn("never stop", text)
+        self.assertIn(
+            "When the Bash tool moves a foreground call to the background, the session waits for its completion notice, never polls it, never sleeps and never stops it",
+            scratch.skill_text("test"),
+        )
+
+    def test_the_child_closes_stdin_of_every_command_it_runs(self):
+        steps = section(scratch.skill_text("test"), "## Steps", "## Stopping early")
+
+        self.assertIn("Start every command you run yourself with stdin from /dev/null", steps)
+
+    def test_drivers_hold_only_on_a_named_exit_file(self):
+        steps = section(scratch.skill_text("test"), "## Steps", "## Stopping early")
+        driver = driver_text()
+
+        self.assertIn("the exit file of each process the driver may hold on, such as <results>/<build>-start.exit", steps)
+        self.assertIn("lighthouse wait --until '<check>' --exit-file <file>", driver)
+        self.assertIn("(<command>) < /dev/null; echo $? > <file>", driver)
+        self.assertIn("With neither, do not hold: return, naming what you would have waited for", driver)
+
+    def test_cost_names_no_time_limit(self):
+        cost = section(scratch.skill_text("test"), "## Cost", "## Never")
+
+        self.assertNotIn("limit", cost)
+        self.assertIn("a slow step runs to its end", cost)
 
     def test_test_skill_dispatches_drivers_in_the_foreground(self):
         steps = section(scratch.skill_text("test"), "## Steps", "## Stopping early")
@@ -415,10 +471,15 @@ class SkillsTest(unittest.TestCase):
                 self.assertTrue(flags)
                 for flag in flags:
                     self.assertRegex(line, re.escape("`" + flag) + r"[` ]")
-        for flag in ["--until", "--every", "--within"]:
+        for flag in ["--until", "--every", "--exit-file"]:
             self.assertIn("`{} ".format(flag), reference_line(reference, "wait"))
+        for retired in ["--within", "--limits", "expired", "limits.json"]:
+            with self.subTest(retired=retired):
+                self.assertNotIn(retired, reference_line(reference, "wait"))
+                self.assertNotIn(retired, reference_line(reference, "launch"))
         keys = {
-            "wait": ["ready", "expired"],
+            "wait": ["ready", "exited", "status", "seconds"],
+            "release": ["removed", "stopped"],
             "execute": ["checks", "neighbours"],
             "contrast": ["ratio", "threshold", "status", "source", "reason"],
             "profile measure": ["measured", "available"],
@@ -480,15 +541,18 @@ class SkillsTest(unittest.TestCase):
         )
         self.assertIn("so the name under failures or unproven tells a reader what broke", planning)
 
-    def test_every_long_lighthouse_call_runs_in_the_background_and_is_held_with_wait(self):
+    def test_every_long_lighthouse_call_runs_in_the_background_and_is_held_by_its_completion_notice(self):
         calls = long_lighthouse_calls()
         for name in SKILLS:
             with self.subTest(skill=name):
                 self.assertTrue(any(path == scratch.skill_path(name) for path, _ in calls), name)
         for path, line in calls:
-            for phrase in ["run_in_background", "lighthouse wait --until", "600000"]:
+            for phrase in ["run_in_background", "completion notice", "< /dev/null"]:
                 with self.subTest(path=path, phrase=phrase, line=line[:80]):
                     self.assertIn(phrase, line)
+            for retired in ["lighthouse wait", ".done", "600000"]:
+                with self.subTest(path=path, retired=retired, line=line[:80]):
+                    self.assertNotIn(retired, line)
 
 if __name__ == "__main__":
     unittest.main()
