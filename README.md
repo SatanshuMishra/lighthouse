@@ -115,7 +115,7 @@ The last line lighthouse:test prints is one JSON object on one line, the contrac
 | `contrast` | `--foreground <colour>`, `--background <colour>`, `--source declared`, `tree` or `pixels`, `--large` |
 | `profile measure` | `--repo`, `--profile` |
 | `verdict` | `--results`, or `--blocked <reason>` to print a blocked verdict line for a run that stopped early; with `--blocked`, nothing in the results folder is read or written |
-| `pr` | `--repo`, `--core`, `--feature`, `--results`, `--summary`, `--type`, `--scope`, `--why`, `--final` |
+| `pr` | `--repo`, `--core`, `--feature`, `--results`, `--summary`, `--type`, `--scope`, `--draft-fields`, `--final` |
 | `spend` | `--since <ISO time>`, `--from <dir>`, `--transcripts <dir>`, `--results <dir>`, `--repo` |
 | `mark` | `--results <dir>`, `--step <name>`, `--build core` or `feature`, `--path <name>`, `--folder <dir>`, then `start` or `end` |
 | `runs` | `--repo` |
