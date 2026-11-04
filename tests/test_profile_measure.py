@@ -36,7 +36,7 @@ def surface(name, reach, available):
 def measurable_profile(flag):
     quoted_flag = shlex.quote(flag)
     return scratch.sample_profile(
-        suite={"command": "sleep 1", "junit": None, "timeout_minutes": None, "rerun": None, "isolated": False},
+        suite={"command": "sleep 1", "junit": None, "rerun": None, "isolated": False},
         start={
             "command": "sleep 1 && touch {} && exec sleep 30".format(quoted_flag),
             "ready": "test -f {}".format(quoted_flag),
@@ -97,6 +97,27 @@ class ProfileMeasureTest(unittest.TestCase):
         self.assertIs(surface_named(profile, "ready")["available"], True)
         self.assertIs(surface_named(profile, "gone")["available"], False)
         self.assertEqual(printed["available"], {"ready": True, "gone": False})
+
+    def test_measure_waits_for_readiness_until_the_product_is_ready(self):
+        work, _ = scratch.make_repo(self)
+        flag = os.path.join(scratch.temporary_folder(self, "lh-flag-"), "started.flag")
+        quoted_flag = shlex.quote(flag)
+        profile = scratch.sample_profile(
+            suite={"command": "true", "junit": None, "timeout_minutes": 0.01},
+            start={
+                "command": "sleep 3 && touch {} && exec sleep 30".format(quoted_flag),
+                "ready": "test -f {}".format(quoted_flag),
+            },
+        )
+        scratch.commit_files(work, {PROFILE_PATH: json.dumps(profile, indent=2) + "\n"}, "record the profile")
+
+        code, stdout, stderr = lighthouse(self, "profile", "measure", "--repo", work)
+
+        self.assertEqual(code, 0, stdout + stderr)
+        measured = json.loads(stdout)["measured"]
+        self.assertIs(measured["ready"], True)
+        self.assertGreaterEqual(measured["start_seconds"], 3)
+        self.assertLess(measured["suite_seconds"], measured["start_seconds"])
 
     def test_measured_profile_still_passes_the_check(self):
         work, _ = measured_repo(self)

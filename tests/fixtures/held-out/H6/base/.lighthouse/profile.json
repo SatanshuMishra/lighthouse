@@ -1,7 +1,7 @@
 {
   "version": 1,
   "sources": [],
-  "suite": {"command": "python3 -m unittest discover -s tests", "junit": null, "timeout_minutes": null},
+  "suite": {"command": "python3 -m unittest discover -s tests", "junit": null},
   "surfaces": [
     {
       "name": "label layout preview",

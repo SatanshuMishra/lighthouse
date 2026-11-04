@@ -127,7 +127,7 @@ def sample_profile(**overrides: Any) -> Dict[str, Any]:
     profile = {
         "version": 1,
         "sources": [],
-        "suite": {"command": "python3 -m unittest discover", "junit": None, "timeout_minutes": None},
+        "suite": {"command": "python3 -m unittest discover", "junit": None},
         "surfaces": [
             {
                 "name": "cli",

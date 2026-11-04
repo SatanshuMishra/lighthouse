@@ -9,8 +9,7 @@
         "type": "object",
         "required": {
           "command": {"type": "string"},
-          "junit": {"type": ["string", "null"]},
-          "timeout_minutes": {"type": ["number", "null"]}
+          "junit": {"type": ["string", "null"]}
         },
         "optional": {
           "rerun": {"type": ["string", "null"]},

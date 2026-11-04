@@ -11,7 +11,7 @@ import time
 from contextlib import ExitStack
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from lighthouse_tool import credentials, limits, process_tree, suite, wait
+from lighthouse_tool import credentials, process_tree, suite, wait
 from lighthouse_tool import repo as repository
 from lighthouse_tool.records import is_number, utc_now, write_atomically
 from lighthouse_tool.repo import Parser, Refusal, checked_git, require_root
@@ -27,6 +27,11 @@ MEASURED_STEPS = ("setup", "build")
 READY_POLL_SECONDS = 0.5
 STOP_GRACE_SECONDS = 5
 MEASURED_DIGITS = 3
+RETIRED_SUITE_KEY = "timeout_minutes"
+RETIRED_DETAIL = (
+    "suite.timeout_minutes is retired because lighthouse puts no time limit on any step; "
+    "remove the key (lighthouse:doctor removes it)"
+)
 
 SOURCE_NAMES = (
     "package.json",
@@ -197,13 +202,30 @@ def check_profile(repo: str, path: Optional[str] = None) -> List[Problem]:
     version = profile.get("version")
     if not (is_integer(version) and version == schema["version"]):
         return [problem("version", "version is {}, and this lighthouse reads version {}".format(json.dumps(version), schema["version"]))]
+    retired = retired_problems(profile)
+    current = without_retired(profile)
     return [
-        *schema_problems(profile, schema["profile"], ""),
+        *retired,
+        *schema_problems(current, schema["profile"], ""),
         *path_problems(root, profile),
         *command_problems(root, profile),
         *rerun_problems(profile),
         *unrecorded_problems(root, profile),
     ]
+
+
+def retired_problems(profile: Dict[str, Any]) -> List[Problem]:
+    suite_section = profile.get("suite")
+    held = isinstance(suite_section, dict) and RETIRED_SUITE_KEY in suite_section
+    return [problem("retired", RETIRED_DETAIL)] if held else []
+
+
+def without_retired(profile: Dict[str, Any]) -> Dict[str, Any]:
+    suite_section = profile.get("suite")
+    if not isinstance(suite_section, dict) or RETIRED_SUITE_KEY not in suite_section:
+        return profile
+    kept = {key: value for key, value in suite_section.items() if key != RETIRED_SUITE_KEY}
+    return {**profile, "suite": kept}
 
 
 def rerun_problems(profile: Dict[str, Any]) -> List[Problem]:
@@ -661,15 +683,15 @@ def measure(root: str, profile: Dict[str, Any], holder: str) -> Tuple[Dict[str, 
     return measured, {name: code == 0 for name, (code, _) in reached.items()}
 
 
-def ready_check(root: str, ready: str, start_log: str) -> Callable[[float], bool]:
+def ready_check(root: str, ready: str, start_log: str) -> wait.Check:
     text = ready.strip()
     if wait.requestable(text):
         url = wait.checked_url(text)
-        return lambda seconds_left: wait.url_answers(url, seconds_left)
+        return lambda: wait.url_answers(url)
     if command_fault(root, ready) is None:
         command = "cd {} && {}".format(shlex.quote(root), ready)
-        return lambda seconds_left: wait.check_passes(command, seconds_left)
-    return lambda _: wait.log_holds(start_log, ready)
+        return lambda: wait.check_passes(command)
+    return lambda: wait.log_holds(start_log, ready)
 
 
 def started_ready(root: str, profile: Dict[str, Any], start_log: str) -> Tuple[Optional[float], Optional[bool]]:
@@ -693,7 +715,5 @@ def started_ready(root: str, profile: Dict[str, Any], start_log: str) -> Tuple[O
             )
         except OSError:
             return None, False
-        passed, seconds = wait.wait_until(
-            check, READY_POLL_SECONDS, limits.of(profile).suite_seconds, lambda: process_tree.has_exited(process)
-        )
+        passed, seconds = wait.wait_until(check, READY_POLL_SECONDS, lambda: process_tree.has_exited(process))
     return (rounded(seconds), True) if passed else (None, False)

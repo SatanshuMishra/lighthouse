@@ -10,7 +10,6 @@ from typing import Any, Callable, Dict, Iterator, List, NamedTuple, Optional, Se
 FORWARDED_SIGNALS = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
 SIGNAL_EXIT_BASE = 128
 LISTING = ["ps", "-A", "-o", "pid=,ppid="]
-LISTING_SECONDS = 10
 UNREAPED_POLL_SECONDS = 0.05
 
 Handler = Any
@@ -33,7 +32,6 @@ def parents() -> Dict[int, int]:
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
-            timeout=LISTING_SECONDS,
             check=False,
         )
     except (OSError, subprocess.SubprocessError):
@@ -121,6 +119,53 @@ def kill_tree(process: "subprocess.Popen[bytes]", grace_seconds: float = 0.0) ->
 def stop(process: "subprocess.Popen[bytes]", grace_seconds: float = 0.0) -> None:
     kill_tree(process, grace_seconds)
     process.wait()
+
+
+def runs_as_ours(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except (ProcessLookupError, PermissionError):
+        return False
+    return True
+
+
+def is_group_leader(pid: int) -> bool:
+    try:
+        return os.getpgid(pid) == pid
+    except OSError:
+        return False
+
+
+def gone_within(pid: int, grace_seconds: float) -> bool:
+    deadline = time.monotonic() + grace_seconds
+    while runs_as_ours(pid):
+        if time.monotonic() > deadline:
+            return False
+        time.sleep(UNREAPED_POLL_SECONDS)
+    return True
+
+
+def stop_pid(pid: int, grace_seconds: float) -> bool:
+    if not runs_as_ours(pid):
+        return False
+    leader = is_group_leader(pid)
+    listed = frozen_tree(pid)
+    for found in listed:
+        send(found, signal.SIGTERM)
+    if leader:
+        send_group(pid, signal.SIGTERM)
+    for found in listed:
+        send(found, signal.SIGCONT)
+    gone_within(pid, grace_seconds)
+    remaining = parents()
+    lingering = {found for found in listed if found in remaining}
+    for found in lingering:
+        send(found, signal.SIGSTOP)
+    for found in (frozen_tree(pid) if runs_as_ours(pid) else set()) | lingering:
+        send(found, signal.SIGKILL)
+    if leader:
+        send_group(pid, signal.SIGKILL)
+    return True
 
 
 def kill_owned() -> None:

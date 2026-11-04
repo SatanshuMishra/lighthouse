@@ -11,8 +11,7 @@ from tests import scratch
 POLL_SECONDS = 0.05
 PID_SECONDS = 10
 INTERRUPT_GONE_SECONDS = 3
-LIMIT_GONE_SECONDS = 2
-MARKER_SECONDS = 10
+STOP_GRACE_SECONDS = 1.0
 HOST_SECONDS = 10
 
 INTERRUPTED_HOST = """
@@ -23,32 +22,22 @@ sys.path.insert(0, sys.argv[1])
 from lighthouse_tool import launch
 fifo, work = sys.argv[2], sys.argv[3]
 command = "echo $$ > {} ; exec sleep 30".format(shlex.quote(fifo))
-launch.run_child(["/bin/sh", "-c", command], work, "none", dict(os.environ), 60)
+launch.run_child(["/bin/sh", "-c", command], work, "none", dict(os.environ))
 """
 
-SESSION_STEP = """
-import os
+SLOW_SESSION_STEP = """
 import shlex
 import sys
 sys.path.insert(0, sys.argv[1])
-from unittest import mock
-from lighthouse_tool import limits, suite
-fifo, marker, worktree, log_path = sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]
-forked = os.fork()
-if forked:
-    os.waitpid(forked, 0)
-    sys.exit(0)
-os.setsid()
-quiet = os.open(os.devnull, os.O_RDWR)
-for descriptor in (0, 1, 2):
-    os.dup2(quiet, descriptor)
-measured = limits.of
-check = "echo $$ > {} ; sleep 8; touch {}".format(shlex.quote(fifo), shlex.quote(marker))
-profile = {"suite": {"command": "true"}}
-with mock.patch.object(limits, "of", lambda found: measured(found)._replace(check_seconds=3)):
-    suite.run_step("check", check, worktree, "feature", log_path, profile, ())
-os._exit(0)
+from lighthouse_tool import suite
+marker, worktree, log_path = sys.argv[2], sys.argv[3], sys.argv[4]
+check = "sleep 3; touch {}".format(shlex.quote(marker))
+profile = {"suite": {"command": "true", "timeout_minutes": 0.01}}
+ran = suite.run_step("check", check, worktree, "feature", log_path, profile, ())
+sys.exit(ran.exit if ran.problem is None else 99)
 """
+
+TERM_IGNORING_SERVER = "trap '' TERM; echo $$ > {pid}; while true; do sleep 0.1; done"
 
 ISOLATED_HOST = """
 import os
@@ -62,7 +51,7 @@ signal.signal(signal.SIGTERM, signal.SIG_DFL)
 signal.signal(signal.SIGHUP, signal.SIG_DFL)
 folder, pids = sys.argv[2], sys.argv[3]
 step = "echo $$ >> {} ; exec sleep 30".format(shlex.quote(pids))
-profile = {"suite": {"command": "true", "isolated": True, "timeout_minutes": 1}, "setup": {"command": step}}
+profile = {"suite": {"command": "true", "isolated": True}, "setup": {"command": step}}
 trees = {build: {"path": folder} for build in suite.BUILDS}
 logs = {build: os.path.join(folder, build + ".log") for build in suite.BUILDS}
 suite.both_builds(profile, (), trees, logs, None)
@@ -89,7 +78,7 @@ def spawned_then_signalled(command, *arguments, **options):
     return process
 
 
-profile = {"suite": {"command": "true", "timeout_minutes": 1}}
+profile = {"suite": {"command": "true"}}
 with mock.patch.object(process_tree.subprocess, "Popen", spawned_then_signalled):
     suite.run_step("setup", "exec sleep 30", folder, "core", os.path.join(folder, "core.log"), profile, ())
 """
@@ -262,31 +251,65 @@ class ProcessTreeTest(unittest.TestCase):
         self.assertTrue(gone, "the child {} outlived the interrupted launch".format(pid))
         host.wait(timeout=HOST_SECONDS)
 
-    def test_child_limit_stops_its_steps(self):
+    def test_a_slow_step_inside_the_child_runs_to_its_end(self):
         from lighthouse_tool import launch
 
         folder = scratch.temporary_folder(self, "lh-tree-")
         work = scratch.temporary_folder(self, "lh-work-")
-        fifo = os.path.join(folder, "check.pid")
         marker = os.path.join(folder, "finished")
-        reader = fifo_reader(self, fifo)
-        command = [
-            sys.executable, "-c", SESSION_STEP,
-            scratch.ROOT, fifo, marker, folder, os.path.join(folder, "check.log"),
-        ]
+        command = [sys.executable, "-c", SLOW_SESSION_STEP, scratch.ROOT, marker, folder, os.path.join(folder, "check.log")]
+
+        ran = launch.run_child(command, work, "none", scratch.environment(scratch.make_home(self)))
+
+        self.assertEqual((ran.exit, ran.problem), (0, None))
+        self.assertGreaterEqual(ran.seconds, 3)
+        self.assertTrue(os.path.exists(marker), "the slow check did not run to its end")
+
+    def test_stop_pid_ends_a_started_process_and_its_children(self):
+        from lighthouse_tool import process_tree
+
+        folder = scratch.temporary_folder(self, "lh-tree-")
+        pids = os.path.join(folder, "server.pid")
+        script = "sh -c 'echo $$ > {pids}; exec sleep 600' < /dev/null & wait".format(pids=shlex.quote(pids))
+        holder = subprocess.Popen(["/bin/sh", "-c", script], stdin=subprocess.DEVNULL)
+        self.addCleanup(stop_host, holder)
+        self.addCleanup(kill_listed_quietly, pids)
+        found = written_pids(pids, 1, PID_SECONDS)
+        self.assertIsNotNone(found, "the server never wrote its pid")
+        server = found[0]
+        self.assertEqual(process_tree.parents().get(server), holder.pid)
+
+        stopped = process_tree.stop_pid(holder.pid, STOP_GRACE_SECONDS)
+
+        self.assertIs(stopped, True)
+        self.assertTrue(ended_by(server, time.monotonic() + HOST_SECONDS), "the server outlived its stop")
+        self.assertIsNotNone(holder.wait(timeout=HOST_SECONDS))
+
+    def test_stop_pid_kills_a_process_that_ignores_its_grace(self):
+        from lighthouse_tool import process_tree
+
+        folder = scratch.temporary_folder(self, "lh-tree-")
+        pids = os.path.join(folder, "server.pid")
+        server = subprocess.Popen(
+            ["/bin/sh", "-c", TERM_IGNORING_SERVER.format(pid=shlex.quote(pids))], stdin=subprocess.DEVNULL
+        )
+        self.addCleanup(stop_host, server)
+        self.assertIsNotNone(written_pids(pids, 1, PID_SECONDS), "the server never wrote its pid")
         started = time.monotonic()
 
-        launch.run_child(command, work, "none", scratch.environment(scratch.make_home(self)), 1)
-        returned = time.monotonic()
-        pid = written_pid(reader, PID_SECONDS)
-        self.assertIsNotNone(pid, "the check never wrote its pid")
-        gone = gone_by(pid, returned + LIMIT_GONE_SECONDS)
-        if not gone:
-            kill_quietly(pid)
-        time.sleep(max(0.0, started + MARKER_SECONDS - time.monotonic()))
+        stopped = process_tree.stop_pid(server.pid, STOP_GRACE_SECONDS)
 
-        self.assertTrue(gone, "the check {} outlived the child's limit".format(pid))
-        self.assertFalse(os.path.exists(marker), "the check finished after the child's limit")
+        self.assertIs(stopped, True)
+        self.assertEqual(server.wait(timeout=HOST_SECONDS), -signal.SIGKILL)
+        self.assertGreaterEqual(time.monotonic() - started, STOP_GRACE_SECONDS)
+
+    def test_stop_pid_skips_a_process_that_has_already_exited(self):
+        from lighthouse_tool import process_tree
+
+        ended = subprocess.Popen(["true"], stdin=subprocess.DEVNULL)
+        ended.wait(timeout=HOST_SECONDS)
+
+        self.assertIs(process_tree.stop_pid(ended.pid, STOP_GRACE_SECONDS), False)
 
     def test_signalled_isolated_suite_stops_its_steps(self):
         for number in (signal.SIGTERM, signal.SIGHUP, signal.SIGINT):

@@ -2,7 +2,6 @@ import json
 import os
 import subprocess
 import sys
-import time
 import unittest
 
 from tests import scratch
@@ -33,12 +32,14 @@ with open(os.path.join(folder, "claude-exit.txt"), encoding="utf-8") as code:
 CAFFEINATE_STUB = """#!{python}
 import json
 import os
+import signal
 import sys
 import time
 
 folder = os.path.dirname(os.path.realpath(__file__))
 arguments = sys.argv[1:]
 watched = int(arguments[arguments.index("-w") + 1])
+follows_the_child = not os.path.exists(os.path.join(folder, "caffeinate-ignores-the-child"))
 
 
 def alive():
@@ -49,12 +50,23 @@ def alive():
     return True
 
 
+def record(stopped):
+    with open(os.path.join(folder, "caffeinate-calls.jsonl"), "a", encoding="utf-8") as calls:
+        calls.write(json.dumps({{"argv": arguments, "alive_at_start": alive_at_start, "ended_after_child": not alive(), "stopped": stopped}}) + "\\n")
+
+
+def on_stop(number, frame):
+    record(True)
+    os._exit(0)
+
+
 alive_at_start = alive()
-deadline = time.monotonic() + 30
-while alive() and time.monotonic() < deadline:
+signal.signal(signal.SIGTERM, on_stop)
+deadline = time.monotonic() + 600
+while (alive() or not follows_the_child) and time.monotonic() < deadline:
     time.sleep(0.05)
-with open(os.path.join(folder, "caffeinate-calls.jsonl"), "a", encoding="utf-8") as calls:
-    calls.write(json.dumps({{"argv": arguments, "alive_at_start": alive_at_start, "ended_after_child": not alive()}}) + "\\n")
+signal.signal(signal.SIGTERM, signal.SIG_IGN)
+record(False)
 """
 
 SYSTEMD_INHIBIT_STUB = """#!{python}
@@ -86,6 +98,9 @@ stopped = subprocess.run(
 line = stopped.stdout.strip().splitlines()[-1]
 print(json.dumps({{"type": "result", "result": line, "session_id": "child-session-1", "duration_ms": 1000, "modelUsage": {{}}}}))
 """
+
+SLOW_CLAUDE_STUB = CLAUDE_STUB.replace("time.sleep(0.5)", "time.sleep(3)")
+LAUNCH_SECONDS = 300
 
 GREEN_LINE = '{"verdict": "green", "failures": [], "unproven": [], "flaky": [], "tokens": 1200, "minutes": 3, "dollars": 1.25, "pr": null}'
 RED_LINE = '{"verdict": "failures", "failures": ["export writes a csv"], "unproven": [], "flaky": [], "tokens": 900, "minutes": 4, "dollars": 1.5, "pr": null}'
@@ -169,7 +184,7 @@ def launch_flags(repo, results):
     return ["--repo", repo, "--core", "main", "--feature", "feat/x", "--results", results]
 
 
-def launch(test, output, exit_code=0, nice=None, earlier=False, claude=CLAUDE_STUB, written=None):
+def launch(test, output, exit_code=0, nice=None, earlier=False, claude=CLAUDE_STUB, written=None, marks=()):
     repo, _ = scratch.make_repo(test)
     home = scratch.make_home(test)
     store = scratch.temporary_folder(test, "lh-store-")
@@ -178,6 +193,8 @@ def launch(test, output, exit_code=0, nice=None, earlier=False, claude=CLAUDE_ST
         seed_earlier_run(results)
     stubs = stub_folder(test, output, exit_code, written)
     write_stub(stubs, "claude", claude)
+    for mark in marks:
+        open(os.path.join(stubs, mark), "w", encoding="utf-8").close()
     env = {**scratch.environment(home, stubs), "PLUGIN_METRICS_DIR": store}
     prefix = ["nice", "-n", str(nice)] if nice is not None else []
     completed = subprocess.run(
@@ -186,6 +203,7 @@ def launch(test, output, exit_code=0, nice=None, earlier=False, claude=CLAUDE_ST
         stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,
+        timeout=LAUNCH_SECONDS,
     )
     return {
         "code": completed.returncode,
@@ -433,19 +451,25 @@ class UncreatableStateFolderTest(unittest.TestCase):
         self.assertTrue(os.path.isfile(os.path.join(self.home, ".lighthouse")))
 
 
-class LaunchLimitsTest(unittest.TestCase):
-    def test_launch_bounds_a_run_without_a_feature_profile_by_the_default_limits(self):
-        before = time.time()
-        ran = launch(self, claude_output(GREEN_LINE))
+class NoLimitTest(unittest.TestCase):
+    def test_a_slow_child_runs_to_its_end_and_launch_writes_no_limits_file(self):
+        ran = launch(self, claude_output("Driven every path."), claude=SLOW_CLAUDE_STUB, written=GREEN_LINE)
         self.assertEqual(ran["code"], 0, ran["stderr"])
-        written = read_json(os.path.join(ran["results"], "limits.json"))
-        self.assertEqual(
-            {field: written[field] for field in ("suite_seconds", "check_seconds", "child_seconds", "run_seconds")},
-            {"suite_seconds": 3600, "check_seconds": 3600, "child_seconds": 18000, "run_seconds": 18600},
-        )
-        self.assertIs(written["measured"], False)
-        self.assertGreaterEqual(written["deadline"], before + 18600)
-        self.assertLessEqual(written["deadline"], time.time() + 18600)
+        self.assertEqual(json.loads(ran["stdout"].strip().splitlines()[-1]), json.loads(GREEN_LINE))
+        self.assertEqual(read_json(os.path.join(ran["results"], "child.json"))["exit"], 0)
+        self.assertFalse(os.path.exists(os.path.join(ran["results"], "limits.json")))
+        self.assertNotIn("time limit", ran["stdout"] + ran["stderr"])
+
+    def test_launch_ends_the_keep_awake_guard_once_the_child_has_exited(self):
+        ran = launch(self, claude_output(GREEN_LINE), written=GREEN_LINE, marks=("caffeinate-ignores-the-child",))
+        self.assertEqual(ran["code"], 0, ran["stderr"])
+        calls = calls_of(ran["stubs"], "caffeinate")
+        if sys.platform == "darwin":
+            self.assertEqual(len(calls), 1, calls)
+            self.assertIs(calls[0]["stopped"], True)
+            self.assertIs(calls[0]["ended_after_child"], True)
+        else:
+            self.assertEqual(calls, [])
 
 
 if __name__ == "__main__":

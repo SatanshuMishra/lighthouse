@@ -3,14 +3,14 @@ import json
 import os
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import time
 from contextlib import ExitStack
 from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
-from lighthouse_tool import limits, metrics_writer, process_tree, results as run_files, run_record, suite, verdict
-from lighthouse_tool import repo as repository
+from lighthouse_tool import metrics_writer, process_tree, results as run_files, run_record, suite, verdict
 from lighthouse_tool.records import is_number, write_atomically
 from lighthouse_tool.repo import Parser, Refusal, require_root, toplevel
 
@@ -26,15 +26,12 @@ EARLIER_RUN_FILES = (
     run_files.CHECKS,
     run_files.PLAN,
     run_files.RECORD,
-    run_files.LIMITS,
     *run_record.RESULTS_SOURCES,
 )
-FEATURE_PROFILE = ".lighthouse/profile.json"
 CAFFEINATE = "caffeinate"
 SYSTEMD_INHIBIT = "systemd-inhibit"
 NO_KEEP_AWAKE = "none"
 DARWIN_PROCESS_SELECTOR = 4
-KEEP_AWAKE_GRACE_SECONDS = 5
 PATH_FLAGS = ("repo", "results", "previous", "spec", "record")
 CHILD_STORE = "plugin-metrics"
 
@@ -160,10 +157,9 @@ def launch(options: argparse.Namespace, recording: Optional[run_record.Recording
     work = os.path.join(os.path.abspath(options.results), WORK)
     os.makedirs(work, exist_ok=True)
     results = os.path.realpath(options.results)
-    found = write_limits(results, feature_profile(root, options.feature))
     copy_record(results, options)
     keep_awake = keep_awake_tool()
-    child = run_child(child_command(options), work, keep_awake, child_environment(results), found.child_seconds)
+    child = run_child(child_command(options), work, keep_awake, child_environment(results))
     output = parsed_output(child.stdout)
     record = child_record(child, output, keep_awake)
     write_json(os.path.join(results, CHILD), record)
@@ -178,31 +174,6 @@ def launch(options: argparse.Namespace, recording: Optional[run_record.Recording
     summary = "lighthouse launch: the child exited {}".format(child.exit)
     told = summary if reason is None else "{}; blocked: {}".format(summary, reason)
     return 0, printed, with_warnings(told, warnings)
-
-
-def feature_profile(root: str, feature: str) -> Dict[str, Any]:
-    commit = repository.resolve_branch(root, feature)
-    if commit is None:
-        return {}
-    code, stdout, _ = repository.git(root, ["show", "{}:{}".format(commit, FEATURE_PROFILE)])
-    if code != 0:
-        return {}
-    try:
-        profile = json.loads(stdout)
-    except ValueError:
-        return {}
-    return profile if isinstance(profile, dict) else {}
-
-
-def write_limits(results: str, profile: Dict[str, Any]) -> limits.Limits:
-    found = limits.of(profile)
-    written = {
-        **found._asdict(),
-        "deadline": time.time() + found.run_seconds,
-        "measured": isinstance(profile.get("measured"), dict),
-    }
-    write_json(os.path.join(results, run_files.LIMITS), written)
-    return found
 
 
 def copy_record(results: str, options: argparse.Namespace) -> None:
@@ -273,9 +244,7 @@ def wrapped(command: List[str], keep_awake: str) -> List[str]:
     return command
 
 
-def run_child(
-    command: List[str], work: str, keep_awake: str, environment: Dict[str, str], limit_seconds: float
-) -> ChildRun:
+def run_child(command: List[str], work: str, keep_awake: str, environment: Dict[str, str]) -> ChildRun:
     started = time.monotonic()
     with ExitStack() as guarding, ExitStack() as owning:
         try:
@@ -295,24 +264,9 @@ def run_child(
         guard = awake_guard(process.pid) if keep_awake == CAFFEINATE else None
         if guard is not None:
             guarding.callback(release_guard, guard)
-        try:
-            stdout, _ = process.communicate(timeout=limit_seconds)
-            problem = None
-        except subprocess.TimeoutExpired:
-            stdout = stopped_output(process)
-            problem = "the child session ran past its time limit of {:g} seconds".format(limit_seconds)
+        stdout, _ = process.communicate()
     seconds = time.monotonic() - started
-    exit_status = process.returncode if problem is None else None
-    return ChildRun(exit_status, stdout.decode("utf-8", errors="replace"), problem, seconds)
-
-
-def stopped_output(process: "subprocess.Popen[bytes]") -> bytes:
-    process_tree.stop(process)
-    try:
-        stdout, _ = process.communicate(timeout=KEEP_AWAKE_GRACE_SECONDS)
-    except subprocess.TimeoutExpired as late:
-        return late.output or b""
-    return stdout or b""
+    return ChildRun(process.returncode, (stdout or b"").decode("utf-8", errors="replace"), None, seconds)
 
 
 def awake_guard(pid: int) -> Optional["subprocess.Popen[bytes]"]:
@@ -328,11 +282,9 @@ def awake_guard(pid: int) -> Optional["subprocess.Popen[bytes]"]:
 
 
 def release_guard(guard: "subprocess.Popen[bytes]") -> None:
-    try:
-        guard.wait(timeout=KEEP_AWAKE_GRACE_SECONDS)
-    except subprocess.TimeoutExpired:
-        guard.kill()
-        guard.wait()
+    if guard.poll() is None:
+        guard.send_signal(signal.SIGTERM)
+    guard.wait()
 
 
 def parsed_output(stdout: str) -> Optional[Dict[str, Any]]:

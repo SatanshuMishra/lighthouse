@@ -11,7 +11,7 @@ import xml.etree.ElementTree as ElementTree
 from contextlib import ExitStack
 from typing import Any, Callable, Dict, List, NamedTuple, Optional, Set, Tuple, TypeVar
 
-from lighthouse_tool import credentials, limits, process_tree
+from lighthouse_tool import credentials, process_tree
 from lighthouse_tool import repo as repository
 from lighthouse_tool.records import write_atomically
 from lighthouse_tool.repo import Parser, Refusal, checked_git, require_root
@@ -19,13 +19,15 @@ from lighthouse_tool.repo import Parser, Refusal, checked_git, require_root
 Outcome = Tuple[int, Optional[str], Optional[str]]
 BUILDS = ("core", "feature")
 PREPARATION_STEPS = ("setup", "build")
-SUITE_STEPS = ("suite", "rerun")
 UNRUNNABLE_EXITS = (126, 127)
 WHOLE_SUITE = "suite"
 OWNER_MARK = "lighthouse-owned"
 COMMITS = "commits.json"
+START_PID_SUFFIX = "-start.pid"
+START_EXIT_SUFFIX = "-start.exit"
+STOP_GRACE_SECONDS = 5.0
 CORE_STORE = "core-suites"
-STORED_SUITE_FIELDS = ("command", "junit", "rerun", "timeout_minutes")
+STORED_SUITE_FIELDS = ("command", "junit", "rerun")
 RERUN_PLACEHOLDER = re.compile(r"\{(tests|names_regex|names)\}")
 SHELL_PIECE = re.compile(r"""\\.|'[^']*'?|"(?:\\.|[^"\\])*"?|[^\\'"]+""", re.S)
 Timed = TypeVar("Timed")
@@ -177,15 +179,40 @@ def mark_owned(path: str) -> None:
     open(os.path.join(folder, OWNER_MARK), "w", encoding="utf-8").close()
 
 
+def started_pid(path: str) -> int:
+    try:
+        with open(path, encoding="utf-8") as handle:
+            text = handle.read().strip()
+    except OSError as error:
+        raise Refusal("cannot read {}: {}".format(os.path.basename(path), error.strerror or error))
+    if not text.isdigit() or int(text) <= 1 or int(text) == os.getpid():
+        raise Refusal("{} does not hold a process id".format(os.path.basename(path)))
+    return int(text)
+
+
+def stop_started_processes(folder: str) -> List[str]:
+    named = [
+        (build + START_PID_SUFFIX, os.path.join(folder, build + START_PID_SUFFIX), os.path.join(folder, build + START_EXIT_SUFFIX))
+        for build in BUILDS
+    ]
+    present = [(name, started_pid(path), exit_path) for name, path, exit_path in named if os.path.isfile(path)]
+    return [
+        name
+        for name, pid, exit_path in present
+        if not os.path.exists(exit_path) and process_tree.stop_pid(pid, STOP_GRACE_SECONDS)
+    ]
+
+
 def release_worktrees(root: str, results: str) -> Dict[str, List[str]]:
     folder = os.path.realpath(results)
+    stopped = stop_started_processes(folder) if os.path.isdir(folder) else []
     listed = listed_worktrees(root)
     candidates = [os.path.join(folder, build) for build in BUILDS]
     targets = [path for path in candidates if path in listed and os.path.isdir(path) and is_owned(path)]
     for path in targets:
         checked_git(root, ["worktree", "remove", "--force", path])
     checked_git(root, ["worktree", "prune"])
-    return {"removed": targets}
+    return {"removed": targets, "stopped": stopped}
 
 
 def chosen_profile(root: str, feature_path: str, path: Optional[str]) -> Dict[str, Any]:
@@ -223,15 +250,6 @@ def runs_isolated(profile: Dict[str, Any]) -> bool:
     return profile["suite"].get("isolated") is True
 
 
-def step_limit(step: str, profile: Dict[str, Any]) -> float:
-    found = limits.of(profile)
-    if step in PREPARATION_STEPS:
-        return found.build_seconds
-    if step in SUITE_STEPS:
-        return found.suite_seconds
-    return found.check_seconds
-
-
 def hidden_values(root: str, profile: Dict[str, Any]) -> credentials.Secrets:
     return credentials.reachable_secrets(root, (repository.load_profile(root), profile))
 
@@ -239,7 +257,6 @@ def hidden_values(root: str, profile: Dict[str, Any]) -> credentials.Secrets:
 def run_step(
     step: str, command: str, worktree: str, build: str, log_path: str, profile: Dict[str, Any], hidden: credentials.Secrets
 ) -> StepRun:
-    seconds = step_limit(step, profile)
     append_log(log_path, "$ {}: {}\n".format(step, command), hidden)
     with tempfile.TemporaryFile() as output:
         with ExitStack() as owning:
@@ -257,16 +274,8 @@ def run_step(
                 )
             except OSError as error:
                 return StepRun(None, "{} could not start: {}".format(step, error.strerror or error))
-            try:
-                process_tree.exited_unreaped(process, seconds)
-                timed_out = False
-            except subprocess.TimeoutExpired:
-                timed_out = True
-        outcome = (
-            StepRun(None, "{} timed out after its limit of {:g} seconds".format(step, seconds))
-            if timed_out
-            else StepRun(process.returncode, None)
-        )
+            process_tree.exited_unreaped(process, None)
+        outcome = StepRun(process.returncode, None)
         output.seek(0)
         append_log(log_path, output.read().decode("utf-8", errors="replace"), hidden)
     return outcome

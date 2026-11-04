@@ -1,13 +1,15 @@
 import json
 import os
+import shlex
 import shutil
+import signal
 import socket
+import subprocess
 import sys
 import time
 import unittest
-from unittest import mock
 
-from lighthouse_tool import limits, suite
+from lighthouse_tool import process_tree, suite
 from tests import scratch
 
 JUNIT_SUITE = """set -e
@@ -94,7 +96,7 @@ def project_with(test, files, profile):
 def junit_project(test, reports):
     files = {"suite.sh": JUNIT_SUITE}
     report_files = {"reports/{}.xml".format(name): junit(outcomes) for name, outcomes in reports.items()}
-    profile = scratch.sample_profile(suite={"command": "sh suite.sh", "junit": "report.xml", "timeout_minutes": None})
+    profile = scratch.sample_profile(suite={"command": "sh suite.sh", "junit": "report.xml"})
     return project_with(test, {**files, **report_files}, profile)
 
 
@@ -107,6 +109,45 @@ def lighthouse(test, subcommand, work, results, *extra):
     env = scratch.environment(scratch.make_home(test))
     branches = ["--core", "main", "--feature", "feat/x"] if subcommand != "release" else []
     return scratch.run_lighthouse([subcommand, "--repo", work, *branches, "--results", results, *extra], env)
+
+
+def started_server(test, results, build):
+    pid_file = os.path.join(results, build + "-start.pid")
+    exit_file = os.path.join(results, build + "-start.exit")
+    script = "(python3 -c 'import time; time.sleep(600)') < /dev/null & echo $! > {}; wait $!; echo $? > {}".format(
+        shlex.quote(pid_file), shlex.quote(exit_file)
+    )
+    shell = subprocess.Popen(
+        ["/bin/sh", "-c", script], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    )
+    test.addCleanup(ended_shell, shell)
+    pid = condition_within(lambda: pid_in(pid_file), 30, build + "-start.pid")
+    test.addCleanup(process_tree.send, pid, signal.SIGKILL)
+    return shell, pid, exit_file
+
+
+def ended_shell(shell):
+    if shell.poll() is None:
+        shell.kill()
+    shell.wait(timeout=30)
+
+
+def pid_in(path):
+    if not os.path.exists(path):
+        return None
+    text = read(os.path.dirname(path), os.path.basename(path)).strip()
+    return int(text) if text.isdigit() else None
+
+
+def condition_within(found, seconds, what):
+    deadline = time.monotonic() + seconds
+    value = found()
+    while value is None or value is False:
+        if time.monotonic() > deadline:
+            raise AssertionError("{} did not appear within {} seconds".format(what, seconds))
+        time.sleep(0.1)
+        value = found()
+    return value
 
 
 def results_folder(test):
@@ -181,7 +222,6 @@ def rerun_project(test, counter, reports, rerun, suite_script="cp reports/$LIGHT
     suite = {
         "command": counting_suite(counter, suite_script),
         "junit": "report.xml",
-        "timeout_minutes": None,
         "rerun": rerun,
     }
     return project_with(test, {"suite.sh": JUNIT_SUITE, **report_files}, scratch.sample_profile(suite=suite))
@@ -226,7 +266,7 @@ class SuiteTest(unittest.TestCase):
 
     def test_compares_by_exit_status_without_a_report(self):
         profile = scratch.sample_profile(
-            suite={"command": 'test "$LIGHTHOUSE_BUILD" = core', "junit": None, "timeout_minutes": None}
+            suite={"command": 'test "$LIGHTHOUSE_BUILD" = core', "junit": None}
         )
         work = project_with(self, {}, profile)
         result = suite_of(self, work)
@@ -237,7 +277,7 @@ class SuiteTest(unittest.TestCase):
 
     def test_blocked_when_the_suite_cannot_start(self):
         command = 'if [ "$LIGHTHOUSE_BUILD" = feature ]; then lighthouse-no-such-program; fi'
-        profile = scratch.sample_profile(suite={"command": command, "junit": None, "timeout_minutes": None})
+        profile = scratch.sample_profile(suite={"command": command, "junit": None})
         work = project_with(self, {}, profile)
         result = suite_of(self, work)
         self.assertEqual(result["result"], "blocked")
@@ -295,6 +335,7 @@ class SuiteTest(unittest.TestCase):
         code, stdout, stderr = lighthouse(self, "release", work, results)
         self.assertEqual(code, 0, stderr)
         self.assertEqual(json.loads(stdout)["removed"], paths)
+        self.assertEqual(json.loads(stdout)["stopped"], [])
         for path in paths:
             self.assertFalse(os.path.exists(path))
             self.assertNotIn(path, listed_worktrees(work))
@@ -318,7 +359,7 @@ class SuiteTest(unittest.TestCase):
         profile = scratch.sample_profile(
             setup={"command": "touch setup.done"},
             build={"command": "touch build.done"},
-            suite={"command": "test -f setup.done && test -f build.done", "junit": None, "timeout_minutes": None},
+            suite={"command": "test -f setup.done && test -f build.done", "junit": None},
         )
         work = project_with(self, {}, profile)
         result = suite_of(self, work)
@@ -352,7 +393,6 @@ class SuiteTest(unittest.TestCase):
             suite={
                 "command": "cp reports/clean.xml report.xml && test \"$LIGHTHOUSE_BUILD\" = core",
                 "junit": "report.xml",
-                "timeout_minutes": None,
             }
         )
         work = project_with(self, {"reports/clean.xml": junit({"test_a": "passed"})}, profile)
@@ -400,7 +440,7 @@ class SuiteTest(unittest.TestCase):
     def test_suite_logs_hide_credential_values(self):
         planted = "s3cret-value"
         profile = scratch.sample_profile(
-            suite={"command": 'echo "signing in with $APP_PASSWORD"', "junit": None, "timeout_minutes": None},
+            suite={"command": 'echo "signing in with $APP_PASSWORD"', "junit": None},
             credentials={"file": None, "names": {"APP_PASSWORD": {"production": False}}},
         )
         work = project_with(self, {}, profile)
@@ -418,7 +458,7 @@ class SuiteTest(unittest.TestCase):
     def test_suite_logs_hide_filled_credentials_the_profile_does_not_name(self):
         planted = "t0ken-value"
         profile = scratch.sample_profile(
-            suite={"command": 'echo "calling with $API_TOKEN"', "junit": None, "timeout_minutes": None},
+            suite={"command": 'echo "calling with $API_TOKEN"', "junit": None},
             credentials={"file": ".env.test", "names": {"APP_PASSWORD": {"production": False}}},
         )
         work = project_with(self, {}, profile)
@@ -438,7 +478,7 @@ class SuiteTest(unittest.TestCase):
     def test_suite_logs_hide_values_filled_from_the_checkout_profiles_file(self):
         planted = "ch3ckout-value"
         checkout_profile = scratch.sample_profile(
-            suite={"command": 'echo "signing in with $APP_PASSWORD"', "junit": None, "timeout_minutes": None},
+            suite={"command": 'echo "signing in with $APP_PASSWORD"', "junit": None},
             credentials={"file": ".env.test", "names": {"APP_PASSWORD": {"production": False}}},
         )
         feature_profile = {**checkout_profile, "credentials": {"file": None, "names": {}}}
@@ -470,7 +510,7 @@ class SuiteTest(unittest.TestCase):
     def test_a_step_that_leaves_a_process_running_still_finishes(self):
         profile = scratch.sample_profile(
             setup={"command": "sleep 20 & echo $! > background.pid; echo service started"},
-            suite={"command": "true", "junit": None, "timeout_minutes": None},
+            suite={"command": "true", "junit": None},
         )
         work = project_with(self, {}, profile)
         started = time.monotonic()
@@ -492,7 +532,6 @@ class SuiteTest(unittest.TestCase):
             suite={
                 "command": "python3 serve.py {0} & python3 fetch.py {0}".format(port),
                 "junit": None,
-                "timeout_minutes": None,
             }
         )
         work = project_with(self, {"serve.py": SERVE, "fetch.py": FETCH}, profile)
@@ -510,7 +549,7 @@ class SuiteTest(unittest.TestCase):
         self.assertTrue(read(results, "commits.json").endswith("}\n"))
 
     def test_suite_records_its_commits(self):
-        profile = scratch.sample_profile(suite={"command": "true", "junit": None, "timeout_minutes": None})
+        profile = scratch.sample_profile(suite={"command": "true", "junit": None})
         work = project_with(self, {}, profile)
         results = results_folder(self)
         code, _, stderr = lighthouse(self, "suite", work, results)
@@ -521,7 +560,7 @@ class SuiteTest(unittest.TestCase):
         profile = scratch.sample_profile(
             setup={"command": "true"},
             build={"command": "true"},
-            suite={"command": "true", "junit": None, "timeout_minutes": None},
+            suite={"command": "true", "junit": None},
         )
         work = project_with(self, {}, profile)
         result = suite_of(self, work)
@@ -534,7 +573,7 @@ class SuiteTest(unittest.TestCase):
 
     def test_same_core_commit_reuses_core_suite(self):
         counter = os.path.join(scratch.temporary_folder(self, "lh-counter-"), "runs")
-        profile = scratch.sample_profile(suite={"command": counting_suite(counter), "junit": None, "timeout_minutes": None})
+        profile = scratch.sample_profile(suite={"command": counting_suite(counter), "junit": None})
         work = project_with(self, {}, profile)
         home = scratch.make_home(self)
         first = suite_in(self, work, home)
@@ -545,7 +584,7 @@ class SuiteTest(unittest.TestCase):
 
     def test_an_uncreatable_state_folder_runs_both_suites_without_storing_core(self):
         counter = os.path.join(scratch.temporary_folder(self, "lh-counter-"), "runs")
-        profile = scratch.sample_profile(suite={"command": counting_suite(counter), "junit": None, "timeout_minutes": None})
+        profile = scratch.sample_profile(suite={"command": counting_suite(counter), "junit": None})
         work = project_with(self, {}, profile)
         home = scratch.make_home(self)
         open(os.path.join(home, ".lighthouse"), "w").close()
@@ -556,7 +595,7 @@ class SuiteTest(unittest.TestCase):
 
     def test_changed_suite_command_runs_core_again(self):
         counter = os.path.join(scratch.temporary_folder(self, "lh-counter-"), "runs")
-        profile = scratch.sample_profile(suite={"command": counting_suite(counter), "junit": None, "timeout_minutes": None})
+        profile = scratch.sample_profile(suite={"command": counting_suite(counter), "junit": None})
         work = project_with(self, {}, profile)
         home = scratch.make_home(self)
         suite_in(self, work, home)
@@ -567,7 +606,7 @@ class SuiteTest(unittest.TestCase):
 
     def test_moved_core_commit_runs_core_again(self):
         counter = os.path.join(scratch.temporary_folder(self, "lh-counter-"), "runs")
-        profile = scratch.sample_profile(suite={"command": counting_suite(counter), "junit": None, "timeout_minutes": None})
+        profile = scratch.sample_profile(suite={"command": counting_suite(counter), "junit": None})
         work = project_with(self, {}, profile)
         home = scratch.make_home(self)
         suite_in(self, work, home)
@@ -578,7 +617,7 @@ class SuiteTest(unittest.TestCase):
 
     def test_feature_suite_always_runs(self):
         counter = os.path.join(scratch.temporary_folder(self, "lh-counter-"), "runs")
-        profile = scratch.sample_profile(suite={"command": counting_suite(counter), "junit": None, "timeout_minutes": None})
+        profile = scratch.sample_profile(suite={"command": counting_suite(counter), "junit": None})
         work = project_with(self, {}, profile)
         home = scratch.make_home(self)
         suite_in(self, work, home)
@@ -591,7 +630,7 @@ class SuiteTest(unittest.TestCase):
         ready = os.path.join(scratch_folder, "ready")
         profile = scratch.sample_profile(
             setup={"command": 'test "$LIGHTHOUSE_BUILD" = feature || test -f {}'.format(ready)},
-            suite={"command": counting_suite(counter), "junit": None, "timeout_minutes": None},
+            suite={"command": counting_suite(counter), "junit": None},
         )
         work = project_with(self, {}, profile)
         home = scratch.make_home(self)
@@ -626,7 +665,7 @@ class SuiteTest(unittest.TestCase):
         counter = os.path.join(scratch.temporary_folder(self, "lh-counter-"), "runs")
         reports = "cp reports/clean.xml report.xml && cp reports/clean.xml other.xml"
         profile = scratch.sample_profile(
-            suite={"command": counting_suite(counter, reports), "junit": "report.xml", "timeout_minutes": None}
+            suite={"command": counting_suite(counter, reports), "junit": "report.xml"}
         )
         work = project_with(self, {"reports/clean.xml": junit({"test_a": "passed"})}, profile)
         home = scratch.make_home(self)
@@ -743,7 +782,7 @@ class SuiteTest(unittest.TestCase):
 
     def test_isolated_profile_runs_both_builds_together(self):
         outside = scratch.temporary_folder(self, "lh-times-")
-        suite = {"command": timed_suite(outside), "junit": None, "timeout_minutes": None, "isolated": True}
+        suite = {"command": timed_suite(outside), "junit": None, "isolated": True}
         work = project_with(self, {}, scratch.sample_profile(suite=suite))
         suite_of(self, work)
         core_start, core_end = interval_of(outside, "core")
@@ -753,7 +792,7 @@ class SuiteTest(unittest.TestCase):
 
     def test_unisolated_profile_runs_builds_one_after_another(self):
         outside = scratch.temporary_folder(self, "lh-times-")
-        suite = {"command": timed_suite(outside), "junit": None, "timeout_minutes": None}
+        suite = {"command": timed_suite(outside), "junit": None}
         work = project_with(self, {}, scratch.sample_profile(suite=suite))
         suite_of(self, work)
         _, core_end = interval_of(outside, "core")
@@ -774,7 +813,7 @@ class SuiteTest(unittest.TestCase):
         self.assertEqual(result["core"]["tests"], {"passed": ["tests.T.test_a"], "failed": ["tests.T.test_b"]})
 
     def test_suite_without_a_report_records_no_test_ids(self):
-        profile = scratch.sample_profile(suite={"command": "true", "junit": None, "timeout_minutes": None})
+        profile = scratch.sample_profile(suite={"command": "true", "junit": None})
         work = project_with(self, {}, profile)
         result = suite_of(self, work)
         self.assertIsNone(result["core"]["tests"])
@@ -795,15 +834,79 @@ class SuiteTest(unittest.TestCase):
         self.assertIs(second["core"]["reused"], True)
         self.assertEqual(second["core"]["tests"], {"passed": ["tests.T.steady"], "failed": ["tests.T.flaky_one"]})
 
-    def test_each_step_stops_at_the_limit_its_name_selects(self):
+    def test_a_slow_step_runs_to_its_end_and_is_judged_by_its_exit(self):
         work = scratch.temporary_folder(self, "lh-work-")
         log_path = os.path.join(work, "step.log")
-        chosen = limits.Limits(suite_seconds=30, check_seconds=1, child_seconds=60, run_seconds=120, build_seconds=2)
-        with mock.patch("lighthouse_tool.limits.of", return_value=chosen):
-            build = suite.run_step("build", "sleep 30", work, "feature", log_path, scratch.sample_profile(), ())
-            reach = suite.run_step("reach", "sleep 30", work, "feature", log_path, scratch.sample_profile(), ())
-        self.assertEqual(build, suite.StepRun(None, "build timed out after its limit of 2 seconds"))
-        self.assertEqual(reach, suite.StepRun(None, "reach timed out after its limit of 1 seconds"))
+        retired = scratch.sample_profile(suite={"command": "true", "junit": None, "timeout_minutes": 0.01})
+        build = suite.run_step("build", "sleep 2; exit 3", work, "feature", log_path, retired, ())
+        reach = suite.run_step("reach", "sleep 2; echo reached", work, "feature", log_path, retired, ())
+        self.assertEqual(build, suite.StepRun(3, None))
+        self.assertEqual(reach, suite.StepRun(0, None))
+        self.assertIn("reached", read(work, "step.log"))
+        self.assertNotIn("timed out", read(work, "step.log"))
+
+    def test_the_retired_time_limit_does_not_change_the_core_store_key(self):
+        counter = os.path.join(scratch.temporary_folder(self, "lh-counter-"), "runs")
+        profile = scratch.sample_profile(suite={"command": counting_suite(counter), "junit": None})
+        work = project_with(self, {}, profile)
+        home = scratch.make_home(self)
+        suite_in(self, work, home)
+        change_feature_profile(work, {**profile, "suite": {**profile["suite"], "timeout_minutes": 15}})
+        second = suite_in(self, work, home)
+        self.assertEqual(runs_of(counter, "core"), 1)
+        self.assertIs(second["core"]["reused"], True)
+
+
+class ReleaseTest(unittest.TestCase):
+    def test_release_stops_each_builds_started_process_before_removing_the_worktrees(self):
+        work = project_with(self, {}, scratch.sample_profile())
+        results = results_folder(self)
+        code, _, stderr = lighthouse(self, "worktrees", work, results)
+        self.assertEqual(code, 0, stderr)
+        started = {build: started_server(self, os.path.realpath(results), build) for build in ("core", "feature")}
+
+        code, stdout, stderr = lighthouse(self, "release", work, results)
+
+        self.assertEqual(code, 0, stderr)
+        self.assertEqual(json.loads(stdout)["stopped"], ["core-start.pid", "feature-start.pid"])
+        for build, (shell, pid, exit_file) in started.items():
+            with self.subTest(build=build):
+                condition_within(lambda: not process_tree.runs_as_ours(pid), 30, "the end of the started process")
+                condition_within(lambda: os.path.exists(exit_file), 30, build + "-start.exit")
+                self.assertIsNotNone(shell.wait(timeout=30))
+
+    def test_release_skips_a_started_process_that_has_already_exited(self):
+        work = project_with(self, {}, scratch.sample_profile())
+        results = results_folder(self)
+        code, _, stderr = lighthouse(self, "worktrees", work, results)
+        self.assertEqual(code, 0, stderr)
+        ended = subprocess.Popen(["true"], stdin=subprocess.DEVNULL)
+        ended.wait(timeout=30)
+        with open(os.path.join(results, "core-start.pid"), "w", encoding="utf-8") as handle:
+            handle.write("{}\n".format(ended.pid))
+        shell, pid, exit_file = started_server(self, os.path.realpath(results), "feature")
+        with open(exit_file, "w", encoding="utf-8") as handle:
+            handle.write("0\n")
+
+        code, stdout, stderr = lighthouse(self, "release", work, results)
+
+        self.assertEqual(code, 0, stderr)
+        self.assertEqual(json.loads(stdout)["stopped"], [])
+        self.assertTrue(process_tree.runs_as_ours(pid))
+
+    def test_release_refuses_a_pid_file_that_holds_no_process_id(self):
+        work = project_with(self, {}, scratch.sample_profile())
+        results = results_folder(self)
+        code, _, stderr = lighthouse(self, "worktrees", work, results)
+        self.assertEqual(code, 0, stderr)
+        with open(os.path.join(results, "feature-start.pid"), "w", encoding="utf-8") as handle:
+            handle.write("not a pid\n")
+
+        code, stdout, stderr = lighthouse(self, "release", work, results)
+
+        self.assertEqual(code, 2, stderr)
+        self.assertIn("feature-start.pid", json.loads(stdout)["error"])
+        self.assertTrue(os.path.isdir(os.path.join(results, "feature")))
 
 
 if __name__ == "__main__":
