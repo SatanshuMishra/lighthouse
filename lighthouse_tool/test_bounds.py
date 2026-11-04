@@ -52,18 +52,8 @@ _PYTHON_VALUE_OPTIONS = INTERPRETERS["python"][0]
 _IMPORT_EXTENSIONS = (".js", ".mjs", ".cjs", ".ts", ".mts", ".cts")
 _RELATIVE_SPECIFIER = re.compile(r"""(?:\bfrom|\bimport|\brequire)\s*\(?\s*['"](\.{1,2}/[^'"]+)['"]""")
 _QUOTED_TEST_FLAG = re.compile(r"""(['"`])--test\1""")
-_NODE_TEST = r"""['"`]node:test['"`]"""
-_REQUIRED = r"require\(\s*" + _NODE_TEST + r"\s*\)"
-_IMPORTED = r"import\(\s*" + _NODE_TEST + r"\s*\)"
-_RUN_BY_NAME = re.compile(
-    r"\{[^}]*\brun\b[^}]*\}\s*(?:from\s*" + _NODE_TEST + r"|=\s*(?:" + _REQUIRED + r"|await\s+" + _IMPORTED + r"))"
-)
-_RUN_CHAINED = re.compile(r"(?:" + _REQUIRED + r"|\(\s*await\s+" + _IMPORTED + r"\s*\))\s*\.\s*run\b")
-_MODULE_BINDING = re.compile(
-    r"import\s+(?:\*\s*as\s+)?([\w$]+)\s*(?:,\s*\{[^}]*\}\s*)?from\s*" + _NODE_TEST
-    + r"|(?:const|let|var)\s+([\w$]+)\s*=\s*(?:" + _REQUIRED + r"|await\s+" + _IMPORTED + r")"
-)
-_RE_EXPORTS_RUN = re.compile(r"export\s*(?:\*|\{[^}]*\brun\b[^}]*\})\s*from\s*" + _NODE_TEST)
+_LOADS_NODE_TEST = re.compile(r"""['"`]node:test['"`]""")
+_NAMES_RUN = re.compile(r"\brun\b")
 _TEXT_TEST_TIMEOUT = re.compile(r"""--test-timeout(?:=|['"`]\s*,\s*['"`]?)\s*([0-9][0-9_.eE+]*|Infinity)""")
 _RUN_TIMEOUT = re.compile(r"""[{,]\s*timeout\s*:\s*([^,}\s)]+)""")
 _NOT_A_BOUND = frozenset(
@@ -83,6 +73,7 @@ _PYTEST_CONFIGS = (
 )
 _PYTEST_SECTION_BY_EXTENSION = {".toml": _PYPROJECT_SECTION, ".cfg": "tool:pytest"}
 _CONFIG_OPTIONS = ("--config", "-c")
+_SHORT_OPTION = re.compile(r"-[A-Za-z]")
 _NEXTEST_CONFIG = ".config/nextest.toml"
 _NEXTEST_PROFILE_VARIABLE = "NEXTEST_PROFILE="
 _NEXTEST_DEFAULT_PROFILE = "default"
@@ -270,6 +261,11 @@ def _last_holding(place: _Place, name: str) -> Optional[Tuple[int, str]]:
     return present[-1] if present else None
 
 
+def _named_or_found(place: _Place, given: Optional[str], name: str) -> Optional[str]:
+    found = _last_holding(place, name)
+    return given if given is not None else found[1] if found is not None else None
+
+
 def _relative(root: str, path: str) -> str:
     return os.path.relpath(path, root).replace(os.sep, "/")
 
@@ -322,7 +318,12 @@ def _option_value(arguments: List[str], names: Tuple[str, ...]) -> Optional[str]
 def _values_at(arguments: List[str], index: int, argument: str, names: Tuple[str, ...]) -> List[str]:
     if argument in names:
         return [arguments[index + 1]] if index + 1 < len(arguments) else []
-    return [argument.split("=", 1)[1] for name in names if argument.startswith(name + "=")]
+    assigned = [argument.split("=", 1)[1] for name in names if argument.startswith(name + "=")]
+    return assigned or [argument[len(name) :] for name in names if _is_attached_to_short_option(argument, name)]
+
+
+def _is_attached_to_short_option(argument: str, name: str) -> bool:
+    return _SHORT_OPTION.fullmatch(name) is not None and argument.startswith(name) and len(argument) > len(name)
 
 
 def _number(text: Optional[str]) -> Optional[float]:
@@ -350,7 +351,7 @@ def _node_reaches(place: _Place, command: List[str]) -> List[_Reach]:
         return [_unrecognised(place, program)]
     entry = _given_path(place, script)
     texts = _script_texts(place.root, entry)
-    if texts is None or not any(_starts_node_test(text) for text in texts):
+    if texts is None or not _starts_node_test(texts):
         return [_unrecognised(place, program)]
     if _node_test_bounded(texts):
         return []
@@ -409,22 +410,15 @@ def _resolved_import(root: str, folder: str, specifier: str) -> Optional[str]:
     return real if _inside(root, real) else None
 
 
-def _reaches_run(text: str) -> bool:
-    return bool(_RUN_BY_NAME.search(text) or _RUN_CHAINED.search(text) or _module_binding_calls_run(text))
-
-
-def _module_binding_calls_run(text: str) -> bool:
-    names = [first or second for first, second in _MODULE_BINDING.findall(text)]
-    return any(re.search(r"(?<![\w$.])" + re.escape(name) + r"\s*\.\s*run\b", text) for name in names)
-
-
-def _starts_node_test(text: str) -> bool:
-    return bool(_QUOTED_TEST_FLAG.search(text) or _reaches_run(text) or _RE_EXPORTS_RUN.search(text))
+def _starts_node_test(texts: Tuple[str, ...]) -> bool:
+    flagged = any(_QUOTED_TEST_FLAG.search(text) for text in texts)
+    loaded = any(_LOADS_NODE_TEST.search(text) for text in texts)
+    return flagged or (loaded and any(_NAMES_RUN.search(text) for text in texts))
 
 
 def _node_test_bounded(texts: Tuple[str, ...]) -> bool:
     flagged = any(_positive(value) for text in texts for value in _TEXT_TEST_TIMEOUT.findall(text))
-    calling = texts if any(_RE_EXPORTS_RUN.search(text) for text in texts) else tuple(filter(_reaches_run, texts))
+    calling = tuple(text for text in texts if _NAMES_RUN.search(text))
     return flagged or any(_bounding_run_timeout(value) for text in calling for value in _RUN_TIMEOUT.findall(text))
 
 
@@ -516,8 +510,7 @@ def _inline_jest_reaches(place: _Place, given: str) -> List[_Reach]:
 def _package_setting_reaches(
     place: _Place, runner: str, turned_off: Callable[[Dict[str, Any]], bool], given: Optional[str] = None
 ) -> List[_Reach]:
-    found = _last_holding(place, "package.json")
-    path = given if given is not None else found[1] if found is not None else None
+    path = _named_or_found(place, given, "package.json")
     if path is None:
         return []
     def judged(text: str, relative: str) -> List[_Reach]:
@@ -654,8 +647,7 @@ def _cargo_reaches(place: _Place, command: List[str]) -> List[_Reach]:
     if command[1:3] != ["nextest", "run"]:
         return [_unrecognised(place, command[0])]
     given = _given_config(place, command[3:], ("--config-file",))
-    found = _last_holding(place, _NEXTEST_CONFIG)
-    path = given if given is not None else found[1] if found is not None else None
+    path = _named_or_found(place, given, _NEXTEST_CONFIG)
     if path is None:
         return [_reach(place, "cargo-nextest")]
     def judged(text: str, relative: str) -> List[_Reach]:
@@ -665,10 +657,9 @@ def _cargo_reaches(place: _Place, command: List[str]) -> List[_Reach]:
 
 
 def _nextest_profile(place: _Place, arguments: List[str]) -> str:
-    attached = [word[2:] for word in arguments if word.startswith("-P") and len(word) > 2]
     named = _option_value(arguments, ("--profile", "-P"))
     assigned = [word[len(_NEXTEST_PROFILE_VARIABLE) :] for word in place.assignments if word.startswith(_NEXTEST_PROFILE_VARIABLE)]
-    return named or (attached[-1] if attached else assigned[-1] if assigned else _NEXTEST_DEFAULT_PROFILE)
+    return named or (assigned[-1] if assigned else _NEXTEST_DEFAULT_PROFILE)
 
 
 def _nextest_profile_bounded(text: str, profile: str) -> bool:

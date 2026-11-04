@@ -399,6 +399,35 @@ class CommandWalk(unittest.TestCase):
 NEXTEST_BOUNDED_DEFAULT = '[profile.default]\nslow-timeout = { period = "60s", terminate-after = 3 }\n'
 
 
+class AttachedOptionValues(unittest.TestCase):
+    def test_a_config_path_attached_to_its_short_option_is_the_file_read(self):
+        off = {"pytest.ini": "[pytest]\ntimeout = 10\n", "c/p.ini": "[pytest]\ntimeout = 0\n", "c/p.ts": "export default { timeout: 0 }\n"}
+        for command, expected in (
+            ("pytest -cc/p.ini", ["pytest"]),
+            ("python3 -m pytest -cc/p.ini", ["pytest"]),
+            ("npx playwright test -cc/p.ts", ["playwright"]),
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(runners(self, command, off), expected)
+
+    def test_a_bounded_file_attached_to_its_short_option_overrides_what_would_be_found(self):
+        files = {"pytest.ini": "[pytest]\n", "c/p.ini": "[pytest]\ntimeout = 10\n", "playwright.config.ts": "export default { timeout: 0 }\n", "c/p.ts": "export default {}\n"}
+        for command in ("pytest -cc/p.ini", "npx playwright test -cc/p.ts"):
+            with self.subTest(command=command):
+                self.assertEqual(runners(self, command, files), [])
+
+    def test_a_directory_attached_to_its_short_option_is_searched(self):
+        files = {"e2e/playwright.config.ts": "export default { timeout: 0 }\n"}
+        self.assertEqual(runners(self, "playwright test -ce2e", files), ["playwright"])
+
+    def test_a_timeout_attached_to_its_short_option_is_read(self):
+        self.assertEqual(runners(self, "mocha -t0"), ["mocha"])
+        self.assertEqual(runners(self, "mocha -t2000"), [])
+
+    def test_a_long_option_is_never_read_as_an_attached_short_one(self):
+        self.assertEqual(runners(self, "mocha --t0"), [])
+
+
 class NextestProfiles(unittest.TestCase):
     def nextest(self, command, config):
         return runners(self, command, {".config/nextest.toml": config})
@@ -461,6 +490,14 @@ class NodeTestImportForms(unittest.TestCase):
         ("dynamic destructured", "const { run } = await import('node:test');\n", "run"),
         ("dynamic member", "const nt = await import('node:test');\n", "nt.run"),
         ("dynamic chained", "", "(await import('node:test')).run"),
+        ("promise destructured", "", "import('node:test').then(({ run }) => run"),
+        ("promise member", "", "import('node:test').then((nt) => nt.run"),
+        ("promise bare parameter", "", "import('node:test').then(nt => nt.run"),
+        ("destructured alias", "const { run: go } = require('node:test');\n", "go"),
+        ("awaited promise binding", "const loading = import('node:test');\nconst nt = await loading;\n", "nt.run"),
+        ("two-step destructure", "const nt = require('node:test');\nconst { run } = nt;\n", "run"),
+        ("import equals", "import nt = require('node:test');\n", "nt.run"),
+        ("bracket member", "const nt = require('node:test');\n", "nt['run']"),
     )
 
     def script_runners(self, text, extra=None):
