@@ -6,11 +6,13 @@ from tests import contract_check, scratch
 PRODUCT_CONTRACTS = os.path.join(scratch.ROOT, "lighthouse_tool", "contracts")
 PRODUCT_FILES = (
     "validator.py",
+    "h11-interphase-record.schema.json",
     "h13-lighthouse-verdict-line.schema.json",
     "h14-lighthouse-findings.schema.json",
     "h15-pr-fields.schema.json",
     "h16-pr-render.schema.json",
     "k1-acceptance.schema.json",
+    "k2-locked.schema.json",
     "k3-check-result.schema.json",
 )
 

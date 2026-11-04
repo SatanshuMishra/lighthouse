@@ -66,6 +66,14 @@ def k3_result(status, evidence, commit=FEATURE_COMMIT, check_id="C1.1"):
     }
 
 
+def record_of(*criteria):
+    return scratch.h11_record(list(criteria))
+
+
+def criterion(number, lines=None):
+    return scratch.h11_criterion(number, lines)
+
+
 def exact_k1_line(check_id="C1.1"):
     return {
         "id": check_id,
@@ -384,7 +392,7 @@ class K3VerdictTest(unittest.TestCase):
         write_evidence(results, PATH_EVIDENCE, "the exported rows\n")
         k1_line = exact_k1_line()
         contract_check.assert_valid(self, k1_line, contract_check.K1_SCHEMA)
-        write_json(results, "record.json", {"criteria": [{"id": "1", "acceptance": [k1_line]}]})
+        write_json(results, "record.json", record_of(criterion("1.1", [k1_line])))
         self.assertFalse(os.path.exists(os.path.join(results, "plan.json")))
         self.assertFalse(os.path.exists(os.path.join(results, "checks.jsonl")))
         line = run_verdict(self, results)
@@ -411,11 +419,32 @@ class K3VerdictTest(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(results, "verdict.json")))
 
     def test_verdict_refuses_a_record_with_a_criterion_that_is_not_an_object(self):
-        self.assert_record_refused({"criteria": ["loose", {"acceptance": [exact_k1_line()]}]}, "#/criteria/0", "not an object")
+        self.assert_record_refused(
+            record_of("loose", criterion("1.1", [exact_k1_line()])),
+            "h11-interphase-record.schema.json",
+            '#/criteria/0 type: "loose" is not of type object',
+        )
+
+    def test_verdict_refuses_a_record_failing_h11_only(self):
+        seamless = {key: value for key, value in criterion("1.1", [exact_k1_line()]).items() if key != "seam"}
+        self.assert_record_refused(
+            record_of(seamless),
+            "interphase",
+            "h11-interphase-record.schema.json",
+            '#/criteria/0 required: lacks required property "seam"',
+        )
+
+    def test_verdict_reads_no_line_from_a_criterion_without_acceptance(self):
+        results = results_folder(self, paths=[new_path(status="passed")])
+        write_evidence(results, PATH_EVIDENCE, "the exported rows\n")
+        write_json(results, "record.json", record_of(criterion("1.1"), criterion("1.2")))
+        line = run_verdict(self, results)
+        self.assertEqual(line["verdict"], "green", line)
+        self.assertEqual(line["unproven"], [], line)
 
     def test_verdict_refuses_a_record_with_a_repeated_acceptance_id(self):
         self.assert_record_refused(
-            {"criteria": [{"acceptance": [exact_k1_line()]}, {"acceptance": [exact_k1_line()]}]},
+            record_of(criterion("1.1", [exact_k1_line()]), criterion("1.2", [exact_k1_line()])),
             "C1.1",
             "repeats the id",
             "#/criteria/1/acceptance/0",
@@ -425,9 +454,9 @@ class K3VerdictTest(unittest.TestCase):
         line = {**exact_k1_line(), "note": "x"}
         self.assertNotEqual(contract_check.errors(line, contract_check.K1_SCHEMA), [])
         self.assert_record_refused(
-            {"criteria": [{"acceptance": [line]}]},
+            record_of(criterion("1.1", [line])),
             "interphase",
-            "k1-acceptance.schema.json",
+            "h11-interphase-record.schema.json",
             '#/criteria/0/acceptance/0',
             "property \"note\" is not allowed",
         )
@@ -483,7 +512,7 @@ class K3VerdictTest(unittest.TestCase):
         contract_check.assert_valid(self, k1_line, contract_check.K1_SCHEMA)
         record_path = os.path.join(spec_folder, "hr-x.record.json")
         with open(record_path, "w", encoding="utf-8") as handle:
-            handle.write(json.dumps({"criteria": [{"id": "1", "acceptance": [k1_line]}]}, indent=3) + "\n\n")
+            handle.write(json.dumps(record_of(criterion("1.1", [k1_line])), indent=3) + "\n\n")
         blocked_line = json.dumps(
             {
                 "verdict": "blocked",
