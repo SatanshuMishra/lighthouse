@@ -351,6 +351,12 @@ class K3VerdictTest(unittest.TestCase):
         line = run_verdict(self, results)
         self.assertNotEqual(line["verdict"], "green", line)
         self.assertIn("C1.1", line["unproven"], line)
+        with open(os.path.join(results, "report.md"), encoding="utf-8") as handle:
+            report = handle.read()
+        self.assertIn(
+            'ignored: checks.jsonl line 1: fails k3-check-result.schema.json: # required: lacks required property "runner"',
+            report,
+        )
 
     def test_result_at_another_commit_is_ignored(self):
         results = results_folder(self)
@@ -380,6 +386,47 @@ class K3VerdictTest(unittest.TestCase):
         line = run_verdict(self, results)
         self.assertNotEqual(line["verdict"], "green", line)
         self.assertIn("C1.1", line["unproven"], line)
+
+    def assert_record_refused(self, record, *expected):
+        results = results_folder(self, paths=[new_path(status="passed")])
+        write_evidence(results, PATH_EVIDENCE, "the exported rows\n")
+        write_json(results, "record.json", record)
+        completed = subprocess.run(
+            [sys.executable, scratch.LIGHTHOUSE, "verdict", "--results", results],
+            env=scratch.environment(scratch.make_home(self)),
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=COMMAND_TIMEOUT_SECONDS,
+        )
+        self.assertEqual(completed.returncode, 2, completed.stdout + completed.stderr)
+        error = json.loads(completed.stdout.strip().splitlines()[-1])["error"]
+        self.assertIn(os.path.join(os.path.realpath(results), "record.json"), error)
+        for text in expected:
+            self.assertIn(text, error)
+        self.assertFalse(os.path.exists(os.path.join(results, "verdict.json")))
+
+    def test_verdict_refuses_a_record_with_a_criterion_that_is_not_an_object(self):
+        self.assert_record_refused({"criteria": ["loose", {"acceptance": [exact_k1_line()]}]}, "#/criteria/0", "not an object")
+
+    def test_verdict_refuses_a_record_with_a_repeated_acceptance_id(self):
+        self.assert_record_refused(
+            {"criteria": [{"acceptance": [exact_k1_line()]}, {"acceptance": [exact_k1_line()]}]},
+            "C1.1",
+            "repeats the id",
+            "#/criteria/1/acceptance/0",
+        )
+
+    def test_verdict_refuses_a_record_line_that_fails_k1(self):
+        line = {**exact_k1_line(), "note": "x"}
+        self.assertNotEqual(contract_check.errors(line, contract_check.K1_SCHEMA), [])
+        self.assert_record_refused(
+            {"criteria": [{"acceptance": [line]}]},
+            "interphase",
+            "k1-acceptance.schema.json",
+            '#/criteria/0/acceptance/0',
+            "property \"note\" is not allowed",
+        )
 
     def test_launch_prints_verdict_json_not_the_childs_line(self):
         written = {

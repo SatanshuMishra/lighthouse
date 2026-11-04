@@ -116,6 +116,10 @@ class Prepared:
     def record(self, *lines):
         return write_json(os.path.join(self.inputs, "record.json"), record_of(*lines))
 
+    def execute_raw_record(self, record):
+        path = write_json(os.path.join(self.inputs, "record.json"), record)
+        return self.execute("--record", path, "--profile", self.profile)
+
     def execute(self, *flags):
         return lighthouse(["execute", "--results", self.results, *flags], self.env)
 
@@ -251,6 +255,60 @@ class K1ExecuteTest(unittest.TestCase):
         self.assertEqual(code, 2, stdout + stderr)
         error = last_json(stdout)["error"]
         self.assertIn("X1", json.dumps(error), error)
+        self.assertIn("interphase", error)
+        self.assertIn("k1-acceptance.schema.json", error)
+        self.assertIn("#/id pattern", error)
+        self.assertFalse(os.path.exists(os.path.join(prepared.results, "checks.jsonl")))
+
+    def assert_record_refused(self, prepared, record, *expected):
+        code, stdout, stderr = prepared.execute_raw_record(record)
+        self.assertEqual(code, 2, stdout + stderr)
+        error = last_json(stdout)["error"]
+        for text in expected:
+            self.assertIn(text, error)
+        self.assertFalse(os.path.exists(os.path.join(prepared.results, "checks.jsonl")))
+        return error
+
+    def test_criterion_that_is_not_an_object_is_refused(self):
+        prepared = default_setup(self)
+        line = exact_line("C1.1", "exit 0")
+        assert_k1_valid(self, line)
+        self.assert_record_refused(prepared, {"criteria": ["loose", {"acceptance": [line]}]}, "#/criteria/0", "not an object")
+
+    def test_criteria_that_is_not_a_list_is_refused(self):
+        prepared = default_setup(self)
+        self.assert_record_refused(prepared, {"criteria": {"acceptance": []}}, "#/criteria", "must be a list")
+
+    def test_record_without_criteria_is_refused(self):
+        prepared = default_setup(self)
+        self.assert_record_refused(prepared, {"status": "handed-off"}, "#/criteria", "must be a list")
+
+    def test_acceptance_that_is_not_a_list_is_refused(self):
+        prepared = default_setup(self)
+        line = exact_line("C1.1", "exit 0")
+        self.assert_record_refused(
+            prepared, {"criteria": [{"acceptance": [line]}, {"acceptance": line}]}, "#/criteria/1/acceptance", "must be a list"
+        )
+
+    def test_repeated_acceptance_id_is_refused(self):
+        prepared = default_setup(self)
+        first = exact_line("C1.1", "exit 0")
+        second = exact_line("C1.1", "exit 1")
+        assert_k1_valid(self, first)
+        assert_k1_valid(self, second)
+        error = self.assert_record_refused(prepared, record_of(first, second), "C1.1", "repeats the id")
+        self.assertIn("#/criteria/0/acceptance/1", error)
+
+    def test_record_that_is_not_json_is_refused(self):
+        prepared = default_setup(self)
+        path = os.path.join(prepared.inputs, "broken-record.json")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write("{not json\n")
+        code, stdout, stderr = prepared.execute("--record", path, "--profile", prepared.profile)
+        self.assertEqual(code, 2, stdout + stderr)
+        error = last_json(stdout)["error"]
+        self.assertIn(path, error)
+        self.assertIn("is not JSON", error)
         self.assertFalse(os.path.exists(os.path.join(prepared.results, "checks.jsonl")))
 
     def test_execute_reads_the_record_beside_the_spec(self):

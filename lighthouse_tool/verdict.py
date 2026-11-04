@@ -1,7 +1,7 @@
 import json
 import os
 from typing import Any, Dict, List, NamedTuple, Optional, Tuple
-from lighthouse_tool import contract
+from lighthouse_tool import handoff, record_lines
 from lighthouse_tool.records import is_number
 from lighthouse_tool.repo import Parser, Refusal
 from lighthouse_tool.results import CHECKS, PLAN, RECORD
@@ -226,19 +226,7 @@ def record_check_ids(results: str) -> List[str]:
     path = os.path.join(results, RECORD)
     if not os.path.exists(path):
         return []
-    record = read_json_file(path, RECORD)
-    criteria = record.get("criteria", []) if isinstance(record, dict) else None
-    if not isinstance(criteria, list):
-        raise Malformed(RECORD, "must be a JSON object with a criteria list", RECORD)
-    return unique(
-        [
-            line["id"]
-            for criterion in criteria
-            if isinstance(criterion, dict) and isinstance(criterion.get("acceptance"), list)
-            for line in criterion["acceptance"]
-            if isinstance(line, dict) and isinstance(line.get("id"), str)
-        ]
-    )
+    return [line["id"] for line in record_lines.lines_at(path)]
 
 
 def expected_checks(plan: Optional[Dict[str, Any]], record_ids: List[str]) -> List[Dict[str, Any]]:
@@ -286,9 +274,9 @@ def result_line(text: str, number: int, commit: Optional[str]) -> Tuple[Optional
         result = json.loads(text)
     except ValueError:
         return None, "{}: not JSON".format(where)
-    found = contract.problems(result, K3_SCHEMA)
+    found = handoff.schema_errors(K3_SCHEMA, result)
     if found:
-        return None, "{}: fails the K3 schema: {}".format(where, "; ".join(found))
+        return None, "{}: fails {}: {}".format(where, handoff.schema_file(K3_SCHEMA), handoff.joined(found))
     if result["commit"] != commit:
         return None, "{}: {} is at commit {}, not the FEATURE commit {}".format(
             where, result["check_id"], result["commit"], commit or "(commits.json records none)"

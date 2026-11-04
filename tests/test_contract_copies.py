@@ -4,7 +4,15 @@ import unittest
 from tests import contract_check, scratch
 
 PRODUCT_CONTRACTS = os.path.join(scratch.ROOT, "lighthouse_tool", "contracts")
-SCHEMA_NAMES = ("k1-acceptance.schema.json", "k3-check-result.schema.json")
+PRODUCT_FILES = (
+    "validator.py",
+    "h13-lighthouse-verdict-line.schema.json",
+    "h14-lighthouse-findings.schema.json",
+    "h15-pr-fields.schema.json",
+    "h16-pr-render.schema.json",
+    "k1-acceptance.schema.json",
+    "k3-check-result.schema.json",
+)
 
 
 def read_bytes(path):
@@ -13,8 +21,8 @@ def read_bytes(path):
 
 
 class ContractCopiesTest(unittest.TestCase):
-    def test_product_schemas_match_the_referee_copies(self):
-        for name in SCHEMA_NAMES:
+    def test_product_contracts_match_the_referee_copies(self):
+        for name in PRODUCT_FILES:
             referee = os.path.join(contract_check.CONTRACTS, name)
             product = os.path.join(PRODUCT_CONTRACTS, name)
             self.assertTrue(os.path.isfile(referee), referee)
