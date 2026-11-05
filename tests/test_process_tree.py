@@ -473,7 +473,9 @@ class ProcReadingTest(unittest.TestCase):
         self.assertIsNone(process_tree.proc_started_at(root, 99, 100))
 
     def test_a_folder_without_proc_files_is_not_read_as_proc(self):
-        self.assertFalse(process_tree.reads_proc(tempfile.mkdtemp(prefix="lh-noproc-")))
+        root = tempfile.mkdtemp(prefix="lh-noproc-")
+        self.addCleanup(shutil.rmtree, root, True)
+        self.assertFalse(process_tree.reads_proc(root))
 
 
 if __name__ == "__main__":
