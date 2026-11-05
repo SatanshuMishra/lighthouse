@@ -127,7 +127,7 @@ def sample_profile(**overrides: Any) -> Dict[str, Any]:
     profile = {
         "version": 1,
         "sources": [],
-        "suite": {"command": "python3 -m unittest discover", "junit": None, "timeout_minutes": None},
+        "suite": {"command": "python3 -m unittest discover", "junit": None},
         "surfaces": [
             {
                 "name": "cli",
@@ -145,6 +145,35 @@ def sample_profile(**overrides: Any) -> Dict[str, Any]:
         "off_limits": [],
     }
     return {**profile, **overrides}
+
+
+def h11_criterion(number: str, lines: Optional[List[Any]] = None) -> Dict[str, Any]:
+    criterion = {
+        "number": number,
+        "title": "Criterion {}".format(number),
+        "text": "WHEN lighthouse runs, THE SYSTEM SHALL meet criterion {}.".format(number),
+        "seam": "lighthouse-cli",
+        "tests": [],
+    }
+    return criterion if lines is None else {**criterion, "acceptance": list(lines)}
+
+
+def h11_record(criteria: List[Any]) -> Dict[str, Any]:
+    numbers = [criterion["number"] for criterion in criteria if isinstance(criterion, dict) and "number" in criterion]
+    return {
+        "seams": [
+            {
+                "name": "lighthouse-cli",
+                "interface": "bin/lighthouse subcommands run as processes",
+                "catches": "behaviour the commands show",
+                "misses": "what a real model replies",
+                "builder_runs": True,
+            }
+        ],
+        "criteria": list(criteria),
+        "steps": [{"name": "build", "files": ["lighthouse_tool/execute.py"], "criteria": numbers or ["1.1"]}],
+        "status": "handed-off",
+    }
 
 
 def write_profile(repo: str, profile: Dict[str, Any]) -> str:

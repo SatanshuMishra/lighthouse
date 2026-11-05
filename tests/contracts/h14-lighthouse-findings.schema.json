@@ -1,0 +1,296 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "harness-redesign/h14-lighthouse-findings.schema.json",
+  "title": "H14 lighthouse findings",
+  "description": "The findings.json the lighthouse child session writes in step 9, which lighthouse verdict judges.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "suite",
+    "build",
+    "paths",
+    "spend"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "suite": {
+      "description": "lighthouse suite's printed object, copied unchanged; verdict compares its first five keys with suite.json.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "result",
+        "reason",
+        "failures",
+        "pre_existing",
+        "flaky",
+        "core",
+        "feature"
+      ],
+      "properties": {
+        "result": {
+          "enum": [
+            "passed",
+            "failures",
+            "blocked"
+          ]
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "failures": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "pre_existing": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "flaky": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "core": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "feature": {
+          "type": [
+            "object",
+            "null"
+          ]
+        }
+      }
+    },
+    "build": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "result",
+        "reason"
+      ],
+      "properties": {
+        "result": {
+          "enum": [
+            "ok",
+            "blocked"
+          ]
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "paths": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/path"
+      }
+    },
+    "spend": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tokens",
+        "minutes"
+      ],
+      "properties": {
+        "tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "minutes": {
+          "type": "number",
+          "minimum": 0
+        },
+        "dollars": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        }
+      }
+    }
+  },
+  "$defs": {
+    "path": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "kind",
+        "surface",
+        "expected",
+        "evidence",
+        "status",
+        "retry",
+        "core",
+        "trials"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[^\\n\\r]+$"
+        },
+        "kind": {
+          "enum": [
+            "new",
+            "neighbour"
+          ]
+        },
+        "surface": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expected": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^(?!/)(?!(?:.*/)?\\.\\.(?:/|$)).+$"
+          }
+        },
+        "status": {
+          "enum": [
+            "passed",
+            "failed",
+            "unproven"
+          ]
+        },
+        "retry": {
+          "enum": [
+            "passed",
+            "failed",
+            null
+          ]
+        },
+        "core": {
+          "enum": [
+            "passed",
+            "failed",
+            null
+          ]
+        },
+        "trials": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/trials"
+            }
+          ]
+        },
+        "check": {
+          "$ref": "#/$defs/check"
+        }
+      }
+    },
+    "trials": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "count",
+        "feature_passed",
+        "core_passed"
+      ],
+      "properties": {
+        "count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "feature_passed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "core_passed": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        }
+      }
+    },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "why"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "suite",
+            "direct",
+            "drive"
+          ]
+        },
+        "why": {
+          "type": "string",
+          "pattern": "\\S"
+        },
+        "tests": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "suite"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "tests"
+        ],
+        "properties": {
+          "tests": {
+            "type": "array",
+            "minItems": 1
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "tests": {
+            "maxItems": 0
+          }
+        }
+      }
+    }
+  }
+}

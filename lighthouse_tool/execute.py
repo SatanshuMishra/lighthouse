@@ -4,14 +4,13 @@ import os
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
-from lighthouse_tool import contract, credentials, records, retest, suite
+from lighthouse_tool import credentials, handoff, record_lines, records, retest, suite
 from lighthouse_tool.change import changed_files
 from lighthouse_tool.repo import Parser, Refusal
 from lighthouse_tool.results import CHECKS, PLAN, RECORD, record_beside
 from lighthouse_tool.verdict import EXACT_RUNS, FEATURE, K3_SCHEMA
 
 Outcome = Tuple[int, Optional[str], Optional[str]]
-K1_SCHEMA = "k1-acceptance.schema.json"
 RUNNER = "lighthouse execute"
 CHECK_STEP = "check"
 REACH_STEP = "reach"
@@ -42,7 +41,8 @@ def run(argv: List[str]) -> Outcome:
 def execute_command(options: argparse.Namespace) -> Dict[str, Any]:
     results = os.path.realpath(options.results)
     commits = read_commits(results)
-    lines = acceptance_lines(chosen_record(results, options.record, options.spec))
+    record = chosen_record(results, options.record, options.spec)
+    lines = [] if record is None else record_lines.lines_at(record)
     profile = chosen_profile(results, options.profile)
     worktree = os.path.join(results, FEATURE)
     hidden = suite.hidden_values(worktree, profile)
@@ -77,47 +77,9 @@ def read_commits(results: str) -> Dict[str, str]:
     return {build: commits[build] for build in suite.BUILDS}
 
 
-def chosen_record(results: str, record: Optional[str], spec: Optional[str]) -> Optional[Dict[str, Any]]:
+def chosen_record(results: str, record: Optional[str], spec: Optional[str]) -> Optional[str]:
     in_results = os.path.join(results, RECORD)
-    path = record or record_beside(spec) or (in_results if os.path.isfile(in_results) else None)
-    if path is None:
-        return None
-    try:
-        with open(path, encoding="utf-8") as handle:
-            found = json.load(handle)
-    except (OSError, ValueError) as error:
-        raise Refusal("record {} is unreadable: {}".format(path, error))
-    if not isinstance(found, dict):
-        raise Refusal("record {} is not a JSON object".format(path))
-    return found
-
-
-def acceptance_lines(record: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    criteria = [] if record is None else record.get("criteria", [])
-    if not isinstance(criteria, list):
-        raise Refusal("the record's criteria must be a list")
-    placed = [
-        ("criteria[{}].acceptance[{}]".format(number, index), line)
-        for number, criterion in enumerate(criteria)
-        for index, line in enumerate(criterion_acceptance(criterion, number))
-    ]
-    seen: List[str] = []
-    for position, line in placed:
-        named = line.get("id") if isinstance(line, dict) and isinstance(line.get("id"), str) else position
-        found = contract.problems(line, K1_SCHEMA)
-        if found:
-            raise Refusal("acceptance line {} fails the K1 schema: {}".format(named, "; ".join(found)))
-        if named in seen:
-            raise Refusal("acceptance line {} repeats an id".format(named))
-        seen.append(named)
-    return [line for _, line in placed]
-
-
-def criterion_acceptance(criterion: Any, number: int) -> List[Any]:
-    acceptance = criterion.get("acceptance", []) if isinstance(criterion, dict) else []
-    if not isinstance(acceptance, list):
-        raise Refusal("criteria[{}].acceptance must be a list".format(number))
-    return acceptance
+    return record or record_beside(spec) or (in_results if os.path.isfile(in_results) else None)
 
 
 def chosen_profile(results: str, path: Optional[str]) -> Dict[str, Any]:
@@ -190,9 +152,7 @@ def run_once(
         "seconds": seconds,
         "runner": RUNNER,
     }
-    found = contract.problems(result, K3_SCHEMA)
-    if found:
-        raise Refusal("the result of {} fails the K3 schema: {}".format(line["id"], "; ".join(found)))
+    handoff.check_before_writing("{} line for {}".format(CHECKS, line["id"]), K3_SCHEMA, result)
     records.append_json_line(os.path.join(results, CHECKS), result, records.PRIVATE_FILE)
     return status
 

@@ -41,6 +41,39 @@ class SkillInitDoctorTest(unittest.TestCase):
                 name,
             )
 
+    def test_init_and_doctor_keep_the_start_command_in_the_foreground(self):
+        for name in ["init", "doctor"]:
+            text = scratch.skill_text(name)
+
+            self.assertIn(
+                "The start command stays in the foreground until it is stopped, such as docker compose up and never docker compose up -d",
+                text,
+                name,
+            )
+
+    def test_init_and_doctor_hold_measure_by_its_completion_notice(self):
+        for name in ["init", "doctor"]:
+            text = scratch.skill_text(name)
+
+            self.assertIn(
+                "Start lighthouse profile measure --repo <repo> > <folder>/measure.out 2>&1 < /dev/null with run_in_background, then wait for that command's completion notice",
+                text,
+                name,
+            )
+            for retired in ["measure.done", "lighthouse wait", "600000"]:
+                self.assertNotIn(retired, text, name)
+
+    def test_init_and_doctor_write_no_timeout_minutes(self):
+        self.assertNotIn("timeout_minutes", scratch.skill_text("init"))
+        for name in ["init", "doctor"]:
+            example = scratch.read_text(scratch.skill_path(name)).split("```json", 1)[1].split("```", 1)[0]
+            self.assertNotIn("timeout_minutes", example, name)
+
+    def test_doctor_removes_the_retired_suite_timeout(self):
+        text = scratch.skill_text("doctor")
+
+        self.assertIn("retired: remove suite.timeout_minutes from the profile", text)
+
 
 if __name__ == "__main__":
     unittest.main()

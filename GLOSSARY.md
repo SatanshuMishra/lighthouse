@@ -87,13 +87,34 @@ _Avoid_: acceptance test, criterion check
 One run of an acceptance line as lighthouse execute recorded it: its id, the FEATURE commit, pass, fail or could-not-run, its evidence, its seconds and its runner; the verdict judges acceptance lines only from these.
 
 **Could-not-run**:
-A check result or measurement that neither passed nor failed because the check could not decide, such as a command that hit its limit or a pixel sample too close to a threshold; it makes its check unproven, never failed.
+A check result or measurement that neither passed nor failed because the check could not decide, such as a command that exited with neither 0 nor 1 or a pixel sample too close to a threshold; it makes its check unproven, never failed.
 
 **Reach command**:
 A surface's command that exits 0 when this machine can drive that surface with its recorded driver; its exit sets the surface's available.
 
 **Measured durations**:
-The seconds lighthouse profile measure recorded in the profile for setup, build, the suite, the start command until ready and each reach command, from which every time limit is derived.
+The seconds lighthouse profile measure recorded in the profile for setup, build, the suite, the start command until ready and each reach command; no time limit is derived from them.
+
+**Exit file**:
+The file a process lighthouse waits on writes its exit status to when it ends; every wait names one and ends, not ready, once it appears.
+_Avoid_: done marker, deadline
+
+**Verdict line**:
+The one-line JSON a run ends with, in one of three owned forms: a verdict, a blocked line with its reason, or a refusal.
+
+**Owned format**:
+The one schema a hand-off between plugins must match, owned by the plugin that produces it and copied unchanged into every plugin that reads it.
+_Avoid_: contract file, shape
+
+**Findings draft**:
+The findings a child session writes for lighthouse findings to check before they become findings.json.
+
+**Fields draft**:
+The pull request's prose a child session writes for lighthouse pr to check and turn into the pull request's fields.
+
+**Re-ask**:
+The one time launch asks the same child session again, with every schema error, when its reply or the files it left break their owned format; a second failure blocks the run.
+_Avoid_: retry
 
 **Run summary**:
 The one line per lighthouse:test run in the metrics store holding its verdict, suite, product paths and own spend, replaced whole when written again.

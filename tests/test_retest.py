@@ -319,7 +319,38 @@ class RetestTest(unittest.TestCase):
         results = results_folder(self)
         code, stdout, _ = retest(self, work, previous, results, profile_file(self))
         self.assertEqual(code, 2)
-        self.assertIn("relative", json.loads(stdout)["error"])
+        printed = json.loads(stdout)
+        self.assertEqual(printed["key"], "#/paths/1/evidence/0")
+        self.assertIn("h14-lighthouse-findings", printed["error"])
+        self.assertFalse(os.path.exists(results))
+
+    def test_refuses_previous_findings_that_break_h14(self):
+        work = project(self)
+        paths = [path_entry("open a", "A", "passed"), {**path_entry("open b", "B", "passed"), "note": "kept by 0.5.0"}]
+        previous = previous_folder(self, work, paths)
+        results = results_folder(self)
+
+        code, stdout, _ = retest(self, work, previous, results, profile_file(self))
+
+        self.assertEqual(code, 2)
+        printed = json.loads(stdout)
+        self.assertEqual(printed["key"], "#/paths/1/note")
+        self.assertIn("the previous findings.json is unusable", printed["error"])
+        self.assertIn("from the lighthouse:test child session fails h14-lighthouse-findings", printed["error"])
+        self.assertFalse(os.path.exists(results))
+
+    def test_refuses_previous_suite_entries_that_are_not_test_ids(self):
+        work = project(self)
+        paths = [path_entry("open a", "A", "passed")]
+        previous = previous_folder(self, work, paths)
+        broken = findings(paths)
+        write_json(previous, "findings.json", {**broken, "suite": {**broken["suite"], "flaky": [{"id": "tests.T.test_a"}]}})
+        results = results_folder(self)
+
+        code, stdout, _ = retest(self, work, previous, results, profile_file(self))
+
+        self.assertEqual(code, 2)
+        self.assertEqual(json.loads(stdout)["key"], "#/suite/flaky/0")
         self.assertFalse(os.path.exists(results))
 
 if __name__ == "__main__":

@@ -11,7 +11,7 @@ import time
 from contextlib import ExitStack
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from lighthouse_tool import credentials, limits, process_tree, suite, wait
+from lighthouse_tool import credentials, noninteractive, process_tree, suite, wait
 from lighthouse_tool import repo as repository
 from lighthouse_tool.records import is_number, utc_now, write_atomically
 from lighthouse_tool.repo import Parser, Refusal, checked_git, require_root
@@ -27,6 +27,11 @@ MEASURED_STEPS = ("setup", "build")
 READY_POLL_SECONDS = 0.5
 STOP_GRACE_SECONDS = 5
 MEASURED_DIGITS = 3
+RETIRED_SUITE_KEY = "timeout_minutes"
+RETIRED_DETAIL = (
+    "suite.timeout_minutes is retired because lighthouse puts no time limit on any step; "
+    "remove the key (lighthouse:doctor removes it)"
+)
 
 SOURCE_NAMES = (
     "package.json",
@@ -81,6 +86,12 @@ GLOB_MARKERS = ("*", "?", "[", "...")
 SCRIPT_SUFFIXES = (".sh", ".py", ".js", ".mjs", ".ts", ".rb", ".pl")
 
 InterpreterOptions = Tuple[frozenset, frozenset]
+
+
+class ProfileRefusal(Refusal):
+    def __init__(self, message: str, problems: List[Problem]) -> None:
+        super().__init__(message)
+        self.problems = problems
 
 PYTHON_OPTIONS = (frozenset(["-W", "-X", "--check-hash-based-pycs"]), frozenset(["-m", "-c"]))
 SHELL_OPTIONS = (frozenset(["-o", "-O", "--rcfile", "--init-file"]), frozenset(["-c"]))
@@ -141,6 +152,9 @@ def run(argv: List[str]) -> Outcome:
         )
     try:
         return handlers[action](argv[2:])
+    except ProfileRefusal as refusal:
+        printed = {"error": str(refusal), "problems": refusal.problems}
+        return 2, json.dumps(printed), "lighthouse profile {}: {}".format(action, refusal)
     except Refusal as refusal:
         return 2, json.dumps({"error": str(refusal)}), "lighthouse profile {}: {}".format(action, refusal)
 
@@ -191,19 +205,51 @@ def check_profile(repo: str, path: Optional[str] = None) -> List[Problem]:
         return [problem("malformed", "{} is not valid JSON: {}".format(profile_path, error))]
     except OSError as error:
         return [problem("malformed", "{} cannot be read: {}".format(profile_path, error))]
+    return profile_problems(root, profile)
+
+
+def profile_problems(root: str, profile: Any) -> List[Problem]:
     schema = load_schema()
     if not isinstance(profile, dict):
         return [problem("schema", "the profile must be a JSON object")]
     version = profile.get("version")
     if not (is_integer(version) and version == schema["version"]):
         return [problem("version", "version is {}, and this lighthouse reads version {}".format(json.dumps(version), schema["version"]))]
+    retired = retired_problems(profile)
+    current = without_retired(profile)
     return [
-        *schema_problems(profile, schema["profile"], ""),
+        *retired,
+        *schema_problems(current, schema["profile"], ""),
         *path_problems(root, profile),
         *command_problems(root, profile),
         *rerun_problems(profile),
         *unrecorded_problems(root, profile),
     ]
+
+
+def checked_before_writing(target: str, root: str, profile: Dict[str, Any]) -> Dict[str, Any]:
+    problems = profile_problems(root, profile)
+    if problems:
+        named = "; ".join("{}: {}".format(item["kind"], item["detail"]) for item in problems)
+        raise ProfileRefusal(
+            "refusing to write {}: the profile fails the profile checks, so nothing was written: {}".format(target, named),
+            problems,
+        )
+    return profile
+
+
+def retired_problems(profile: Dict[str, Any]) -> List[Problem]:
+    suite_section = profile.get("suite")
+    held = isinstance(suite_section, dict) and RETIRED_SUITE_KEY in suite_section
+    return [problem("retired", RETIRED_DETAIL)] if held else []
+
+
+def without_retired(profile: Dict[str, Any]) -> Dict[str, Any]:
+    suite_section = profile.get("suite")
+    if not isinstance(suite_section, dict) or RETIRED_SUITE_KEY not in suite_section:
+        return profile
+    kept = {key: value for key, value in suite_section.items() if key != RETIRED_SUITE_KEY}
+    return {**profile, "suite": kept}
 
 
 def rerun_problems(profile: Dict[str, Any]) -> List[Problem]:
@@ -540,6 +586,7 @@ def commit_profile(root: str, worktree: str, feature: str, commit: str, profile:
                 os.path.relpath(linked[0], worktree), feature
             )
         )
+    checked_before_writing("{} on {}".format(PROFILE_PATH, feature), worktree, profile)
     os.makedirs(os.path.dirname(target), exist_ok=True)
     descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o644)
     with os.fdopen(descriptor, "w", encoding="utf-8") as profile_file:
@@ -594,7 +641,9 @@ def measure_command(args: List[str]) -> Outcome:
         measured, available = measure(root, unmeasured, holder)
     finally:
         shutil.rmtree(holder, ignore_errors=True)
-    written = {**with_availability(profile, available), "measured": measured}
+    written = checked_before_writing(
+        profile_path, root, {**with_availability(profile, available), "measured": measured}
+    )
     write_atomically(profile_path, json.dumps(written, indent=2) + "\n")
     reported = {
         item["name"]: item["available"]
@@ -661,15 +710,15 @@ def measure(root: str, profile: Dict[str, Any], holder: str) -> Tuple[Dict[str, 
     return measured, {name: code == 0 for name, (code, _) in reached.items()}
 
 
-def ready_check(root: str, ready: str, start_log: str) -> Callable[[float], bool]:
+def ready_check(root: str, ready: str, start_log: str) -> wait.Check:
     text = ready.strip()
     if wait.requestable(text):
         url = wait.checked_url(text)
-        return lambda seconds_left: wait.url_answers(url, seconds_left)
+        return lambda: wait.url_answers(url)
     if command_fault(root, ready) is None:
         command = "cd {} && {}".format(shlex.quote(root), ready)
-        return lambda seconds_left: wait.check_passes(command, seconds_left)
-    return lambda _: wait.log_holds(start_log, ready)
+        return lambda: wait.check_passes(command)
+    return lambda: wait.log_holds(start_log, ready)
 
 
 def started_ready(root: str, profile: Dict[str, Any], start_log: str) -> Tuple[Optional[float], Optional[bool]]:
@@ -685,7 +734,7 @@ def started_ready(root: str, profile: Dict[str, Any], start_log: str) -> Tuple[O
                     ["/bin/sh", "-c", command],
                     STOP_GRACE_SECONDS,
                     cwd=root,
-                    env={**os.environ, "LIGHTHOUSE_BUILD": "feature"},
+                    env={**noninteractive.environment(os.environ), "LIGHTHOUSE_BUILD": "feature"},
                     stdin=subprocess.DEVNULL,
                     stdout=output,
                     stderr=subprocess.STDOUT,
@@ -693,7 +742,5 @@ def started_ready(root: str, profile: Dict[str, Any], start_log: str) -> Tuple[O
             )
         except OSError:
             return None, False
-        passed, seconds = wait.wait_until(
-            check, READY_POLL_SECONDS, limits.of(profile).suite_seconds, lambda: process_tree.has_exited(process)
-        )
+        passed, seconds = wait.wait_until(check, READY_POLL_SECONDS, lambda: process_tree.has_exited(process))
     return (rounded(seconds), True) if passed else (None, False)

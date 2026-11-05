@@ -85,6 +85,7 @@ class SkillsTest(unittest.TestCase):
             "suite",
             "with-credentials",
             "spend",
+            "findings",
             "verdict",
             "pr",
             "release",
@@ -204,8 +205,9 @@ class SkillsTest(unittest.TestCase):
             "Start lighthouse launch <the flags you were given> --repo <repo> --parent <plugin>/<run> in the background, with run_in_background",
             launching,
         )
-        self.assertIn("Run lighthouse wait --until 'test -s <results>/launch.json' --limits <results>/limits.json in the foreground", launching)
-        self.assertIn("Each time it returns with ready false, call it again, the same way, until it returns ready true", launching)
+        self.assertIn("Wait for that command's completion notice, and run nothing else meanwhile", launching)
+        self.assertIn("Once the notice arrives, read <results>/launch.json", launching)
+        self.assertNotIn("lighthouse wait", launching)
         self.assertIn("Print the line in <results>/launch.json, unchanged, as the last line of the reply", launching)
         self.assertIn("With --child, run the Steps below", launching)
         self.assertNotIn("LIGHTHOUSE_CHILD", text)
@@ -264,13 +266,68 @@ class SkillsTest(unittest.TestCase):
                 line = next(line for line in building.splitlines() if call in line)
                 self.assertIn("--port <profile port>=<build port>", line)
 
-    def test_every_wait_instruction_sets_the_bash_timeout_to_its_ceiling(self):
+    def test_every_wait_instruction_names_the_exit_file_of_its_process(self):
         for path in (scratch.skill_path("test"), os.path.join(scratch.ROOT, "agents", "driver.md")):
             holds = [line for line in scratch.read_text(path).splitlines() if "lighthouse wait --" in line]
             with self.subTest(path=path):
                 self.assertTrue(holds)
                 for line in holds:
-                    self.assertIn("600000", line)
+                    self.assertIn("--exit-file", line)
+                    self.assertNotIn("ready false", line)
+
+    def test_each_start_command_writes_its_pid_and_exit_file(self):
+        text = scratch.skill_text("test")
+        building = text.split("6. Build and start", 1)[1].split("7. Prove each path", 1)[0]
+
+        self.assertIn(
+            "starting it with run_in_background as (<start command>) > <results>/<build>-start.log 2>&1 < /dev/null & echo $! > <results>/<build>-start.pid; wait $!; echo $? > <results>/<build>-start.exit",
+            building,
+        )
+        self.assertIn("--exit-file <results>/<build>-start.exit", building)
+        self.assertIn("When that wait prints exited true with a status other than 0, the build did not start", building)
+        self.assertIn("a profile problem for lighthouse:doctor, never a build that does not start", building)
+
+    def test_release_stops_every_start_command_in_every_ending(self):
+        text = scratch.skill_text("test")
+        releasing = text.split("11. Run lighthouse release", 1)[1].split("12. When publish", 1)[0]
+        stopping = section(text, "## Stopping early", "## Cost")
+
+        self.assertIn("It also stops every start command the run started", releasing)
+        self.assertIn(
+            "whenever step 2 ran, run lighthouse release --repo <repo> --results <results>, so no started server keeps the session waiting",
+            stopping,
+        )
+        self.assertLess(stopping.index("lighthouse release"), stopping.index("lighthouse verdict --blocked"))
+
+    def test_a_moved_foreground_call_is_held_by_its_completion_notice(self):
+        for text in (scratch.skill_text("test"), driver_text()):
+            self.assertIn("never poll", text)
+            self.assertIn("never sleep", text)
+            self.assertIn("never stop", text)
+        self.assertIn(
+            "When the Bash tool moves a foreground call to the background, the session waits for its completion notice, never polls it, never sleeps and never stops it",
+            scratch.skill_text("test"),
+        )
+
+    def test_the_child_closes_stdin_of_every_command_it_runs(self):
+        steps = section(scratch.skill_text("test"), "## Steps", "## Stopping early")
+
+        self.assertIn("Start every command you run yourself with stdin from /dev/null", steps)
+
+    def test_drivers_hold_only_on_a_named_exit_file(self):
+        steps = section(scratch.skill_text("test"), "## Steps", "## Stopping early")
+        driver = driver_text()
+
+        self.assertIn("the exit file of each process the driver may hold on, such as <results>/<build>-start.exit", steps)
+        self.assertIn("lighthouse wait --until '<check>' --exit-file <file>", driver)
+        self.assertIn("(<command>) < /dev/null; echo $? > <file>", driver)
+        self.assertIn("With neither, do not hold: return, naming what you would have waited for", driver)
+
+    def test_cost_names_no_time_limit(self):
+        cost = section(scratch.skill_text("test"), "## Cost", "## Never")
+
+        self.assertNotIn("limit", cost)
+        self.assertIn("a slow step runs to its end", cost)
 
     def test_test_skill_dispatches_drivers_in_the_foreground(self):
         steps = section(scratch.skill_text("test"), "## Steps", "## Stopping early")
@@ -384,7 +441,7 @@ class SkillsTest(unittest.TestCase):
                 self.assertIn("Everything a run needs from lighthouse is in this skill and in what its commands print", texts[name])
 
     def test_test_skill_carries_a_command_reference(self):
-        from lighthouse_tool import change, contrast, credentials, execute, launch, mark, pr, profile, retest, spend, suite, verdict, wait
+        from lighthouse_tool import change, contrast, credentials, execute, findings, launch, mark, pr, profile, retest, spend, suite, verdict, wait
 
         raw = scratch.read_text(scratch.skill_path("test"))
         self.assertLess(raw.index("## Never"), raw.index("## Command reference"))
@@ -404,6 +461,7 @@ class SkillsTest(unittest.TestCase):
             "suite": suite.parser("suite"),
             "with-credentials": credentials.with_credentials_parser(),
             "spend": spend.parser(),
+            "findings": findings.parser(),
             "verdict": verdict.parser(),
             "pr": pr.parser(),
             "release": suite.parser("release"),
@@ -415,14 +473,20 @@ class SkillsTest(unittest.TestCase):
                 self.assertTrue(flags)
                 for flag in flags:
                     self.assertRegex(line, re.escape("`" + flag) + r"[` ]")
-        for flag in ["--until", "--every", "--within"]:
+        for flag in ["--until", "--every", "--exit-file"]:
             self.assertIn("`{} ".format(flag), reference_line(reference, "wait"))
+        for retired in ["--within", "--limits", "expired", "limits.json"]:
+            with self.subTest(retired=retired):
+                self.assertNotIn(retired, reference_line(reference, "wait"))
+                self.assertNotIn(retired, reference_line(reference, "launch"))
         keys = {
-            "wait": ["ready", "expired"],
+            "wait": ["ready", "exited", "status", "seconds"],
+            "release": ["removed", "stopped"],
             "execute": ["checks", "neighbours"],
             "contrast": ["ratio", "threshold", "status", "source", "reason"],
             "profile measure": ["measured", "available"],
-            "pr": ["draft"],
+            "pr": ["title", "body", "base", "head", "draft", "error", "schema", "errors"],
+            "findings": ["written", "error", "schema", "errors"],
             "retest": ["full", "changed", "retest", "surfaces", "carried"],
             "profile check": ["problems", "upgrades"],
             "profile publish": ["committed"],
@@ -480,15 +544,135 @@ class SkillsTest(unittest.TestCase):
         )
         self.assertIn("so the name under failures or unproven tells a reader what broke", planning)
 
-    def test_every_long_lighthouse_call_runs_in_the_background_and_is_held_with_wait(self):
+    def test_every_long_lighthouse_call_runs_in_the_background_and_is_held_by_its_completion_notice(self):
         calls = long_lighthouse_calls()
         for name in SKILLS:
             with self.subTest(skill=name):
                 self.assertTrue(any(path == scratch.skill_path(name) for path, _ in calls), name)
         for path, line in calls:
-            for phrase in ["run_in_background", "lighthouse wait --until", "600000"]:
+            for phrase in ["run_in_background", "completion notice", "< /dev/null"]:
                 with self.subTest(path=path, phrase=phrase, line=line[:80]):
                     self.assertIn(phrase, line)
+            for retired in ["lighthouse wait", ".done", "600000"]:
+                with self.subTest(path=path, retired=retired, line=line[:80]):
+                    self.assertNotIn(retired, line)
+
+    def test_findings_reach_findings_json_only_through_lighthouse_findings(self):
+        text = scratch.skill_text("test")
+        writing = text.split("8. Run lighthouse spend", 1)[1].split("10. When the verdict", 1)[0]
+
+        self.assertIn("9. Write the findings as the draft <results>/findings.draft.json:", writing)
+        self.assertIn("Then run lighthouse findings --results <results>, marked as the verdict step", writing)
+        self.assertIn("fix the draft by every error it names and run it again, until it exits 0", writing)
+        self.assertIn("Never write <results>/findings.json yourself", writing)
+        self.assertNotIn("Write <results>/findings.json", text)
+        self.assertLess(writing.index("lighthouse findings --results"), writing.index("lighthouse verdict --results"))
+
+        results = scratch.temporary_folder(self, "lighthouse-skill-findings-")
+        draft = {
+            "version": 1,
+            "suite": {"result": "passed", "reason": None, "failures": [], "pre_existing": [], "flaky": [], "core": None, "feature": None},
+            "build": {"result": "ok", "reason": None},
+            "paths": [
+                {
+                    "name": "export writes a csv",
+                    "kind": "new",
+                    "surface": "cli",
+                    "expected": "a csv with a header row",
+                    "evidence": ["evidence/export.txt"],
+                    "status": "skipped",
+                    "retry": None,
+                    "core": None,
+                    "trials": None,
+                    "check": {"kind": "direct", "why": "the command prints the outcome"},
+                }
+            ],
+            "spend": {"tokens": 6000, "minutes": 2, "dollars": None},
+        }
+        with open(os.path.join(results, "findings.draft.json"), "w", encoding="utf-8") as handle:
+            json.dump(draft, handle)
+        env = scratch.environment(scratch.make_home(self))
+        code, stdout, stderr = scratch.run_lighthouse(["findings", "--results", results], env)
+
+        self.assertEqual(code, 2, stderr)
+        printed = json.loads(stdout.strip().splitlines()[-1])
+        self.assertEqual(sorted(printed), ["error", "errors", "schema"])
+        self.assertEqual(printed["schema"], "h14-lighthouse-findings")
+        self.assertTrue(any("/paths/0/status" in error for error in printed["errors"]))
+        self.assertFalse(os.path.exists(os.path.join(results, "findings.json")))
+
+    def test_test_skill_composes_the_pull_request_from_a_fields_draft(self):
+        text = scratch.skill_text("test")
+        opening = text.split("10. When the verdict", 1)[1].split("11. Run lighthouse release", 1)[0]
+
+        self.assertIn("Write the pull request's prose as the fields draft <results>/pr-draft.json", opening)
+        self.assertIn("each starting with a capital letter and ending with a full stop, with no markup, no links and no @", opening)
+        self.assertIn("Name every failures, unproven and flaky name of the verdict line, exactly as the line spells it, in a tradeoffs sentence", opening)
+        self.assertIn(
+            "lighthouse pr --repo <repo> --core <core> --feature <feature> --results <results> --summary '<a lowercase summary of the feature>' --draft-fields <results>/pr-draft.json",
+            opening,
+        )
+        self.assertIn("When it exits 2, it prints error, and schema and errors when the fields break their format: fix the draft by every error it names and run it again", opening)
+        self.assertNotIn("--why", text)
+
+    def test_the_skills_example_fields_draft_meets_h15(self):
+        from lighthouse_tool import handoff, pr_fields
+
+        raw = scratch.read_text(scratch.skill_path("test"))
+        opening = raw.split("10. When the verdict", 1)[1].split("11. Run `lighthouse release", 1)[0]
+        example = json.loads(opening.split("For example: `", 1)[1].split("`.", 1)[0])
+        line = {"verdict": "unproven", "failures": [], "unproven": ["export of a large table"], "flaky": [], "tokens": 0, "minutes": 0, "dollars": None, "pr": None}
+        findings = {"suite": {"result": "passed"}}
+        title = pr_fields.compose_title("feat", "exports", "keep rows with an empty date")
+        fields = pr_fields.build_fields(title, example, pr_fields.testing_rows(line, findings))
+
+        self.assertEqual(sorted(example), ["change", "impact", "problem", "tradeoffs"])
+        self.assertEqual(handoff.schema_errors("h15-pr-fields", fields), [])
+        self.assertEqual(pr_fields.missing_names(line, fields), [])
+
+    def test_test_skill_opens_the_pull_request_only_through_create_pull_request(self):
+        text = scratch.skill_text("test")
+        opening = text.split("10. When the verdict", 1)[1].split("11. Run lighthouse release", 1)[0]
+
+        self.assertIn(
+            "open the pull request only through the GitHub MCP create_pull_request tool, with the printed title, body, base and head unchanged, as a draft when draft is true and ready for review otherwise",
+            opening,
+        )
+        self.assertIn("When this session has no create_pull_request tool, or the remote is not on GitHub, open nothing and say why in one line", opening)
+        for path in instruction_files() + [os.path.join(scratch.ROOT, "README.md")]:
+            with self.subTest(path=os.path.relpath(path, scratch.ROOT)):
+                self.assertNotIn("gh pr create", " ".join(scratch.read_text(path).split()))
+
+    def test_the_child_ends_with_its_verdict_line_as_structured_output(self):
+        text = scratch.skill_text("test")
+        ending = text.split("12. When publish exited non-zero", 1)[1].split("## Stopping early", 1)[0]
+        stopping = text.split("## Stopping early", 1)[1].split("## Cost", 1)[0]
+
+        self.assertIn("End the reply with the verdict line as structured output: set verdict_line to the line from <results>/verdict.json", ending)
+        self.assertIn("pr, set to the pull request's URL or null", ending)
+        self.assertIn("reads the reply only from that structured output, never from the reply's text", ending)
+        self.assertIn("running lighthouse findings --results <results> and then lighthouse verdict --results <results> again", ending)
+        self.assertIn("It asks once; a second failure blocks the run.", ending)
+        self.assertNotIn("as the last line of the reply", ending)
+        self.assertIn("end the reply with its line as structured output: set verdict_line to the blocked line it printed", stopping)
+        self.assertNotIn("as the last line of the reply", stopping)
+
+    def test_readme_describes_the_owned_hand_offs(self):
+        readme = " ".join(scratch.read_text(os.path.join(scratch.ROOT, "README.md")).replace("`", "").split())
+
+        for phrase in [
+            "It writes its findings as <results>/findings.draft.json and runs lighthouse findings --results <results>",
+            "| findings | --results <dir>:",
+            "--draft-fields <file> the fields draft",
+            "The child session hands its verdict line to lighthouse launch as structured output, never as text",
+            "whose required verdict_line is h13-lighthouse-verdict-line's verdict or blocked form",
+            "launch asks the same session once more with --resume and every error",
+            "The child opens the pull request only through the GitHub MCP create_pull_request tool",
+        ]:
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, readme)
+        self.assertNotIn("gh pr create", readme)
+
 
 if __name__ == "__main__":
     unittest.main()
