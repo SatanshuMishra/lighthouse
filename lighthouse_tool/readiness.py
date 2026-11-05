@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from lighthouse_tool import credentials
 from lighthouse_tool import profile as profiles
 from lighthouse_tool import repo as repository
+from lighthouse_tool import test_bounds
 from lighthouse_tool.repo import Parser, Refusal, require_root
 
 Outcome = Tuple[int, Optional[str], Optional[str]]
@@ -12,6 +13,7 @@ Item = Dict[str, Optional[str]]
 
 UNREADABLE_PROFILE_KINDS = ("missing", "malformed")
 UNFILLED_CREDENTIAL_KINDS = ("missing", "empty")
+TEST_BOUND_KIND = "test-bound"
 
 
 def readiness_parser() -> Parser:
@@ -80,11 +82,28 @@ def credential_items(root: str, profile: Dict[str, Any]) -> List[Item]:
     return [item("credential", name, "Fill {} in {}".format(name, path), path) for name in unfilled]
 
 
+def test_bound_items(root: str, profile: Dict[str, Any], answers: Dict[str, Any]) -> List[Item]:
+    suite = profile.get("suite")
+    command = suite.get("command") if isinstance(suite, dict) else None
+    if not isinstance(command, str):
+        return []
+    named = [
+        ("{}:{}".format(TEST_BOUND_KIND, found.runner), found)
+        for found in test_bounds.bound_findings(root, command)
+    ]
+    return [item(TEST_BOUND_KIND, name, found.question, found.file) for name, found in named if name not in answers]
+
+
 def open_items(root: str, path: Optional[str]) -> List[Item]:
     profile = readable_profile(root, path)
     if profile is None:
         return [item("profile", None, "Run lighthouse:init to write the profile.")]
-    return [*fact_items(profile, repository.read_answers(root)), *credential_items(root, profile)]
+    answers = repository.read_answers(root)
+    return [
+        *fact_items(profile, answers),
+        *credential_items(root, profile),
+        *test_bound_items(root, profile, answers),
+    ]
 
 
 def readiness(arguments: List[str]) -> Outcome:
