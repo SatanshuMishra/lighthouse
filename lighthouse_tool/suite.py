@@ -9,6 +9,7 @@ import tempfile
 import time
 import xml.etree.ElementTree as ElementTree
 from contextlib import ExitStack
+from enum import Enum
 from typing import Any, Callable, Dict, List, NamedTuple, Optional, Set, Tuple, TypeVar
 
 from lighthouse_tool import credentials, noninteractive, process_tree
@@ -212,11 +213,32 @@ def has_ended(record: StartRecord) -> bool:
     return ended is not None and ended >= record.written
 
 
-def is_the_recorded_process(record: StartRecord, lineage: Optional[Set[int]]) -> bool:
-    if lineage is None or record.pid in lineage or record.pid == os.getpgrp():
-        return False
+class Identity(Enum):
+    RECORDED = "recorded"
+    OTHER = "other"
+    UNKNOWN = "unknown"
+
+
+def identity_of(record: StartRecord, lineage: Optional[Set[int]]) -> Identity:
+    if not process_tree.runs_as_ours(record.pid):
+        return Identity.OTHER
+    if lineage is None:
+        return Identity.UNKNOWN
+    if record.pid in lineage or record.pid == os.getpgrp():
+        return Identity.OTHER
     started = process_tree.started_at(record.pid)
-    return started is not None and record.written - START_LEAD_SECONDS <= started <= record.written + CLOCK_SLACK_SECONDS
+    if started is None:
+        return Identity.UNKNOWN if process_tree.runs_as_ours(record.pid) else Identity.OTHER
+    within = record.written - START_LEAD_SECONDS <= started <= record.written + CLOCK_SLACK_SECONDS
+    return Identity.RECORDED if within else Identity.OTHER
+
+
+def undecidable(records: List[StartRecord]) -> Refusal:
+    named = ", ".join("{} (pid {})".format(record.name, record.pid) for record in records)
+    return Refusal(
+        "cannot tell whether {} is the start command this run started, because its parent or start time could not be read; "
+        "the worktrees are kept: stop that process yourself, then run release again".format(named)
+    )
 
 
 def start_records(folder: str) -> List[StartRecord]:
@@ -230,11 +252,12 @@ def start_records(folder: str) -> List[StartRecord]:
 def stop_started_processes(folder: str) -> List[str]:
     running = [record for record in start_records(folder) if not has_ended(record)]
     lineage = process_tree.lineage() if running else None
-    return [
-        record.name
-        for record in running
-        if is_the_recorded_process(record, lineage) and process_tree.stop_pid(record.pid, STOP_GRACE_SECONDS)
-    ]
+    judged = [(record, identity_of(record, lineage)) for record in running]
+    unknown = [record for record, identity in judged if identity is Identity.UNKNOWN]
+    if unknown:
+        raise undecidable(unknown)
+    recorded = [record for record, identity in judged if identity is Identity.RECORDED]
+    return [record.name for record in recorded if process_tree.stop_pid(record.pid, STOP_GRACE_SECONDS)]
 
 
 def release_worktrees(root: str, results: str) -> Dict[str, List[str]]:

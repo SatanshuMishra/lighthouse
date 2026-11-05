@@ -60,6 +60,13 @@ while True:
 """
 
 
+FAILING_PS = "#!/bin/sh\nexit 1\n"
+
+PS_WITHOUT_LSTART = """#!/bin/sh
+case "$*" in *lstart*) echo 'ps: bad -o argument' >&2; exit 1;; esac
+exec /bin/ps "$@"
+"""
+
 def has_ended(pid):
     deadline = time.monotonic() + 3
     while time.monotonic() < deadline:
@@ -153,6 +160,17 @@ def condition_within(found, seconds, what):
         time.sleep(0.1)
         value = found()
     return value
+
+
+def stub_folder(test, scripts):
+    folder = os.path.join(scratch.make_home(test), "stubs")
+    os.makedirs(folder)
+    for name, script in scripts.items():
+        path = os.path.join(folder, name)
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(script)
+        os.chmod(path, 0o755)
+    return folder
 
 
 def results_folder(test):
@@ -990,6 +1008,35 @@ class ReleaseTest(unittest.TestCase):
         self.assertEqual(json.loads(stdout)["stopped"], ["feature-start.pid"])
         condition_within(lambda: not process_tree.runs_as_ours(pid), 30, "the end of the started process")
         self.assertIsNotNone(shell.wait(timeout=30))
+
+    def test_release_never_silently_leaves_a_started_process_when_ps_fails(self):
+        self.assert_release_stops_or_names_the_started_process(FAILING_PS)
+
+    def test_release_never_silently_leaves_a_started_process_when_ps_lists_no_start_time(self):
+        self.assert_release_stops_or_names_the_started_process(PS_WITHOUT_LSTART)
+
+    def assert_release_stops_or_names_the_started_process(self, ps_script):
+        work = project_with(self, {}, scratch.sample_profile())
+        results = results_folder(self)
+        code, _, stderr = lighthouse(self, "worktrees", work, results)
+        self.assertEqual(code, 0, stderr)
+        shell, pid, exit_file = started_server(self, os.path.realpath(results), "feature")
+        stubs = stub_folder(self, {"ps": ps_script})
+
+        code, stdout, stderr = scratch.run_lighthouse(
+            ["release", "--repo", work, "--results", results], scratch.environment(scratch.make_home(self), stubs)
+        )
+
+        if process_tree.reads_proc():
+            self.assertEqual(code, 0, stderr)
+            self.assertEqual(json.loads(stdout)["stopped"], ["feature-start.pid"])
+            condition_within(lambda: not process_tree.runs_as_ours(pid), 30, "the end of the started process")
+        else:
+            self.assertEqual(code, 2, stdout + stderr)
+            self.assertIn("feature-start.pid", json.loads(stdout)["error"])
+            self.assertIn(str(pid), json.loads(stdout)["error"])
+            self.assertTrue(os.path.isdir(os.path.join(results, "feature")))
+            self.assertTrue(process_tree.runs_as_ours(pid))
 
 
 if __name__ == "__main__":

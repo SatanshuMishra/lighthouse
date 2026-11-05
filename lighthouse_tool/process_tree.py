@@ -1,3 +1,4 @@
+import calendar
 import os
 import signal
 import subprocess
@@ -14,6 +15,11 @@ SIGNAL_EXIT_BASE = 128
 LISTING = ["ps", "-A", "-o", "pid=,ppid="]
 START_LISTING = ["ps", "-o", "lstart=", "-p"]
 START_FORMAT = "%a %b %d %H:%M:%S %Y"
+PROC_ROOT = "/proc"
+PROC_PARENT_FIELD = 4
+PROC_START_FIELD = 22
+PROC_FIRST_FIELD_AFTER_NAME = 3
+BOOT_LINE = "btime"
 LISTING_SECONDS = 30.0
 UNREAPED_POLL_SECONDS = 0.05
 
@@ -30,7 +36,37 @@ class StopBegun(Exception):
     pass
 
 
-def parents() -> Dict[int, int]:
+def reads_proc(root: str = PROC_ROOT) -> bool:
+    return os.path.isfile(os.path.join(root, "self", "stat")) and os.path.isfile(os.path.join(root, "stat"))
+
+
+def proc_fields(root: str, pid: int) -> Optional[List[str]]:
+    try:
+        with open(os.path.join(root, str(pid), "stat"), encoding="utf-8", errors="replace") as handle:
+            text = handle.read()
+    except OSError:
+        return None
+    name_end = text.rfind(")")
+    return text[name_end + 1 :].split() if name_end >= 0 else None
+
+
+def proc_field(fields: Optional[List[str]], number: int) -> Optional[int]:
+    index = number - PROC_FIRST_FIELD_AFTER_NAME
+    if fields is None or len(fields) <= index or not fields[index].isdigit():
+        return None
+    return int(fields[index])
+
+
+def proc_parents(root: str) -> Dict[int, int]:
+    try:
+        listed = sorted(int(name) for name in os.listdir(root) if name.isdigit())
+    except OSError:
+        return {}
+    found = {pid: proc_field(proc_fields(root, pid), PROC_PARENT_FIELD) for pid in listed}
+    return {pid: parent for pid, parent in found.items() if parent is not None}
+
+
+def ps_parents() -> Dict[int, int]:
     try:
         listed = subprocess.run(
             LISTING,
@@ -38,12 +74,19 @@ def parents() -> Dict[int, int]:
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
+            timeout=LISTING_SECONDS,
             check=False,
         )
     except (OSError, subprocess.SubprocessError):
         return {}
+    if listed.returncode != 0:
+        return {}
     rows = [line.split() for line in listed.stdout.decode("utf-8", errors="replace").splitlines()]
     return {int(row[0]): int(row[1]) for row in rows if len(row) == 2 and row[0].isdigit() and row[1].isdigit()}
+
+
+def parents() -> Dict[int, int]:
+    return proc_parents(PROC_ROOT) if reads_proc() else ps_parents()
 
 
 def lineage() -> Optional[Set[int]]:
@@ -57,11 +100,29 @@ def lineage() -> Optional[Set[int]]:
     return set(found)
 
 
-def started_at(pid: int) -> Optional[float]:
+def boot_seconds(root: str) -> Optional[int]:
+    try:
+        with open(os.path.join(root, "stat"), encoding="utf-8", errors="replace") as handle:
+            rows = [line.split() for line in handle]
+    except OSError:
+        return None
+    found = [row[1] for row in rows if len(row) == 2 and row[0] == BOOT_LINE and row[1].isdigit()]
+    return int(found[0]) if found else None
+
+
+def proc_started_at(root: str, pid: int, ticks_per_second: int) -> Optional[float]:
+    ticks = proc_field(proc_fields(root, pid), PROC_START_FIELD)
+    booted = boot_seconds(root)
+    if ticks is None or booted is None or ticks_per_second <= 0:
+        return None
+    return booted + ticks / ticks_per_second
+
+
+def ps_started_at(pid: int) -> Optional[float]:
     try:
         listed = subprocess.run(
             [*START_LISTING, str(pid)],
-            env={**noninteractive.environment(os.environ), "LC_ALL": "C"},
+            env={**noninteractive.environment(os.environ), "LC_ALL": "C", "TZ": "UTC0"},
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
@@ -74,9 +135,15 @@ def started_at(pid: int) -> Optional[float]:
     if listed.returncode != 0 or not text:
         return None
     try:
-        return time.mktime(time.strptime(text, START_FORMAT))
+        return float(calendar.timegm(time.strptime(text, START_FORMAT)))
     except (ValueError, OverflowError):
         return None
+
+
+def started_at(pid: int) -> Optional[float]:
+    if reads_proc():
+        return proc_started_at(PROC_ROOT, pid, os.sysconf("SC_CLK_TCK"))
+    return ps_started_at(pid)
 
 
 def send(pid: int, number: int) -> None:

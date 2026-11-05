@@ -1,11 +1,14 @@
 import os
 import shlex
+import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 import unittest
 
+from lighthouse_tool import process_tree
 from tests import scratch
 
 POLL_SECONDS = 0.05
@@ -437,6 +440,40 @@ class InheritedSignalMaskTest(unittest.TestCase):
         for label, run in (("serial", self_terminating), ("parallel", in_a_worker)):
             with self.subTest(path=label):
                 self.assertEqual(run(), -signal.SIGTERM)
+
+
+def proc_stat(pid, name, parent, start_ticks):
+    after_name = ["S", str(parent)] + ["0"] * 17 + [str(start_ticks), "0"]
+    return "{} ({}) {}\n".format(pid, name, " ".join(after_name))
+
+
+def fake_proc(test, processes, boot):
+    root = tempfile.mkdtemp(prefix="lh-proc-")
+    test.addCleanup(shutil.rmtree, root, True)
+    for pid, (name, parent, start_ticks) in {"self": processes[min(processes)], **processes}.items():
+        os.makedirs(os.path.join(root, str(pid)))
+        with open(os.path.join(root, str(pid), "stat"), "w", encoding="utf-8") as handle:
+            handle.write(proc_stat(pid, name, parent, start_ticks))
+    with open(os.path.join(root, "stat"), "w", encoding="utf-8") as handle:
+        handle.write("cpu  1 2 3 4\nbtime {}\nprocesses 9\n".format(boot))
+    return root
+
+
+class ProcReadingTest(unittest.TestCase):
+    def test_parents_and_start_times_come_from_proc_without_ps(self):
+        root = fake_proc(self, {41: ("init", 1, 5), 42: ("odd) (name 7 8", 41, 250)}, 1_700_000_000)
+
+        self.assertTrue(process_tree.reads_proc(root))
+        self.assertEqual(process_tree.proc_parents(root), {41: 1, 42: 41})
+        self.assertEqual(process_tree.proc_started_at(root, 42, 100), 1_700_000_002.5)
+
+    def test_a_vanished_process_has_no_start_time(self):
+        root = fake_proc(self, {41: ("init", 1, 5)}, 1_700_000_000)
+
+        self.assertIsNone(process_tree.proc_started_at(root, 99, 100))
+
+    def test_a_folder_without_proc_files_is_not_read_as_proc(self):
+        self.assertFalse(process_tree.reads_proc(tempfile.mkdtemp(prefix="lh-noproc-")))
 
 
 if __name__ == "__main__":
