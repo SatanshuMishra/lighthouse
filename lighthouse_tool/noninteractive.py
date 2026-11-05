@@ -1,3 +1,5 @@
+import os
+import shlex
 from typing import Dict, Mapping, Tuple
 
 FIXED_VALUES: Tuple[Tuple[str, str], ...] = (
@@ -8,7 +10,7 @@ FIXED_VALUES: Tuple[Tuple[str, str], ...] = (
     ("PAGER", "cat"),
 )
 SSH_VARIABLE = "GIT_SSH_COMMAND"
-DEFAULT_SSH = "ssh"
+DEFAULT_SSH = shlex.quote(os.path.join(os.path.dirname(os.path.realpath(__file__)), "owner-ssh"))
 SSH_OPTIONS = "-o BatchMode=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=4"
 GIT_CONFIG_COUNT = "GIT_CONFIG_COUNT"
 GIT_CONFIG_KEY = "GIT_CONFIG_KEY_{}"

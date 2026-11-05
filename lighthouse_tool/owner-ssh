@@ -1,0 +1,6 @@
+#!/bin/sh
+configured=$(git config --get core.sshCommand 2>/dev/null)
+if [ -n "$configured" ]; then
+  exec sh -c "$configured \"\$@\"" owner-ssh "$@"
+fi
+exec "${GIT_SSH:-ssh}" "$@"
