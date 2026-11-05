@@ -1,0 +1,351 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "harness-redesign/h15-pr-fields.schema.json",
+  "title": "H15 pull-request fields",
+  "description": "The JSON object pull-request render --fields reads (pull-request 0.3.0 and later), written once per pull request by its caller.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "title",
+    "problem",
+    "change",
+    "impact",
+    "testing"
+  ],
+  "properties": {
+    "title": {
+      "$ref": "h16-pr-render.schema.json#/properties/title"
+    },
+    "problem": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/sentence"
+      },
+      "maxItems": 4,
+      "uniqueItems": true,
+      "minItems": 1
+    },
+    "change": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/sentence"
+      },
+      "maxItems": 12,
+      "uniqueItems": true,
+      "minItems": 1
+    },
+    "approach": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/sentence"
+      },
+      "maxItems": 3,
+      "uniqueItems": true
+    },
+    "impact": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/sentence"
+      },
+      "maxItems": 4,
+      "uniqueItems": true,
+      "minItems": 1,
+      "if": {
+        "contains": {
+          "const": "No user-visible change."
+        }
+      },
+      "then": {
+        "maxItems": 1
+      }
+    },
+    "tradeoffs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/sentence"
+      },
+      "maxItems": 8,
+      "uniqueItems": true
+    },
+    "testing": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 12,
+      "items": {
+        "$ref": "#/$defs/row"
+      }
+    },
+    "links": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/link"
+      },
+      "maxItems": 8,
+      "uniqueItems": true
+    },
+    "supersedes": {
+      "type": "string",
+      "maxLength": 500,
+      "pattern": "^https?://github\\.com/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+/pull/[0-9]+(?:[/?#][^\\n\\r\\u2028\\u2029]*)?$"
+    },
+    "receipts": {
+      "$ref": "#/$defs/receipts"
+    }
+  },
+  "$defs": {
+    "line": {
+      "description": "One line of at most 500 characters with no control character and no surrounding whitespace, as render would print it.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500,
+      "pattern": "^[^\\s\\x00-\\x1F\\x7F](?:[^\\x00-\\x1F\\x7F]*[^\\s\\x00-\\x1F\\x7F])?$"
+    },
+    "inert": {
+      "description": "A line holding nothing GitHub would render as markup or rewrite (pr_format.inert_value).",
+      "allOf": [
+        {
+          "$ref": "#/$defs/line"
+        },
+        {
+          "not": {
+            "anyOf": [
+              {
+                "pattern": "^@"
+              },
+              {
+                "pattern": "[\\u0080-\\u009F\\u00AD\\u034F\\u061C\\u115F\\u1160\\u180E\\u200B-\\u200F\\u2028-\\u202F\\u2060-\\u206F\\u3164\\uFE00-\\uFE0F\\uFEFF\\uFFA0\\uFFF9-\\uFFFB]"
+              },
+              {
+                "pattern": "[\\u0334-\\u0338\\u1CD4\\u1CE2-\\u1CE8\\u20D2\\u20D3\\u20D8-\\u20DA\\u20E5\\u20E6\\u20EA\\u20EB\\u2800\\u00A0\\u1680\\u2000-\\u200A\\u202F\\u205F\\u3000]"
+              },
+              {
+                "pattern": "<[!?/A-Za-z]"
+              },
+              {
+                "pattern": "&(?:#[0-9]+|#[xX][0-9A-Fa-f]+|[A-Za-z][A-Za-z0-9]*);"
+              },
+              {
+                "pattern": "\\\\|\\]\\(|!\\[|\\]:|\\$"
+              },
+              {
+                "pattern": "://|[Ww][Ww][Ww]\\.|[Gg][Ii][Tt][Hh][Uu][Bb]\\.[Cc][Oo][Mm]/"
+              },
+              {
+                "pattern": "~|``"
+              },
+              {
+                "pattern": "^[`~#>|]"
+              },
+              {
+                "pattern": "^[=-]+$"
+              },
+              {
+                "pattern": "^(?:[Vv][Ee][Rr][Ii][Ff][Ii][Ee][Dd]|[Nn][Oo][Tt] [Vv][Ee][Rr][Ii][Ff][Ii][Ee][Dd]|[Dd][Oo][Oo][Rr]|[Bb][Ll][Aa][Ss][Tt] [Rr][Aa][Dd][Ii][Uu][Ss]):"
+              },
+              {
+                "pattern": "^Supersedes "
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "unreceipted": {
+      "description": "Holds nothing the receipts enforcer reads as its own grammar (receipts_block.trigger_problem, every part).",
+      "type": "string",
+      "not": {
+        "anyOf": [
+          {
+            "pattern": "[Cc][Ll][Oo][Ss][Ee][Ss]\\s+(?:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#[0-9]+"
+          },
+          {
+            "pattern": "[Ww][Oo][Rr][Kk][ _-]?[Tt][Yy][Pp][Ee]\\s*[:=]"
+          },
+          {
+            "pattern": "[Rr][Ee][Vv][Ee][Rr][Tt][Ee][Dd]|[Ss][Pp][Ee][Cc][Uu][Ll][Aa][Tt][Ii][Vv][Ee]|[Uu][Nn][Vv][Ee][Rr][Ii][Ff][Ii][Ee][Dd][ -]?[Rr][Ee][Aa][Ss][Oo][Nn][Ee][Dd]"
+          },
+          {
+            "pattern": "[Tt][Ee][Ss][Tt]-[Rr][Ee][Mm][Oo][Vv][Aa][Ll]\\s*:|[Rr][Ee][Cc][Ee][Ii][Pp][Tt]\\s*:|[Rr][Ee][Cc][Ee][Ii][Pp][Tt]-[Cc][Mm][Dd]\\s*:|[Rr][Ee][Cc][Ee][Ii][Pp][Tt]-[Ll][Oo][Cc][Kk]\\s*:"
+          }
+        ]
+      }
+    },
+    "sentence": {
+      "description": "An inert line that begins with a capital and ends with . ? or !.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/inert"
+        },
+        {
+          "$ref": "#/$defs/unreceipted"
+        },
+        {
+          "pattern": "^[^a-z0-9\\s].*[.?!]$"
+        }
+      ]
+    },
+    "cell": {
+      "description": "A testing-table cell: an inert line with no | and nothing the receipts enforcer reads.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/inert"
+        },
+        {
+          "$ref": "#/$defs/unreceipted"
+        },
+        {
+          "pattern": "^[^|]+$"
+        }
+      ]
+    },
+    "row": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "check",
+        "result"
+      ],
+      "properties": {
+        "check": {
+          "$ref": "#/$defs/cell"
+        },
+        "result": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/cell"
+            }
+          ],
+          "if": {
+            "pattern": "^Not run"
+          },
+          "then": {
+            "pattern": "^Not run: \\S"
+          }
+        }
+      }
+    },
+    "link": {
+      "description": "An issue reference or a non-GitHub http(s) URL with no query, fragment or percent escape.",
+      "type": "string",
+      "maxLength": 500,
+      "anyOf": [
+        {
+          "pattern": "^(?:(?:[Cc][Ll][Oo][Ss][Ee][Ss]|[Ff][Ii][Xx][Ee][Ss]|[Rr][Ee][Ss][Oo][Ll][Vv][Ee][Ss]|[Rr][Ee][Ff][Ss]) )?(?:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#[0-9]+$"
+        },
+        {
+          "allOf": [
+            {
+              "pattern": "^https?://[A-Za-z0-9.-]+(?:/[A-Za-z0-9._-]+)*/?$"
+            },
+            {
+              "not": {
+                "pattern": "^https?://(?:[A-Za-z0-9.-]*\\.)?(?:[Gg][Ii][Tt][Hh][Uu][Bb]\\.[Cc][Oo][Mm]|[Gg][Ii][Tt][Hh][Uu][Bb][Uu][Ss][Ee][Rr][Cc][Oo][Nn][Tt][Ee][Nn][Tt]\\.[Cc][Oo][Mm])(?:/|$)"
+              }
+            }
+          ]
+        }
+      ],
+      "not": {
+        "anyOf": [
+          {
+            "pattern": "[Ww][Oo][Rr][Kk][ _-]?[Tt][Yy][Pp][Ee]\\s*[:=]"
+          },
+          {
+            "pattern": "[Rr][Ee][Vv][Ee][Rr][Tt][Ee][Dd]|[Ss][Pp][Ee][Cc][Uu][Ll][Aa][Tt][Ii][Vv][Ee]|[Uu][Nn][Vv][Ee][Rr][Ii][Ff][Ii][Ee][Dd][ -]?[Rr][Ee][Aa][Ss][Oo][Nn][Ee][Dd]"
+          }
+        ]
+      }
+    },
+    "receipt_value": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500,
+      "allOf": [
+        {
+          "pattern": "^[^\\s\\x00-\\x1F\\x7F](?:[^\\x00-\\x1F\\x7F]*[^\\s\\x00-\\x1F\\x7F])?$"
+        },
+        {
+          "not": {
+            "anyOf": [
+              {
+                "pattern": "`"
+              },
+              {
+                "pattern": "[\\u0080-\\u009F\\u00AD\\u034F\\u061C\\u115F\\u1160\\u180E\\u200B-\\u200F\\u2028-\\u202F\\u2060-\\u206F\\u3164\\uFE00-\\uFE0F\\uFEFF\\uFFA0\\uFFF9-\\uFFFB]"
+              },
+              {
+                "pattern": "<[!?/A-Za-z]"
+              },
+              {
+                "pattern": "&(?:#[0-9]+|#[xX][0-9A-Fa-f]+|[A-Za-z][A-Za-z0-9]*);"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "receipts": {
+      "description": "Lines render writes into the folded Receipts block; each list holds 0 to 8 values.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "work_type": {
+          "type": "string",
+          "pattern": "^[a-z]+$"
+        },
+        "test_removal": {
+          "$ref": "#/$defs/receipt_list"
+        },
+        "receipt": {
+          "$ref": "#/$defs/receipt_list",
+          "items": {
+            "pattern": "^\\S+$"
+          }
+        },
+        "receipt_cmd": {
+          "$ref": "#/$defs/receipt_list"
+        },
+        "receipt_lock": {
+          "$ref": "#/$defs/receipt_list",
+          "items": {
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "downgrade": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/receipt_value"
+            }
+          ],
+          "pattern": "^(?:unverified-reasoned|speculative|reverted): .*\\S.*$"
+        }
+      }
+    },
+    "receipt_list": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "allOf": [
+          {
+            "$ref": "#/$defs/receipt_value"
+          },
+          {
+            "not": {
+              "anyOf": [
+                {
+                  "pattern": "[Cc][Ll][Oo][Ss][Ee][Ss]\\s+(?:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#[0-9]+"
+                },
+                {
+                  "pattern": "[Ww][Oo][Rr][Kk][ _-]?[Tt][Yy][Pp][Ee]\\s*[:=]"
+                },
+                {
+                  "pattern": "[Rr][Ee][Vv][Ee][Rr][Tt][Ee][Dd]|[Ss][Pp][Ee][Cc][Uu][Ll][Aa][Tt][Ii][Vv][Ee]|[Uu][Nn][Vv][Ee][Rr][Ii][Ff][Ii][Ee][Dd][ -]?[Rr][Ee][Aa][Ss][Oo][Nn][Ee][Dd]"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  }
+}

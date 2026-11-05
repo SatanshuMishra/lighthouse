@@ -1,0 +1,174 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "harness-redesign/h13-lighthouse-verdict-line.schema.json",
+  "title": "H13 lighthouse verdict line",
+  "description": "The last stdout line of lighthouse launch and lighthouse verdict: a verdict line, a blocked line, or a refusal printed with exit 2.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/verdict"
+    },
+    {
+      "$ref": "#/$defs/blocked"
+    },
+    {
+      "$ref": "#/$defs/refusal"
+    }
+  ],
+  "$defs": {
+    "verdict": {
+      "description": "verdict.verdict_line, written to verdict.json with pr null; launch.printed_verdict prints it with pr taken from the child's line.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "verdict",
+        "failures",
+        "unproven",
+        "flaky",
+        "tokens",
+        "minutes",
+        "dollars",
+        "pr"
+      ],
+      "properties": {
+        "verdict": {
+          "enum": [
+            "green",
+            "failures",
+            "unproven",
+            "blocked"
+          ]
+        },
+        "failures": {
+          "$ref": "#/$defs/names"
+        },
+        "unproven": {
+          "$ref": "#/$defs/names"
+        },
+        "flaky": {
+          "$ref": "#/$defs/names"
+        },
+        "tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "minutes": {
+          "type": "number",
+          "minimum": 0
+        },
+        "dollars": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "pr": {
+          "$ref": "#/$defs/pr"
+        }
+      },
+      "if": {
+        "properties": {
+          "verdict": {
+            "enum": [
+              "green",
+              "unproven"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "failures": {
+            "type": "array",
+            "maxItems": 0
+          }
+        }
+      }
+    },
+    "blocked": {
+      "description": "verdict.blocked_line, printed by lighthouse verdict --blocked and by launch when the child stops early: no dollars, adds reason.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "verdict",
+        "failures",
+        "unproven",
+        "flaky",
+        "tokens",
+        "minutes",
+        "pr",
+        "reason"
+      ],
+      "properties": {
+        "verdict": {
+          "const": "blocked"
+        },
+        "failures": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "unproven": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "flaky": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "tokens": {
+          "const": 0
+        },
+        "minutes": {
+          "const": 0
+        },
+        "pr": {
+          "type": "null"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^\\S(?:.*\\S)?$"
+        }
+      }
+    },
+    "refusal": {
+      "description": "A refusal with exit 2: launch.refused prints error alone, verdict adds key for findings that break their schema.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "error"
+      ],
+      "properties": {
+        "error": {
+          "type": "string",
+          "minLength": 1
+        },
+        "key": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "names": {
+      "description": "Each item is one name: 'suite: <test id>', a check id such as C1.2, a path name from findings.json, 'neighbour <surface>', 'suite: <problem>' or a skipped retest path name.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "^[^\\n\\r]+$"
+      }
+    },
+    "pr": {
+      "description": "The pull request's URL, or null when none was opened.",
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "string",
+          "pattern": "^https://[^\\s/]+/[^\\s/]+/[^\\s/]+/pull/[1-9][0-9]*$"
+        }
+      ]
+    }
+  }
+}

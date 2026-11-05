@@ -17,6 +17,7 @@ COMMANDS = {
     "suite": "suite",
     "release": "suite",
     "verdict": "verdict",
+    "findings": "findings",
     "retest": "retest",
     "pr": "pr",
     "spend": "spend",

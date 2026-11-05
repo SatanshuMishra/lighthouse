@@ -14,7 +14,7 @@ CHECK_SURFACE = {"family": "cli", "target": "bin/lighthouse verdict"}
 DIRECT_CHECK = {"kind": "direct", "why": "the command prints the written file"}
 PATH_NAME = "export writes the file"
 PATH_EVIDENCE = "evidence/export.txt"
-LAUNCH_PR = "https://example.invalid/pr/1"
+LAUNCH_PR = "https://github.com/o/r/pull/1"
 
 
 def passing_suite(failures=()):
@@ -64,6 +64,14 @@ def k3_result(status, evidence, commit=FEATURE_COMMIT, check_id="C1.1"):
         "seconds": 0.25,
         "runner": "lighthouse execute",
     }
+
+
+def record_of(*criteria):
+    return scratch.h11_record(list(criteria))
+
+
+def criterion(number, lines=None):
+    return scratch.h11_criterion(number, lines)
 
 
 def exact_k1_line(check_id="C1.1"):
@@ -156,9 +164,10 @@ results = words[words.index("--results") + 1]
 record = os.path.join(results, "record.json")
 if os.path.exists(record):
     shutil.copyfile(record, os.path.join(folder, "record-seen-by-child.json"))
-verdict_file = os.path.join(folder, "verdict-to-write.json")
-if os.path.exists(verdict_file):
-    shutil.copyfile(verdict_file, os.path.join(results, "verdict.json"))
+for name in ("verdict", "findings"):
+    to_write = os.path.join(folder, name + "-to-write.json")
+    if os.path.exists(to_write):
+        shutil.copyfile(to_write, os.path.join(results, name + ".json"))
 with open(os.path.join(folder, "claude-output.txt"), encoding="utf-8") as output:
     sys.stdout.write(output.read())
 sys.exit(0)
@@ -185,11 +194,12 @@ def write_stub(folder, name, text):
     os.chmod(path, 0o755)
 
 
-def claude_reply(result):
+def claude_reply(result, line):
     return json.dumps(
         {
             "type": "result",
             "result": result,
+            "structured_output": {"verdict_line": json.loads(line)},
             "session_id": "child-session-k3",
             "duration_ms": 1000,
             "modelUsage": {},
@@ -197,7 +207,7 @@ def claude_reply(result):
     )
 
 
-def stub_folder(test, reply, verdict_to_write=None):
+def stub_folder(test, reply, verdict_to_write=None, findings_to_write=None):
     folder = scratch.temporary_folder(test, "lh-k3-stubs-")
     write_stub(folder, "claude", CLAUDE_STUB)
     write_stub(folder, "caffeinate", CAFFEINATE_STUB)
@@ -206,6 +216,8 @@ def stub_folder(test, reply, verdict_to_write=None):
         handle.write(reply)
     if verdict_to_write is not None:
         write_json(folder, "verdict-to-write.json", verdict_to_write)
+    if findings_to_write is not None:
+        write_json(folder, "findings-to-write.json", findings_to_write)
     return folder
 
 
@@ -351,6 +363,12 @@ class K3VerdictTest(unittest.TestCase):
         line = run_verdict(self, results)
         self.assertNotEqual(line["verdict"], "green", line)
         self.assertIn("C1.1", line["unproven"], line)
+        with open(os.path.join(results, "report.md"), encoding="utf-8") as handle:
+            report = handle.read()
+        self.assertIn(
+            'ignored: checks.jsonl line 1: fails k3-check-result.schema.json: # required: lacks required property "runner"',
+            report,
+        )
 
     def test_result_at_another_commit_is_ignored(self):
         results = results_folder(self)
@@ -374,12 +392,74 @@ class K3VerdictTest(unittest.TestCase):
         write_evidence(results, PATH_EVIDENCE, "the exported rows\n")
         k1_line = exact_k1_line()
         contract_check.assert_valid(self, k1_line, contract_check.K1_SCHEMA)
-        write_json(results, "record.json", {"criteria": [{"id": "1", "acceptance": [k1_line]}]})
+        write_json(results, "record.json", record_of(criterion("1.1", [k1_line])))
         self.assertFalse(os.path.exists(os.path.join(results, "plan.json")))
         self.assertFalse(os.path.exists(os.path.join(results, "checks.jsonl")))
         line = run_verdict(self, results)
         self.assertNotEqual(line["verdict"], "green", line)
         self.assertIn("C1.1", line["unproven"], line)
+
+    def assert_record_refused(self, record, *expected):
+        results = results_folder(self, paths=[new_path(status="passed")])
+        write_evidence(results, PATH_EVIDENCE, "the exported rows\n")
+        write_json(results, "record.json", record)
+        completed = subprocess.run(
+            [sys.executable, scratch.LIGHTHOUSE, "verdict", "--results", results],
+            env=scratch.environment(scratch.make_home(self)),
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=COMMAND_TIMEOUT_SECONDS,
+        )
+        self.assertEqual(completed.returncode, 2, completed.stdout + completed.stderr)
+        error = json.loads(completed.stdout.strip().splitlines()[-1])["error"]
+        self.assertIn(os.path.join(os.path.realpath(results), "record.json"), error)
+        for text in expected:
+            self.assertIn(text, error)
+        self.assertFalse(os.path.exists(os.path.join(results, "verdict.json")))
+
+    def test_verdict_refuses_a_record_with_a_criterion_that_is_not_an_object(self):
+        self.assert_record_refused(
+            record_of("loose", criterion("1.1", [exact_k1_line()])),
+            "h11-interphase-record.schema.json",
+            '#/criteria/0 type: "loose" is not of type object',
+        )
+
+    def test_verdict_refuses_a_record_failing_h11_only(self):
+        seamless = {key: value for key, value in criterion("1.1", [exact_k1_line()]).items() if key != "seam"}
+        self.assert_record_refused(
+            record_of(seamless),
+            "interphase",
+            "h11-interphase-record.schema.json",
+            '#/criteria/0 required: lacks required property "seam"',
+        )
+
+    def test_verdict_reads_no_line_from_a_criterion_without_acceptance(self):
+        results = results_folder(self, paths=[new_path(status="passed")])
+        write_evidence(results, PATH_EVIDENCE, "the exported rows\n")
+        write_json(results, "record.json", record_of(criterion("1.1"), criterion("1.2")))
+        line = run_verdict(self, results)
+        self.assertEqual(line["verdict"], "green", line)
+        self.assertEqual(line["unproven"], [], line)
+
+    def test_verdict_refuses_a_record_with_a_repeated_acceptance_id(self):
+        self.assert_record_refused(
+            record_of(criterion("1.1", [exact_k1_line()]), criterion("1.2", [exact_k1_line()])),
+            "C1.1",
+            "repeats the id",
+            "#/criteria/1/acceptance/0",
+        )
+
+    def test_verdict_refuses_a_record_line_that_fails_k1(self):
+        line = {**exact_k1_line(), "note": "x"}
+        self.assertNotEqual(contract_check.errors(line, contract_check.K1_SCHEMA), [])
+        self.assert_record_refused(
+            record_of(criterion("1.1", [line])),
+            "interphase",
+            "h11-interphase-record.schema.json",
+            '#/criteria/0/acceptance/0',
+            "property \"note\" is not allowed",
+        )
 
     def test_launch_prints_verdict_json_not_the_childs_line(self):
         written = {
@@ -404,7 +484,16 @@ class K3VerdictTest(unittest.TestCase):
                 "pr": LAUNCH_PR,
             }
         )
-        stubs = stub_folder(self, claude_reply("Every check passed.\n" + childs_line), verdict_to_write=written)
+        findings = {
+            "version": 1,
+            "suite": passing_suite(),
+            "build": {"result": "ok", "reason": None},
+            "paths": [new_path()],
+            "spend": {"tokens": 100, "minutes": 1, "dollars": None},
+        }
+        stubs = stub_folder(
+            self, claude_reply("Every check passed.", childs_line), verdict_to_write=written, findings_to_write=findings
+        )
         completed, results = run_launch(self, stubs)
         self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
         printed = json.loads(completed.stdout.strip().splitlines()[-1])
@@ -423,7 +512,7 @@ class K3VerdictTest(unittest.TestCase):
         contract_check.assert_valid(self, k1_line, contract_check.K1_SCHEMA)
         record_path = os.path.join(spec_folder, "hr-x.record.json")
         with open(record_path, "w", encoding="utf-8") as handle:
-            handle.write(json.dumps({"criteria": [{"id": "1", "acceptance": [k1_line]}]}, indent=3) + "\n\n")
+            handle.write(json.dumps(record_of(criterion("1.1", [k1_line])), indent=3) + "\n\n")
         blocked_line = json.dumps(
             {
                 "verdict": "blocked",
@@ -436,7 +525,7 @@ class K3VerdictTest(unittest.TestCase):
                 "reason": "the profile is broken",
             }
         )
-        stubs = stub_folder(self, claude_reply(blocked_line))
+        stubs = stub_folder(self, claude_reply(blocked_line, blocked_line))
         completed, results = run_launch(self, stubs, ["--spec", spec])
         self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
         expected = read_bytes(record_path)

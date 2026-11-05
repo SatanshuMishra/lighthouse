@@ -117,6 +117,23 @@ class CredentialsTest(unittest.TestCase):
         self.assertEqual(code, 0, stderr)
         self.assertEqual(stdout.strip(), "filled=APP_USER,APP_PASSWORD")
 
+    def test_the_child_gets_closed_input_and_the_noninteractive_environment(self):
+        work, home, env = setting(self, profile_needing_user_and_password())
+        write_credentials(credentials_file(home, work), "APP_USER=tester\nAPP_PASSWORD={}\n".format(PLANTED), 0o600)
+        child = 'printf "read=[%s]\\n" "$(cat)"; echo "$GIT_TERMINAL_PROMPT|$GCM_INTERACTIVE|$GH_PROMPT_DISABLED|$GIT_PAGER|$PAGER|$APP_USER"'
+
+        completed = subprocess.run(
+            [sys.executable, scratch.LIGHTHOUSE, "with-credentials", "--repo", work, "--", "/bin/sh", "-c", child],
+            env=env,
+            input="typed\n",
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(completed.stdout.splitlines(), ["read=[]", "0|never|1|cat|cat|[redacted:APP_USER]"])
+
     def test_a_nested_call_keeps_the_names_the_outer_call_filled(self):
         outer, home, env = setting(self, profile_needing_user_and_password())
         inner, _ = scratch.make_repo(self)

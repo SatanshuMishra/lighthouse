@@ -4,9 +4,9 @@ import os
 import subprocess
 from typing import Any, Dict, List, Optional, Tuple
 
+from lighthouse_tool import noninteractive
 from lighthouse_tool.records import UnreadableLine, read_json_lines, write_atomically
 
-GIT_ENVIRONMENT_OVERRIDES = {"GIT_TERMINAL_PROMPT": "0"}
 ANSWERS_FILE = "answers.json"
 
 
@@ -48,7 +48,7 @@ def git(repo: str, args: List[str]) -> Tuple[int, str, str]:
         stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,
-        env={**os.environ, **GIT_ENVIRONMENT_OVERRIDES},
+        env=noninteractive.environment(os.environ),
     )
     return completed.returncode, completed.stdout, completed.stderr
 

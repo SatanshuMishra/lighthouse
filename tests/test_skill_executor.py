@@ -61,11 +61,13 @@ class SkillExecutorTest(unittest.TestCase):
             with self.subTest(prefix=prefix):
                 self.assertTrue(any(line.startswith(prefix) for line in lines), prefix)
 
-    def test_launch_waits_within_the_run_limit(self):
+    def test_launch_is_held_by_its_completion_notice(self):
         launching = section(scratch.skill_text("test"), "## Launch", "## Steps")
 
-        self.assertIn("--limits <results>/limits.json", launching)
-        self.assertRegex(launching, r"\bexpired\b")
+        self.assertIn("with run_in_background", launching)
+        self.assertIn("Wait for that command's completion notice", launching)
+        self.assertNotIn("limits.json", launching)
+        self.assertNotRegex(launching, r"\bexpired\b")
 
     def test_driver_measures_contrast_with_the_command(self):
         text = driver_text()

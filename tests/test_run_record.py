@@ -5,9 +5,10 @@ import re
 import unittest
 from unittest import mock
 
-from lighthouse_tool import run_record
+from lighthouse_tool import child_reply, run_record
 from tests import scratch
 from tests.test_launch import CAFFEINATE_STUB, GREEN_LINE, SYSTEMD_INHIBIT_STUB, claude_output, write_stub
+from tests.test_launch import FINDINGS as PASSING_FINDINGS
 from tests.test_spend import assistant, bash, tool_result
 
 RECORDING_CLAUDE_STUB = """#!{python}
@@ -22,12 +23,25 @@ import time
 folder = os.path.dirname(os.path.realpath(__file__))
 with open(os.path.join(folder, "plan.json"), encoding="utf-8") as handle:
     plan = json.load(handle)
-words = shlex.split(sys.argv[2])
-results = words[words.index("--results") + 1]
+results_note = os.path.join(folder, "results-folder.txt")
+resumed = "--resume" in sys.argv
+if resumed:
+    with open(results_note, encoding="utf-8") as handle:
+        results = handle.read()
+else:
+    words = shlex.split(sys.argv[2])
+    results = words[words.index("--results") + 1]
+    with open(results_note, "w", encoding="utf-8") as handle:
+        handle.write(results)
 work = os.path.realpath(os.getcwd())
 began = datetime.datetime.now(datetime.timezone.utc)
-with open(os.path.join(folder, "claude-calls.jsonl"), "a", encoding="utf-8") as calls:
+calls_path = os.path.join(folder, "claude-calls.jsonl")
+with open(calls_path, "a", encoding="utf-8") as calls:
     calls.write(json.dumps({{"argv": sys.argv[1:], "env": dict(os.environ)}}) + "\\n")
+with open(calls_path, encoding="utf-8") as calls:
+    index = len([line for line in calls.read().splitlines() if line.strip()]) - 1
+scripted = [plan, *plan.get("then", [])]
+reply = scripted[min(index, len(scripted) - 1)]
 
 
 def timed(text, cwd):
@@ -47,19 +61,19 @@ def append(path, lines, cwd):
         handle.write("".join(timed(line, cwd) + "\\n" for line in lines))
 
 
-for name, text in plan.get("files", {{}}).items():
+for name, text in sorted(reply.get("files", {{}}).items()):
     with open(os.path.join(results, name), "w", encoding="utf-8") as handle:
         handle.write(text)
-if plan.get("marks"):
+if not resumed and plan.get("marks"):
     append(os.path.join(results, "marks.jsonl"), plan["marks"], None)
-if plan.get("child"):
+if not resumed and plan.get("child"):
     project = re.sub(r"[^A-Za-z0-9]", "-", work)
     append(os.path.join(os.environ["HOME"], ".claude", "projects", project, "child.jsonl"), plan["child"], work)
-if plan.get("caller"):
+if not resumed and plan.get("caller"):
     append(plan["caller"]["path"], plan["caller"]["lines"], None)
 time.sleep(1.0)
-sys.stdout.write(plan["output"])
-sys.exit(plan.get("exit", 0))
+sys.stdout.write(reply["output"])
+sys.exit(reply.get("exit", 0))
 """
 
 ENVELOPE = ["v", "ts", "plugin", "plugin_version", "kind", "event", "run", "parent", "session", "repo"]
@@ -90,7 +104,16 @@ NEIGHBOUR_PATH = {
     "check": {"kind": "direct", "why": "it shares the export code"},
 }
 FAILURES_LINE = json.dumps(
-    {"verdict": "failures", "failures": ["exports a csv"], "unproven": [], "flaky": [], "tokens": 900, "minutes": 4, "pr": None}
+    {
+        "verdict": "failures",
+        "failures": ["exports a csv"],
+        "unproven": [],
+        "flaky": [],
+        "tokens": 900,
+        "minutes": 4,
+        "dollars": 1.5,
+        "pr": None,
+    }
 )
 BLOCKED_LINE = json.dumps(
     {
@@ -117,7 +140,7 @@ SUITE = {
 }
 FINDINGS = {
     "version": 1,
-    "suite": {"result": "passed", "reason": None, "failures": [], "pre_existing": [], "flaky": []},
+    "suite": {"result": "passed", "reason": None, "failures": [], "pre_existing": [], "flaky": [], "core": None, "feature": None},
     "build": {"result": "ok", "reason": None},
     "paths": [NEW_PATH, NEIGHBOUR_PATH],
     "spend": {"tokens": 900, "minutes": 4, "dollars": None},
@@ -206,8 +229,12 @@ def read_json(path):
         return json.load(handle)
 
 
-def verdict_written(line):
-    return {"verdict.json": line + "\n"}
+def verdict_written(line, findings=PASSING_FINDINGS):
+    return {"verdict.json": line + "\n", "findings.json": json.dumps(findings, indent=2) + "\n"}
+
+
+def replied(line=GREEN_LINE, **plan):
+    return {**plan, "files": {**plan.get("files", {}), **verdict_written(line)}, "output": claude_output(line)}
 
 
 class Launched:
@@ -256,9 +283,8 @@ def green_plan(home, session):
         "files": {
             "commits.json": json.dumps({"core": CORE_COMMIT, "feature": FEATURE_COMMIT}),
             "suite.json": json.dumps(SUITE),
-            "findings.json": json.dumps(FINDINGS),
             "retest.json": json.dumps({"retest": [], "carried_paths": [NEW_PATH]}),
-            **verdict_written(FAILURES_LINE),
+            **verdict_written(FAILURES_LINE, FINDINGS),
         },
         "caller": {
             "path": caller_path(home, session),
@@ -312,7 +338,7 @@ def undescribed(label, value, entry):
 
 class RunRecordTest(unittest.TestCase):
     def test_launch_writes_start_and_end(self):
-        ran = Launched(self, {"files": verdict_written(GREEN_LINE), "output": claude_output(GREEN_LINE)}, feature="feat/Unified Metrics")
+        ran = Launched(self, replied(), feature="feat/Unified Metrics")
         self.assertEqual(ran.code, 0, ran.stderr)
         names = ran.event_files()
         self.assertEqual(len(names), 1)
@@ -331,7 +357,7 @@ class RunRecordTest(unittest.TestCase):
     def test_parent_flag_wins(self):
         ran = Launched(
             self,
-            {"output": claude_output(GREEN_LINE)},
+            replied(),
             env={"PLUGIN_METRICS_PARENT": "pipeline/other.20261001T100000Z"},
             extra=["--parent", "pipeline/feat-a.20261001T100000Z"],
         )
@@ -344,7 +370,7 @@ class RunRecordTest(unittest.TestCase):
     def test_parent_and_session_from_environment(self):
         ran = Launched(
             self,
-            {"output": claude_output(GREEN_LINE)},
+            replied(),
             env={"PLUGIN_METRICS_PARENT": "pipeline/other.20261001T100000Z", "CLAUDE_CODE_SESSION_ID": "s-1"},
         )
         self.assertEqual(ran.code, 0, ran.stderr)
@@ -355,14 +381,14 @@ class RunRecordTest(unittest.TestCase):
             self.assertEqual(line["session"], "s-1")
 
     def test_long_feature_cut_to_120(self):
-        ran = Launched(self, {"output": claude_output(GREEN_LINE)}, feature="a" * 200)
+        ran = Launched(self, replied(), feature="a" * 200)
         self.assertEqual(ran.code, 0, ran.stderr)
         run = ran.events()[0]["run"]
         self.assertEqual(len(run), 120)
         self.assertRegex(run, "^a{103}" + STAMPED + "$")
 
     def test_catalogue_copied(self):
-        ran = Launched(self, {"output": claude_output(GREEN_LINE)})
+        ran = Launched(self, replied())
         self.assertEqual(ran.code, 0, ran.stderr)
         copied = read_json(os.path.join(ran.store, "plugin=lighthouse", "catalogue.json"))
         self.assertEqual(copied, read_json(os.path.join(scratch.ROOT, "lighthouse_tool", "catalogue.json")))
@@ -389,12 +415,18 @@ class RunRecordTest(unittest.TestCase):
         self.assertIs(summary["imported"], False)
 
     def test_missing_sources_are_null(self):
-        ran = Launched(self, {"files": verdict_written(GREEN_LINE), "output": claude_output(GREEN_LINE)})
-        self.assertEqual(ran.code, 0, ran.stderr)
-        summary = ran.summary()
+        green = Launched(self, replied())
+        self.assertEqual(green.code, 0, green.stderr)
+        summary = green.summary()
+        self.assertEqual(summary["verdict"], "green")
+        for key in ("core_commit", "feature_commit", "suite"):
+            self.assertIsNone(summary[key], key)
+        stopped = Launched(self, {"output": claude_output(BLOCKED_LINE)})
+        self.assertEqual(stopped.code, 0, stopped.stderr)
+        summary = stopped.summary()
+        self.assertEqual(summary["verdict"], "blocked")
         for key in ("core_commit", "feature_commit", "build", "suite", "paths"):
             self.assertIsNone(summary[key], key)
-        self.assertEqual(summary["verdict"], "green")
 
     def test_blocked_child_records_reason(self):
         ran = Launched(self, {"output": claude_output(BLOCKED_LINE)})
@@ -406,12 +438,19 @@ class RunRecordTest(unittest.TestCase):
     def test_child_without_verdict_records_launch_reason(self):
         ran = Launched(self, {"output": claude_output("I could not finish."), "exit": 1})
         self.assertEqual(ran.code, 0, ran.stderr)
+        second = ran.child_calls()[1]["argv"]
+        self.assertEqual(second[second.index("--resume") + 1], "child-session-1")
+        self.assertEqual(len(ran.child_calls()), 2)
+        no_structured_output = child_reply.Fault(
+            child_reply.REPLY, child_reply.reply_schema_label(), ("# required: the reply carries no structured_output",)
+        )
         summary = ran.summary()
         self.assertEqual(summary["verdict"], "blocked")
-        self.assertEqual(summary["reason"], "the child session exited 1 without writing verdict.json")
+        self.assertEqual(summary["reason"], child_reply.blocked_reason((no_structured_output,)))
+        self.assertEqual(summary["child_exit"], 1)
 
     def test_records_written_before_launch_json(self):
-        ran = Launched(self, {"output": claude_output(GREEN_LINE)})
+        ran = Launched(self, replied())
         self.assertEqual(ran.code, 0, ran.stderr)
         launched = os.stat(os.path.join(ran.results, "launch.json")).st_mtime_ns
         summary = os.path.join(store_folder(ran.store, "summary"), ran.summary_files()[0])
@@ -421,7 +460,7 @@ class RunRecordTest(unittest.TestCase):
 
     def test_truncated_marks_keep_the_run(self):
         cut = mark_entry("suite", "start", "2026-10-16T10:00:00Z") + "\n" + '{"step": "suite", "edge": "en'
-        ran = Launched(self, {"files": {"marks.jsonl": cut, **verdict_written(GREEN_LINE)}, "output": claude_output(GREEN_LINE)})
+        ran = Launched(self, replied(files={"marks.jsonl": cut}))
         self.assertEqual(ran.code, 0, ran.stderr)
         self.assertEqual(ran.stdout, GREEN_LINE + "\n")
         with open(os.path.join(ran.results, "launch.json"), encoding="utf-8") as handle:
@@ -445,7 +484,7 @@ class RunRecordTest(unittest.TestCase):
                     assistant("msg_caller_after", "@3600", {"output_tokens": 7000}),
                 ],
             },
-            "output": claude_output(GREEN_LINE),
+            **replied(),
         }
         ran = Launched(self, plan, home=home, env={"CLAUDE_CODE_SESSION_ID": "s-caller"})
         self.assertEqual(ran.code, 0, ran.stderr)
@@ -469,7 +508,7 @@ class RunRecordTest(unittest.TestCase):
         )
 
     def test_caller_transcript_missing_gives_null(self):
-        plan = {"child": [assistant("msg_child", "@0.1", {"output_tokens": 100})], "output": claude_output(GREEN_LINE)}
+        plan = {"child": [assistant("msg_child", "@0.1", {"output_tokens": 100})], **replied()}
         ran = Launched(self, plan, env={"CLAUDE_CODE_SESSION_ID": "s-missing"})
         self.assertEqual(ran.code, 0, ran.stderr)
         summary = ran.summary()
@@ -481,7 +520,7 @@ class RunRecordTest(unittest.TestCase):
     def test_unpriced_model_gives_null_usd(self):
         plan = {
             "child": [assistant("msg_unknown", "@0.1", {"output_tokens": 50}, model="claude-unknown-9")],
-            "output": claude_output(GREEN_LINE),
+            **replied(),
         }
         ran = Launched(self, plan)
         self.assertEqual(ran.code, 0, ran.stderr)
@@ -497,7 +536,7 @@ class RunRecordTest(unittest.TestCase):
         plan = {
             "child": [same],
             "caller": {"path": caller_path(home, "s-once"), "lines": [same]},
-            "output": claude_output(GREEN_LINE),
+            **replied(),
         }
         ran = Launched(self, plan, home=home, env={"CLAUDE_CODE_SESSION_ID": "s-once"})
         self.assertEqual(ran.code, 0, ran.stderr)
@@ -507,7 +546,7 @@ class RunRecordTest(unittest.TestCase):
 
     def test_steps_and_drives_from_marks(self):
         results = os.path.join(scratch.temporary_folder(self, "lh-results-"), "results")
-        plan = {"child": marked_child(results), "marks": matching_marks(), "output": claude_output(GREEN_LINE)}
+        plan = {"child": marked_child(results), "marks": matching_marks(), **replied()}
         ran = Launched(self, plan, results=results)
         self.assertEqual(ran.code, 0, ran.stderr)
         summary = ran.summary()
@@ -522,7 +561,7 @@ class RunRecordTest(unittest.TestCase):
         self.assertEqual(drive["tokens"], {"input": 0, "cache_write_5m": 0, "cache_write_1h": 0, "cache_read": 0, "output": 500})
 
     def test_price_date_recorded(self):
-        ran = Launched(self, {"output": claude_output(GREEN_LINE)})
+        ran = Launched(self, replied())
         self.assertEqual(ran.code, 0, ran.stderr)
         shipped = read_json(os.path.join(scratch.ROOT, "lighthouse_tool", "prices.json"))
         self.assertEqual(ran.summary()["price_date"], shipped["date"])
@@ -530,7 +569,7 @@ class RunRecordTest(unittest.TestCase):
     def test_child_gets_its_own_store(self):
         ran = Launched(
             self,
-            {"output": claude_output(GREEN_LINE)},
+            replied(),
             env={"PLUGIN_METRICS_PARENT": "pipeline/x.20261001T100000Z"},
             extra=["--parent", "pipeline/y.20261001T100000Z"],
         )
@@ -560,7 +599,7 @@ class RunRecordTest(unittest.TestCase):
 
     def test_refusal_inside_repo_is_recorded(self):
         repo, _ = scratch.make_repo(self)
-        ran = Launched(self, {"output": claude_output(GREEN_LINE)}, repo=repo, results=os.path.join(repo, "results"))
+        ran = Launched(self, replied(), repo=repo, results=os.path.join(repo, "results"))
         self.assertEqual(ran.code, 2, ran.stderr)
         self.assertIn("error", json.loads(ran.stdout.strip().splitlines()[-1]))
         self.assertEqual([event["event"] for event in ran.events()], ["run.start", "run.end"])
@@ -571,7 +610,7 @@ class RunRecordTest(unittest.TestCase):
 
     def test_not_a_repository_writes_nothing(self):
         plain = scratch.temporary_folder(self, "lh-plain-")
-        ran = Launched(self, {"output": claude_output(GREEN_LINE)}, repo=plain)
+        ran = Launched(self, replied(), repo=plain)
         self.assertEqual(ran.code, 2, ran.stderr)
         self.assertEqual(os.listdir(ran.store), [])
 
@@ -579,7 +618,7 @@ class RunRecordTest(unittest.TestCase):
         store = os.path.join(scratch.temporary_folder(self, "lh-store-file-"), "store")
         with open(store, "w", encoding="utf-8") as handle:
             handle.write("not a folder\n")
-        ran = Launched(self, {"files": verdict_written(GREEN_LINE), "output": claude_output(GREEN_LINE)}, store=store)
+        ran = Launched(self, replied(), store=store)
         self.assertEqual(ran.code, 0, ran.stderr)
         self.assertEqual(ran.stdout, GREEN_LINE + "\n")
         self.assertEqual(read_json(os.path.join(ran.results, "launch.json")), json.loads(GREEN_LINE))
@@ -644,7 +683,7 @@ class RunRecordTest(unittest.TestCase):
         other_path = os.path.join(store_folder(store, "event", "other-repo"), other + ".jsonl")
         with open(other_path, "rb") as handle:
             other_bytes = handle.read()
-        ran = Launched(self, {"output": claude_output(GREEN_LINE)}, home=home, store=store)
+        ran = Launched(self, replied(), home=home, store=store)
         self.assertEqual(ran.code, 0, ran.stderr)
         remaining = ran.event_files()
         self.assertNotIn(earlier[0] + ".jsonl", remaining)
@@ -683,8 +722,8 @@ class RunRecordTest(unittest.TestCase):
                 self.assertIsNone(latest[key])
 
         cut = mark_entry("suite", "start", "2026-10-16T10:00:00Z") + "\n" + '{"step": "suite", "edge": "en'
-        marked = Launched(self, {"files": {"marks.jsonl": cut}, "output": claude_output(GREEN_LINE)})
-        Launched(self, {"output": claude_output(GREEN_LINE)}, results=marked.results, repo=marked.repo, store=marked.store)
+        marked = Launched(self, replied(files={"marks.jsonl": cut}))
+        Launched(self, replied(), results=marked.results, repo=marked.repo, store=marked.store)
         latest = newest_summary(marked.store)
         for key in ("steps", "drives", "shared"):
             with self.subTest(rerun="earlier cut marks", key=key):
@@ -719,7 +758,7 @@ class RunRecordTest(unittest.TestCase):
     def test_malformed_parent_is_left_out(self):
         for parent in ("<plugin>/<run>", "../../x' OR 1=1 --", "pipeline/" + "a" * 5000):
             with self.subTest(parent=parent[:40]):
-                ran = Launched(self, {"output": claude_output(GREEN_LINE)}, extra=["--parent", parent])
+                ran = Launched(self, replied(), extra=["--parent", parent])
                 self.assertEqual(ran.code, 0, ran.stderr)
                 self.assertEqual([line["parent"] for line in ran.lines()], [None, None, None])
                 self.assertIn("--parent", ran.stderr)

@@ -9,9 +9,10 @@ import tempfile
 import time
 import xml.etree.ElementTree as ElementTree
 from contextlib import ExitStack
+from enum import Enum
 from typing import Any, Callable, Dict, List, NamedTuple, Optional, Set, Tuple, TypeVar
 
-from lighthouse_tool import credentials, limits, process_tree
+from lighthouse_tool import credentials, noninteractive, process_tree
 from lighthouse_tool import repo as repository
 from lighthouse_tool.records import write_atomically
 from lighthouse_tool.repo import Parser, Refusal, checked_git, require_root
@@ -19,13 +20,17 @@ from lighthouse_tool.repo import Parser, Refusal, checked_git, require_root
 Outcome = Tuple[int, Optional[str], Optional[str]]
 BUILDS = ("core", "feature")
 PREPARATION_STEPS = ("setup", "build")
-SUITE_STEPS = ("suite", "rerun")
 UNRUNNABLE_EXITS = (126, 127)
 WHOLE_SUITE = "suite"
 OWNER_MARK = "lighthouse-owned"
 COMMITS = "commits.json"
+START_PID_SUFFIX = "-start.pid"
+START_EXIT_SUFFIX = "-start.exit"
+STOP_GRACE_SECONDS = 5.0
+START_LEAD_SECONDS = 10.0
+CLOCK_SLACK_SECONDS = 2.0
 CORE_STORE = "core-suites"
-STORED_SUITE_FIELDS = ("command", "junit", "rerun", "timeout_minutes")
+STORED_SUITE_FIELDS = ("command", "junit", "rerun")
 RERUN_PLACEHOLDER = re.compile(r"\{(tests|names_regex|names)\}")
 SHELL_PIECE = re.compile(r"""\\.|'[^']*'?|"(?:\\.|[^"\\])*"?|[^\\'"]+""", re.S)
 Timed = TypeVar("Timed")
@@ -177,15 +182,94 @@ def mark_owned(path: str) -> None:
     open(os.path.join(folder, OWNER_MARK), "w", encoding="utf-8").close()
 
 
+class StartRecord(NamedTuple):
+    name: str
+    pid: int
+    written: float
+    exit_path: str
+
+
+def started_pid(path: str) -> Tuple[int, float]:
+    try:
+        with open(path, encoding="utf-8") as handle:
+            text = handle.read().strip()
+            written = os.fstat(handle.fileno()).st_mtime
+    except OSError as error:
+        raise Refusal("cannot read {}: {}".format(os.path.basename(path), error.strerror or error))
+    if not text.isdigit() or int(text) <= 1 or int(text) == os.getpid():
+        raise Refusal("{} does not hold a process id".format(os.path.basename(path)))
+    return int(text), written
+
+
+def modified(path: str) -> Optional[float]:
+    try:
+        return os.stat(path).st_mtime
+    except FileNotFoundError:
+        return None
+
+
+def has_ended(record: StartRecord) -> bool:
+    ended = modified(record.exit_path)
+    return ended is not None and ended >= record.written
+
+
+class Identity(Enum):
+    RECORDED = "recorded"
+    OTHER = "other"
+    UNKNOWN = "unknown"
+
+
+def identity_of(record: StartRecord, lineage: Optional[Set[int]]) -> Identity:
+    if not process_tree.runs_as_ours(record.pid):
+        return Identity.OTHER
+    if lineage is None:
+        return Identity.UNKNOWN
+    if record.pid in lineage or record.pid == os.getpgrp():
+        return Identity.OTHER
+    started = process_tree.started_at(record.pid)
+    if started is None:
+        return Identity.UNKNOWN if process_tree.runs_as_ours(record.pid) else Identity.OTHER
+    within = record.written - START_LEAD_SECONDS <= started <= record.written + CLOCK_SLACK_SECONDS
+    return Identity.RECORDED if within else Identity.OTHER
+
+
+def undecidable(records: List[StartRecord]) -> Refusal:
+    named = ", ".join("{} (pid {})".format(record.name, record.pid) for record in records)
+    return Refusal(
+        "cannot tell whether {} is the start command this run started, because its parent or start time could not be read; "
+        "the worktrees are kept: stop that process yourself, then run release again".format(named)
+    )
+
+
+def start_records(folder: str) -> List[StartRecord]:
+    named = [
+        (build + START_PID_SUFFIX, os.path.join(folder, build + START_PID_SUFFIX), os.path.join(folder, build + START_EXIT_SUFFIX))
+        for build in BUILDS
+    ]
+    return [StartRecord(name, *started_pid(path), exit_path) for name, path, exit_path in named if os.path.isfile(path)]
+
+
+def stop_started_processes(folder: str) -> List[str]:
+    running = [record for record in start_records(folder) if not has_ended(record)]
+    lineage = process_tree.lineage() if running else None
+    judged = [(record, identity_of(record, lineage)) for record in running]
+    unknown = [record for record, identity in judged if identity is Identity.UNKNOWN]
+    if unknown:
+        raise undecidable(unknown)
+    recorded = [record for record, identity in judged if identity is Identity.RECORDED]
+    return [record.name for record in recorded if process_tree.stop_pid(record.pid, STOP_GRACE_SECONDS)]
+
+
 def release_worktrees(root: str, results: str) -> Dict[str, List[str]]:
     folder = os.path.realpath(results)
+    stopped = stop_started_processes(folder) if os.path.isdir(folder) else []
     listed = listed_worktrees(root)
     candidates = [os.path.join(folder, build) for build in BUILDS]
     targets = [path for path in candidates if path in listed and os.path.isdir(path) and is_owned(path)]
     for path in targets:
         checked_git(root, ["worktree", "remove", "--force", path])
     checked_git(root, ["worktree", "prune"])
-    return {"removed": targets}
+    return {"removed": targets, "stopped": stopped}
 
 
 def chosen_profile(root: str, feature_path: str, path: Optional[str]) -> Dict[str, Any]:
@@ -223,15 +307,6 @@ def runs_isolated(profile: Dict[str, Any]) -> bool:
     return profile["suite"].get("isolated") is True
 
 
-def step_limit(step: str, profile: Dict[str, Any]) -> float:
-    found = limits.of(profile)
-    if step in PREPARATION_STEPS:
-        return found.build_seconds
-    if step in SUITE_STEPS:
-        return found.suite_seconds
-    return found.check_seconds
-
-
 def hidden_values(root: str, profile: Dict[str, Any]) -> credentials.Secrets:
     return credentials.reachable_secrets(root, (repository.load_profile(root), profile))
 
@@ -239,7 +314,6 @@ def hidden_values(root: str, profile: Dict[str, Any]) -> credentials.Secrets:
 def run_step(
     step: str, command: str, worktree: str, build: str, log_path: str, profile: Dict[str, Any], hidden: credentials.Secrets
 ) -> StepRun:
-    seconds = step_limit(step, profile)
     append_log(log_path, "$ {}: {}\n".format(step, command), hidden)
     with tempfile.TemporaryFile() as output:
         with ExitStack() as owning:
@@ -249,7 +323,7 @@ def run_step(
                         ["/bin/sh", "-c", command],
                         0.0,
                         cwd=worktree,
-                        env={**os.environ, "LIGHTHOUSE_BUILD": build},
+                        env={**noninteractive.environment(os.environ), "LIGHTHOUSE_BUILD": build},
                         stdin=subprocess.DEVNULL,
                         stdout=output,
                         stderr=subprocess.STDOUT,
@@ -257,16 +331,8 @@ def run_step(
                 )
             except OSError as error:
                 return StepRun(None, "{} could not start: {}".format(step, error.strerror or error))
-            try:
-                process_tree.exited_unreaped(process, seconds)
-                timed_out = False
-            except subprocess.TimeoutExpired:
-                timed_out = True
-        outcome = (
-            StepRun(None, "{} timed out after its limit of {:g} seconds".format(step, seconds))
-            if timed_out
-            else StepRun(process.returncode, None)
-        )
+            process_tree.exited_unreaped(process, None)
+        outcome = StepRun(process.returncode, None)
         output.seek(0)
         append_log(log_path, output.read().decode("utf-8", errors="replace"), hidden)
     return outcome

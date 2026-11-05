@@ -1,0 +1,656 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "harness-redesign/h11-interphase-record.schema.json",
+  "title": "H11 interphase record",
+  "description": "The interview record interphase keeps at docs/specs/<slug>.record.json and hands to render_record.py, pipeline and lighthouse; rules that compare one field with another stay in check_record.py.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "seams",
+    "criteria",
+    "steps",
+    "status"
+  ],
+  "properties": {
+    "seams": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/seam"
+      }
+    },
+    "criteria": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/criterion"
+      }
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/step"
+      }
+    },
+    "status": {
+      "enum": [
+        "in-progress",
+        "handed-off",
+        "stopped"
+      ]
+    },
+    "rounds": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/round"
+      }
+    },
+    "locked": {
+      "$ref": "k2-locked.schema.json#/properties/locked"
+    },
+    "probes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/probe"
+      }
+    },
+    "stop": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "phase",
+        "reason"
+      ],
+      "properties": {
+        "phase": {
+          "$ref": "#/$defs/text"
+        },
+        "reason": {
+          "$ref": "#/$defs/text"
+        }
+      }
+    },
+    "outcomes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "store",
+        "entries",
+        "repeated"
+      ],
+      "properties": {
+        "store": {
+          "$ref": "#/$defs/text"
+        },
+        "entries": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "repeated": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "count"
+            ],
+            "properties": {
+              "kind": {
+                "$ref": "#/$defs/text"
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 2
+              }
+            }
+          }
+        }
+      }
+    },
+    "unaffected": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/unaffected_entry"
+      }
+    },
+    "feasibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "digest",
+        "results"
+      ],
+      "properties": {
+        "digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "results": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/feasibility_result"
+          }
+        }
+      }
+    }
+  },
+  "if": {
+    "properties": {
+      "status": {
+        "const": "stopped"
+      }
+    },
+    "required": [
+      "status"
+    ]
+  },
+  "then": {
+    "required": [
+      "stop"
+    ]
+  },
+  "else": {
+    "not": {
+      "required": [
+        "stop"
+      ]
+    }
+  },
+  "$defs": {
+    "text": {
+      "type": "string",
+      "minLength": 1
+    },
+    "kebab": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+    },
+    "number": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+$"
+    },
+    "relative_path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?![/\\\\])(?!(.*[/\\\\])?\\.\\.([/\\\\]|$)).+$"
+    },
+    "seam": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "interface",
+        "catches",
+        "misses",
+        "builder_runs"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/kebab"
+        },
+        "interface": {
+          "$ref": "#/$defs/text"
+        },
+        "catches": {
+          "$ref": "#/$defs/text"
+        },
+        "misses": {
+          "$ref": "#/$defs/text"
+        },
+        "builder_runs": {
+          "type": "boolean"
+        }
+      }
+    },
+    "domain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "over",
+        "classes"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/kebab"
+        },
+        "over": {
+          "$ref": "#/$defs/text"
+        },
+        "classes": {
+          "type": "array",
+          "minItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/text"
+          }
+        }
+      }
+    },
+    "test": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "file",
+        "name",
+        "given",
+        "expect",
+        "step"
+      ],
+      "properties": {
+        "file": {
+          "$ref": "#/$defs/text"
+        },
+        "name": {
+          "$ref": "#/$defs/text"
+        },
+        "given": {
+          "$ref": "#/$defs/text"
+        },
+        "expect": {
+          "$ref": "#/$defs/text"
+        },
+        "step": {
+          "$ref": "#/$defs/text"
+        },
+        "check": {
+          "$ref": "k1-acceptance.schema.json#/properties/id"
+        },
+        "covers": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^.+: "
+          }
+        },
+        "cases": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "runs": {
+          "type": "integer",
+          "minimum": 2
+        },
+        "pass_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "not": {
+            "maximum": 0
+          }
+        },
+        "loads": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/relative_path"
+          }
+        },
+        "needs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/relative_path"
+          }
+        },
+        "absent": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "command",
+            "shows"
+          ],
+          "properties": {
+            "command": {
+              "$ref": "#/$defs/text"
+            },
+            "shows": {
+              "$ref": "#/$defs/text"
+            }
+          }
+        }
+      }
+    },
+    "criterion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "number",
+        "title",
+        "text",
+        "seam",
+        "tests"
+      ],
+      "properties": {
+        "number": {
+          "$ref": "#/$defs/number"
+        },
+        "title": {
+          "$ref": "#/$defs/text"
+        },
+        "text": {
+          "$ref": "#/$defs/text"
+        },
+        "seam": {
+          "$ref": "#/$defs/text"
+        },
+        "tests": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/test"
+          }
+        },
+        "unproven": {
+          "$ref": "#/$defs/text"
+        },
+        "varies": {
+          "enum": [
+            "input",
+            "output",
+            "measured"
+          ]
+        },
+        "case_table": {
+          "enum": [
+            "security",
+            "refusal"
+          ]
+        },
+        "domains": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/domain"
+          }
+        },
+        "acceptance": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "k1-acceptance.schema.json"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "varies"
+            ]
+          },
+          "then": {
+            "properties": {
+              "tests": {
+                "items": {
+                  "required": [
+                    "cases",
+                    "runs",
+                    "pass_rate"
+                  ]
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "tests": {
+                "items": {
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "cases"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "runs"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "pass_rate"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "case_table"
+            ]
+          },
+          "then": {
+            "required": [
+              "domains"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "domains"
+              ]
+            },
+            "properties": {
+              "tests": {
+                "items": {
+                  "not": {
+                    "required": [
+                      "covers"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "acceptance"
+            ]
+          },
+          "else": {
+            "properties": {
+              "tests": {
+                "items": {
+                  "not": {
+                    "required": [
+                      "check"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "files",
+        "criteria"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/kebab",
+          "not": {
+            "pattern": "^check-author(-|$)"
+          }
+        },
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/relative_path"
+          }
+        },
+        "criteria": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/number"
+          }
+        },
+        "task": {
+          "type": "string"
+        },
+        "after": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/kebab"
+          }
+        },
+        "contract_group": {
+          "$ref": "#/$defs/text"
+        },
+        "type": {
+          "const": "contract"
+        },
+        "complexity": {
+          "enum": [
+            "simple",
+            "complex"
+          ]
+        },
+        "file_notes": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "msp": {
+          "$ref": "#/$defs/text"
+        },
+        "assumptions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "amendment": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "if": {
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "required": [
+          "contract_group"
+        ]
+      }
+    },
+    "round": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "questions",
+        "changed"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "intent",
+            "frontier"
+          ]
+        },
+        "questions": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "changed": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "probe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "check",
+        "probe",
+        "target",
+        "status",
+        "detail"
+      ],
+      "properties": {
+        "check": {
+          "$ref": "k1-acceptance.schema.json#/properties/id"
+        },
+        "probe": {
+          "$ref": "#/$defs/text"
+        },
+        "target": {
+          "$ref": "#/$defs/text"
+        },
+        "status": {
+          "enum": [
+            "pass",
+            "fail"
+          ]
+        },
+        "detail": {
+          "$ref": "#/$defs/text"
+        }
+      }
+    },
+    "unaffected_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "file",
+        "reason"
+      ],
+      "properties": {
+        "file": {
+          "$ref": "#/$defs/relative_path"
+        },
+        "reason": {
+          "$ref": "#/$defs/text"
+        }
+      }
+    },
+    "feasibility_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "check",
+        "subject",
+        "status",
+        "detail"
+      ],
+      "properties": {
+        "check": {
+          "$ref": "#/$defs/text"
+        },
+        "subject": {
+          "$ref": "#/$defs/text"
+        },
+        "status": {
+          "enum": [
+            "pass",
+            "fail"
+          ]
+        },
+        "detail": {
+          "$ref": "#/$defs/text"
+        }
+      }
+    }
+  }
+}

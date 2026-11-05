@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "harness-redesign/h16-pr-render.schema.json",
+  "title": "H16 pull-request render output",
+  "description": "The one JSON line pull-request render prints, whose title and body the create_pull_request call passes unchanged.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "title",
+    "body"
+  ],
+  "properties": {
+    "title": {
+      "description": "type(scope): summary, at most 72 characters, lowercase summary, no trailing period (PR_TITLE_PATTERN).",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 72,
+      "allOf": [
+        {
+          "pattern": "^(?=[^\\n\\r\\u2028\\u2029]{1,72}$)(feat|fix|refactor|docs|test|chore|perf|ci)(\\([a-z0-9][a-z0-9-]{0,15}\\))?: [a-z][\\x20-\\x7E]*[\\x21-\\x2D\\x2F-\\x7E]$"
+        },
+        {
+          "$ref": "h15-pr-fields.schema.json#/$defs/inert"
+        }
+      ]
+    },
+    "body": {
+      "description": "Problem, Change (bullets, then the approach paragraph), Impact, optional Trade-offs and open problems, Testing table, optional Links, optional folded Receipts block, sections one blank line apart.",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^## Problem\\n[^\\n]+\\n\\n## Change(?:\\n- [^\\n]+)+(?:\\n\\n[^-\\n#|<][^\\n]*)?\\n\\n## Impact\\n[^\\n]+(?:\\n\\n## Trade-offs and open problems(?:\\n- [^\\n]+)+)?\\n\\n## Testing\\n\\| Check \\| Result \\|\\n\\|---\\|---\\|(?:\\n\\| [^\\n|]+ \\| [^\\n|]+ \\|)+(?:\\n\\n## Links(?:\\nSupersedes https://github\\.com/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+/pull/[1-9][0-9]*(?:\\n- [^\\n]+)*|(?:\\n- [^\\n]+)+))?(?:\\n\\n<details>\\n<summary>Receipts</summary>\\n\\n```text(?:\\n(?:(?:work-type|test-removal|receipt|receipt-cmd|receipt-lock): |unverified-reasoned: |speculative: |reverted: )[^\\n`]+)+\\n```\\n\\n</details>)?$"
+    }
+  }
+}

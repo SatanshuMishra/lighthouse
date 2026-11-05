@@ -453,15 +453,16 @@ class ReadmeAndVersion(unittest.TestCase):
         self.assertIn("bound", section)
         self.assertIn("lighthouse answer", section)
 
-    def test_the_version_is_0_7_0(self):
+    def test_the_version_is_at_least_0_7_0(self):
         env = scratch.environment(scratch.make_home(self))
 
         code, stdout, stderr = scratch.run_lighthouse(["version"], env)
 
         self.assertEqual(code, 0, stderr)
-        self.assertEqual(json.loads(stdout), {"version": "0.7.0"})
+        reported = json.loads(stdout)["version"]
+        self.assertGreaterEqual(tuple(int(part) for part in reported.split(".")), (0, 7, 0))
         with open(os.path.join(scratch.ROOT, ".claude-plugin", "plugin.json"), encoding="utf-8") as handle:
-            self.assertEqual(json.load(handle)["version"], "0.7.0")
+            self.assertEqual(json.load(handle)["version"], reported)
 
 
 if __name__ == "__main__":

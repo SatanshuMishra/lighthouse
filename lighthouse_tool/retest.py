@@ -28,6 +28,8 @@ def run(argv: List[str]) -> Tuple[int, Optional[str], Optional[str]]:
     try:
         options = parser().parse_args(argv[1:])
         plan = retest_command(options)
+    except verdict.Malformed as malformed:
+        return 2, json.dumps({"error": str(malformed), "key": malformed.key}), "lighthouse retest: {}".format(malformed)
     except Refusal as refusal:
         return 2, json.dumps({"error": str(refusal)}), "lighthouse retest: {}".format(refusal)
     return 0, json.dumps(plan), None
@@ -55,6 +57,8 @@ def retest_command(options: argparse.Namespace) -> Dict[str, Any]:
 def previous_findings(previous: str) -> Dict[str, Any]:
     try:
         return verdict.read_findings(previous)
+    except verdict.Malformed as malformed:
+        raise verdict.Malformed(malformed.key, "the previous {} is unusable: {}".format(verdict.FINDINGS, malformed))
     except Refusal as refusal:
         raise Refusal("the previous {} is unusable: {}".format(verdict.FINDINGS, refusal))
 

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "sources": ["pyproject.toml", "scripts/check.sh"],
-  "suite": {"command": "sh scripts/check.sh", "junit": null, "timeout_minutes": null},
+  "suite": {"command": "sh scripts/check.sh", "junit": null},
   "surfaces": [
     {
       "name": "template library",

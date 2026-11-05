@@ -42,15 +42,56 @@ class LayoutTest(unittest.TestCase):
         self.assertRegex(workflow, r"(?m)run: npx .*claude-code@\S+ plugin validate --strict \.$")
         self.assertRegex(workflow, r"(?m)plugin validate --strict \.claude-plugin/plugin\.json$")
 
+    def test_usage_lists_every_subcommand(self):
+        code, stdout, _ = scratch.run_lighthouse([], scratch.environment(scratch.make_home(self)))
 
-    def test_version_is_0_7_0(self):
+        self.assertEqual(code, 2)
+        self.assertEqual(
+            json.loads(stdout)["subcommands"],
+            [
+                "answer",
+                "change",
+                "contrast",
+                "credentials",
+                "execute",
+                "findings",
+                "launch",
+                "mark",
+                "metrics",
+                "pr",
+                "profile",
+                "readiness",
+                "release",
+                "retest",
+                "runs",
+                "spend",
+                "suite",
+                "verdict",
+                "version",
+                "wait",
+                "with-credentials",
+                "worktrees",
+            ],
+        )
+
+    def test_findings_is_a_subcommand(self):
+        results = scratch.temporary_folder(self, "lh-results-")
+
+        code, stdout, _ = scratch.run_lighthouse(
+            ["findings", "--results", results], scratch.environment(scratch.make_home(self))
+        )
+
+        self.assertEqual(code, 2)
+        self.assertEqual(json.loads(stdout)["schema"], "h14-lighthouse-findings")
+
+    def test_version_command_reports_the_plugin_version(self):
         plugin = read_json(".claude-plugin", "plugin.json")
-        self.assertEqual(plugin["version"], "0.7.0")
+        self.assertRegex(plugin["version"], r"^[0-9]+\.[0-9]+\.[0-9]+$")
 
         code, stdout, stderr = scratch.run_lighthouse(["version"], scratch.environment(scratch.make_home(self)))
 
         self.assertEqual(code, 0, stderr)
-        self.assertEqual(json.loads(stdout), {"version": "0.7.0"})
+        self.assertEqual(json.loads(stdout), {"version": plugin["version"]})
 
 if __name__ == "__main__":
     unittest.main()

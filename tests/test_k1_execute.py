@@ -35,7 +35,11 @@ def judged_line(identifier, command):
 
 
 def record_of(*lines):
-    return {"criteria": [{"number": "1.1", "acceptance": list(lines)}, {"number": "1.2"}]}
+    return scratch.h11_record([scratch.h11_criterion("1.1", list(lines)), scratch.h11_criterion("1.2")])
+
+
+def record_with_criteria(*criteria):
+    return scratch.h11_record(list(criteria))
 
 
 def surface(name, paths, reach=None):
@@ -115,6 +119,10 @@ class Prepared:
 
     def record(self, *lines):
         return write_json(os.path.join(self.inputs, "record.json"), record_of(*lines))
+
+    def execute_raw_record(self, record):
+        path = write_json(os.path.join(self.inputs, "record.json"), record)
+        return self.execute("--record", path, "--profile", self.profile)
 
     def execute(self, *flags):
         return lighthouse(["execute", "--results", self.results, *flags], self.env)
@@ -251,6 +259,85 @@ class K1ExecuteTest(unittest.TestCase):
         self.assertEqual(code, 2, stdout + stderr)
         error = last_json(stdout)["error"]
         self.assertIn("X1", json.dumps(error), error)
+        self.assertIn("interphase", error)
+        self.assertIn("h11-interphase-record.schema.json", error)
+        self.assertIn("#/criteria/0/acceptance/0/id pattern", error)
+        self.assertFalse(os.path.exists(os.path.join(prepared.results, "checks.jsonl")))
+
+    def assert_record_refused(self, prepared, record, *expected):
+        code, stdout, stderr = prepared.execute_raw_record(record)
+        self.assertEqual(code, 2, stdout + stderr)
+        error = last_json(stdout)["error"]
+        for text in expected:
+            self.assertIn(text, error)
+        self.assertFalse(os.path.exists(os.path.join(prepared.results, "checks.jsonl")))
+        return error
+
+    def test_criterion_that_is_not_an_object_is_refused(self):
+        prepared = default_setup(self)
+        line = exact_line("C1.1", "exit 0")
+        assert_k1_valid(self, line)
+        self.assert_record_refused(
+            prepared,
+            record_with_criteria("loose", scratch.h11_criterion("1.1", [line])),
+            "h11-interphase-record.schema.json",
+            '#/criteria/0 type: "loose" is not of type object',
+        )
+
+    def test_criteria_that_is_not_a_list_is_refused(self):
+        prepared = default_setup(self)
+        self.assert_record_refused(
+            prepared,
+            {**record_of(), "criteria": {"acceptance": []}},
+            "h11-interphase-record.schema.json",
+            '#/criteria type: {"acceptance": []} is not of type array',
+        )
+
+    def test_record_without_criteria_is_refused(self):
+        prepared = default_setup(self)
+        record = {key: value for key, value in record_of().items() if key != "criteria"}
+        self.assert_record_refused(
+            prepared, record, "h11-interphase-record.schema.json", '# required: lacks required property "criteria"'
+        )
+
+    def test_acceptance_that_is_not_a_list_is_refused(self):
+        prepared = default_setup(self)
+        line = exact_line("C1.1", "exit 0")
+        self.assert_record_refused(
+            prepared,
+            record_with_criteria(scratch.h11_criterion("1.1", [line]), {**scratch.h11_criterion("1.2"), "acceptance": line}),
+            "h11-interphase-record.schema.json",
+            "#/criteria/1/acceptance type: ",
+            "is not of type array",
+        )
+
+    def test_a_criterion_without_acceptance_holds_no_line(self):
+        prepared = default_setup(self)
+        record = record_with_criteria(scratch.h11_criterion("1.1"), scratch.h11_criterion("1.2"))
+        code, stdout, stderr = prepared.execute_raw_record(record)
+        self.assertEqual(code, 0, stdout + stderr)
+        self.assertEqual(prepared.checks(), [])
+
+    def test_repeated_acceptance_id_is_refused(self):
+        prepared = default_setup(self)
+        first = exact_line("C1.1", "exit 0")
+        second = exact_line("C1.1", "exit 1")
+        assert_k1_valid(self, first)
+        assert_k1_valid(self, second)
+        error = self.assert_record_refused(prepared, record_of(first, second), "C1.1", "repeats the id")
+        self.assertIn("#/criteria/0/acceptance/1", error)
+        self.assertNotIn("h11-interphase-record", error)
+
+    def test_record_that_is_not_json_is_refused(self):
+        prepared = default_setup(self)
+        path = os.path.join(prepared.inputs, "broken-record.json")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write("{not json\n")
+        code, stdout, stderr = prepared.execute("--record", path, "--profile", prepared.profile)
+        self.assertEqual(code, 2, stdout + stderr)
+        error = last_json(stdout)["error"]
+        self.assertIn(path, error)
+        self.assertIn("is not JSON", error)
         self.assertFalse(os.path.exists(os.path.join(prepared.results, "checks.jsonl")))
 
     def test_execute_reads_the_record_beside_the_spec(self):

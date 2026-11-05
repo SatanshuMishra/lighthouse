@@ -123,6 +123,39 @@ class ProfileCheckTest(unittest.TestCase):
         self.assertEqual(problem_kinds(report), ["schema"])
         self.assertIn("surfaces", details_of(report, "schema")[0])
 
+    def test_reports_the_retired_time_limit_once_with_its_fix(self):
+        for minutes in (15, None, "soon"):
+            with self.subTest(minutes=minutes):
+                work, _ = scratch.make_repo(self)
+                base = scratch.sample_profile()
+                scratch.write_profile(work, {**base, "suite": {**base["suite"], "timeout_minutes": minutes}})
+
+                code, report, stderr = profile_check(self, work)
+
+                self.assertEqual(code, 1)
+                self.assertEqual(
+                    report["problems"],
+                    [
+                        {
+                            "kind": "retired",
+                            "detail": "suite.timeout_minutes is retired because lighthouse puts no time limit on any step; remove the key (lighthouse:doctor removes it)",
+                        }
+                    ],
+                )
+                self.assertIn("retired", stderr)
+
+    def test_reports_the_retired_time_limit_beside_other_problems(self):
+        work, _ = scratch.make_repo(self)
+        base = scratch.sample_profile()
+        suite = {key: value for key, value in base["suite"].items() if key != "junit"}
+        scratch.write_profile(work, {**base, "suite": {**suite, "timeout_minutes": 15}})
+
+        code, report, _ = profile_check(self, work)
+
+        self.assertEqual(code, 1)
+        self.assertEqual(problem_kinds(report), ["retired", "schema"])
+        self.assertIn("suite.junit", details_of(report, "schema")[0])
+
     def test_reports_a_vanished_path(self):
         work, _ = scratch.make_repo(self)
         scratch.commit_files(work, {"src/old.py": "OLD = 1\n"}, "add old")
@@ -142,7 +175,7 @@ class ProfileCheckTest(unittest.TestCase):
         scratch.commit_files(work, {"scripts/test.sh": "exit 0\n"}, "add the test script")
         scratch.run_git(work, "rm", "-q", "scripts/test.sh")
         scratch.run_git(work, "commit", "-q", "-m", "remove the test script")
-        suite = {"command": "sh scripts/test.sh", "junit": None, "timeout_minutes": None}
+        suite = {"command": "sh scripts/test.sh", "junit": None}
         scratch.write_profile(work, scratch.sample_profile(suite=suite))
 
         code, report, _ = profile_check(self, work)
@@ -166,7 +199,7 @@ class ProfileCheckTest(unittest.TestCase):
         work, _ = scratch.make_repo(self)
         scratch.commit_files(work, {"docs/index_test.py": "\n"}, "add the docs folder")
         command = "cd docs && python3 -m unittest discover -p '*_test.py' && echo ./... src/**/*.ts"
-        suite = {"command": command, "junit": None, "timeout_minutes": None, "rerun": None, "isolated": False}
+        suite = {"command": command, "junit": None, "rerun": None, "isolated": False}
         scratch.write_profile(work, scratch.sample_profile(suite=suite))
 
         code, report, stderr = profile_check(self, work)
@@ -188,7 +221,7 @@ class ProfileCheckTest(unittest.TestCase):
         work, _ = scratch.make_repo(self)
         scratch.commit_files(work, {"web/run.sh": "exit 0\n", "tools/check.py": "\n"}, "add the scripts")
         os.chmod(os.path.join(work, "web", "run.sh"), 0o755)
-        suite = {"command": "cd web && ./run.sh", "junit": None, "timeout_minutes": None, "rerun": None, "isolated": False}
+        suite = {"command": "cd web && ./run.sh", "junit": None, "rerun": None, "isolated": False}
         build = {"command": "cd tools && python3 check.py"}
         scratch.write_profile(work, scratch.sample_profile(suite=suite, build=build))
 
@@ -202,7 +235,6 @@ class ProfileCheckTest(unittest.TestCase):
         suite = {
             "command": "unset CI && exec python3 -m unittest",
             "junit": None,
-            "timeout_minutes": None,
             "rerun": None,
             "isolated": False,
         }
@@ -308,7 +340,7 @@ class ProfileMeasureTest(unittest.TestCase):
 
     def test_measure_refuses_a_profile_without_a_suite_command(self):
         work, _ = scratch.make_repo(self)
-        scratch.write_profile(work, scratch.sample_profile(suite={"junit": None, "timeout_minutes": None}))
+        scratch.write_profile(work, scratch.sample_profile(suite={"junit": None}))
 
         code, printed = self.measure(work)
 
@@ -319,7 +351,7 @@ class ProfileMeasureTest(unittest.TestCase):
         work, _ = scratch.make_repo(self)
         missing = {**scratch.sample_profile()["surfaces"][0], "name": "missing", "reach": "no-such-lighthouse-program"}
         profile = scratch.sample_profile(
-            suite={"command": "exit 3", "junit": None, "timeout_minutes": None},
+            suite={"command": "exit 3", "junit": None},
             setup={"command": "true"},
             start={"command": "echo serving now && exec sleep 30", "ready": "serving now"},
             surfaces=[scratch.sample_profile()["surfaces"][0], missing],
@@ -344,7 +376,7 @@ class ProfileMeasureTest(unittest.TestCase):
         work, _ = scratch.make_repo(self)
         missing = os.path.join(scratch.temporary_folder(self, "lh-ready-"), "never-written")
         profile = scratch.sample_profile(
-            suite={"command": "true", "junit": None, "timeout_minutes": 0.25},
+            suite={"command": "true", "junit": None},
             start={"command": "exit 1", "ready": "test -f {}".format(missing)},
         )
         scratch.write_profile(work, profile)
@@ -358,7 +390,7 @@ class ProfileMeasureTest(unittest.TestCase):
         self.assertIsNone(printed["measured"]["start_seconds"])
 
     def test_measure_refuses_a_linked_profile_path(self):
-        shared = json.dumps(scratch.sample_profile(suite={"command": "true", "junit": None, "timeout_minutes": None}))
+        shared = json.dumps(scratch.sample_profile(suite={"command": "true", "junit": None}))
         for linked in (".lighthouse", PROFILE_PATH):
             with self.subTest(linked=linked):
                 work, _ = scratch.make_repo(self)
@@ -380,8 +412,87 @@ class ProfileMeasureTest(unittest.TestCase):
                 with open(shared_path, encoding="utf-8") as handle:
                     self.assertEqual(handle.read(), shared)
 
+    def test_measure_names_every_problem_and_writes_nothing(self):
+        work, _ = scratch.make_repo(self)
+        base = scratch.sample_profile()
+        surface = {**base["surfaces"][0], "trials": 0, "paths": ["docs/gone.md"]}
+        profile = scratch.sample_profile(suite={"command": "true", "junit": None}, surfaces=[surface])
+        outside = scratch.temporary_folder(self, "lh-outside-")
+        profile_file = os.path.join(outside, "profile.json")
+        text = json.dumps(profile, indent=2) + "\n"
+        with open(profile_file, "w", encoding="utf-8") as handle:
+            handle.write(text)
+
+        code, printed = self.measure(work, "--profile", profile_file)
+
+        self.assertEqual(code, 2, printed)
+        self.assertEqual(
+            printed["problems"],
+            [
+                {"kind": "schema", "detail": "surfaces[0].trials is 0, and must be at least 1"},
+                {"kind": "path", "detail": "docs/gone.md does not exist in the repository"},
+            ],
+        )
+        self.assertIn("refusing to write " + profile_file, printed["error"])
+        self.assertIn("surfaces[0].trials is 0", printed["error"])
+        self.assertIn("docs/gone.md does not exist", printed["error"])
+        with open(profile_file, encoding="utf-8") as handle:
+            self.assertEqual(handle.read(), text)
+        self.assertEqual(os.listdir(outside), ["profile.json"])
+
 
 class ProfilePublishTest(unittest.TestCase):
+    def test_publish_refuses_a_broken_profile_and_commits_nothing(self):
+        work, remote = scratch.make_repo(self)
+        scratch.run_git(work, "checkout", "-q", "-b", "feat/x")
+        scratch.commit_files(work, {"a.py": "A = 1\n"}, "add a")
+        scratch.run_git(work, "push", "-q", "origin", "feat/x")
+        scratch.run_git(work, "checkout", "-q", "main")
+        local_before = scratch.run_git(work, "rev-parse", "feat/x").strip()
+        remote_before = scratch.run_git(remote, "rev-parse", "feat/x").strip()
+        base = scratch.sample_profile()
+        surface = {**base["surfaces"][0], "trials": 0}
+        scratch.write_profile(work, scratch.sample_profile(surfaces=[surface]))
+        checkout_before = checkout_state(work)
+
+        code, stdout, stderr = scratch.run_lighthouse(
+            ["profile", "publish", "--repo", work, "--feature", "feat/x"],
+            scratch.environment(scratch.make_home(self)),
+        )
+
+        self.assertEqual(code, 2, stderr)
+        printed = json.loads(stdout)
+        self.assertEqual(printed["problems"], [{"kind": "schema", "detail": "surfaces[0].trials is 0, and must be at least 1"}])
+        self.assertIn(".lighthouse/profile.json on feat/x", printed["error"])
+        self.assertEqual(scratch.run_git(work, "rev-parse", "feat/x").strip(), local_before)
+        self.assertEqual(scratch.run_git(remote, "rev-parse", "feat/x").strip(), remote_before)
+        self.assertEqual(checkout_state(work), checkout_before)
+
+    def test_publish_checks_paths_against_the_feature_branch(self):
+        work, remote = scratch.make_repo(self)
+        scratch.commit_files(work, {"core-only.md": "only on main\n"}, "add a core file")
+        scratch.run_git(work, "push", "-q", "origin", "main")
+        scratch.run_git(work, "checkout", "-q", "-b", "feat/x", "HEAD^")
+        scratch.commit_files(work, {"a.py": "A = 1\n"}, "add a")
+        scratch.run_git(work, "push", "-q", "origin", "feat/x")
+        scratch.run_git(work, "checkout", "-q", "main")
+        remote_before = scratch.run_git(remote, "rev-parse", "feat/x").strip()
+        base = scratch.sample_profile()
+        surface = {**base["surfaces"][0], "paths": ["core-only.md"]}
+        scratch.write_profile(work, scratch.sample_profile(surfaces=[surface]))
+
+        code, stdout, stderr = scratch.run_lighthouse(
+            ["profile", "publish", "--repo", work, "--feature", "feat/x"],
+            scratch.environment(scratch.make_home(self)),
+        )
+
+        self.assertEqual(code, 2, stderr)
+        self.assertEqual(
+            json.loads(stdout)["problems"],
+            [{"kind": "path", "detail": "core-only.md does not exist in the repository"}],
+        )
+        self.assertEqual(scratch.run_git(remote, "rev-parse", "feat/x").strip(), remote_before)
+
     def test_publish_commits_to_the_feature_branch(self):
         work, remote = scratch.make_repo(self)
         scratch.run_git(work, "checkout", "-q", "-b", "feat/x")

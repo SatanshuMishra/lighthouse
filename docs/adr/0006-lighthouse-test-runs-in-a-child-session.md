@@ -1,6 +1,6 @@
 # lighthouse:test runs its work in a child session
 
-Status: accepted
+Status: accepted; the caller's hold by repeated lighthouse wait calls is superseded by ADR-0012
 
 Run inline, lighthouse:test re-read its caller's whole history (200 to 360 thousand tokens inside a pipeline session) on every turn, and its driver subagents lost their five-minute prompt cache during long holds and rewrote their context on waking. So the skill only launches: a child claude -p session started from the results folder, marked by a --child flag in its prompt, does the work with a fresh context on Opus, the caller holds with repeated lighthouse wait calls, and drivers run as lighthouse's own driver agent on Sonnet with a one-hour cache.
 
