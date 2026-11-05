@@ -19,7 +19,7 @@ import time
 folder = os.path.dirname(os.path.realpath(__file__))
 results = os.path.dirname(os.getcwd())
 earlier_line = os.path.join(results, "launch.json")
-earlier_names = ("verdict.json", "checks.jsonl", "plan.json", "record.json", "findings.json", "findings.draft.json", "child.out")
+earlier_names = ("verdict.json", "checks.jsonl", "plan.json", "record.json", "findings.json", "findings.draft.json", "child.out", "core-start.pid", "core-start.exit", "feature-start.pid", "feature-start.exit")
 earlier_files = [name for name in earlier_names if os.path.exists(os.path.join(results, name))]
 calls_path = os.path.join(folder, "claude-calls.jsonl")
 with open(calls_path, "a", encoding="utf-8") as calls:
@@ -152,6 +152,9 @@ def seed_earlier_run(results):
     for name in ("verdict.json", "plan.json", "record.json", "findings.json", "findings.draft.json", "child.out"):
         with open(os.path.join(results, name), "w", encoding="utf-8") as handle:
             handle.write("{}\n")
+    for name in ("core-start.pid", "core-start.exit", "feature-start.pid", "feature-start.exit"):
+        with open(os.path.join(results, name), "w", encoding="utf-8") as handle:
+            handle.write("0\n")
     with open(os.path.join(results, "checks.jsonl"), "w", encoding="utf-8") as handle:
         handle.write("{}\n")
 

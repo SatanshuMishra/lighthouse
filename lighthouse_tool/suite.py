@@ -26,6 +26,8 @@ COMMITS = "commits.json"
 START_PID_SUFFIX = "-start.pid"
 START_EXIT_SUFFIX = "-start.exit"
 STOP_GRACE_SECONDS = 5.0
+START_LEAD_SECONDS = 10.0
+CLOCK_SLACK_SECONDS = 2.0
 CORE_STORE = "core-suites"
 STORED_SUITE_FIELDS = ("command", "junit", "rerun")
 RERUN_PLACEHOLDER = re.compile(r"\{(tests|names_regex|names)\}")
@@ -179,27 +181,59 @@ def mark_owned(path: str) -> None:
     open(os.path.join(folder, OWNER_MARK), "w", encoding="utf-8").close()
 
 
-def started_pid(path: str) -> int:
+class StartRecord(NamedTuple):
+    name: str
+    pid: int
+    written: float
+    exit_path: str
+
+
+def started_pid(path: str) -> Tuple[int, float]:
     try:
         with open(path, encoding="utf-8") as handle:
             text = handle.read().strip()
+            written = os.fstat(handle.fileno()).st_mtime
     except OSError as error:
         raise Refusal("cannot read {}: {}".format(os.path.basename(path), error.strerror or error))
     if not text.isdigit() or int(text) <= 1 or int(text) == os.getpid():
         raise Refusal("{} does not hold a process id".format(os.path.basename(path)))
-    return int(text)
+    return int(text), written
 
 
-def stop_started_processes(folder: str) -> List[str]:
+def modified(path: str) -> Optional[float]:
+    try:
+        return os.stat(path).st_mtime
+    except FileNotFoundError:
+        return None
+
+
+def has_ended(record: StartRecord) -> bool:
+    ended = modified(record.exit_path)
+    return ended is not None and ended >= record.written
+
+
+def is_the_recorded_process(record: StartRecord, lineage: Optional[Set[int]]) -> bool:
+    if lineage is None or record.pid in lineage or record.pid == os.getpgrp():
+        return False
+    started = process_tree.started_at(record.pid)
+    return started is not None and record.written - START_LEAD_SECONDS <= started <= record.written + CLOCK_SLACK_SECONDS
+
+
+def start_records(folder: str) -> List[StartRecord]:
     named = [
         (build + START_PID_SUFFIX, os.path.join(folder, build + START_PID_SUFFIX), os.path.join(folder, build + START_EXIT_SUFFIX))
         for build in BUILDS
     ]
-    present = [(name, started_pid(path), exit_path) for name, path, exit_path in named if os.path.isfile(path)]
+    return [StartRecord(name, *started_pid(path), exit_path) for name, path, exit_path in named if os.path.isfile(path)]
+
+
+def stop_started_processes(folder: str) -> List[str]:
+    running = [record for record in start_records(folder) if not has_ended(record)]
+    lineage = process_tree.lineage() if running else None
     return [
-        name
-        for name, pid, exit_path in present
-        if not os.path.exists(exit_path) and process_tree.stop_pid(pid, STOP_GRACE_SECONDS)
+        record.name
+        for record in running
+        if is_the_recorded_process(record, lineage) and process_tree.stop_pid(record.pid, STOP_GRACE_SECONDS)
     ]
 
 

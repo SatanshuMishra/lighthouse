@@ -132,6 +132,11 @@ def ended_shell(shell):
     shell.wait(timeout=30)
 
 
+def ended_session(process):
+    process_tree.send_group(process.pid, signal.SIGKILL)
+    process.wait(timeout=30)
+
+
 def pid_in(path):
     if not os.path.exists(path):
         return None
@@ -907,6 +912,84 @@ class ReleaseTest(unittest.TestCase):
         self.assertEqual(code, 2, stderr)
         self.assertIn("feature-start.pid", json.loads(stdout)["error"])
         self.assertTrue(os.path.isdir(os.path.join(results, "feature")))
+
+
+    def test_release_leaves_a_process_that_started_after_its_pid_file_was_written(self):
+        work = project_with(self, {}, scratch.sample_profile())
+        results = results_folder(self)
+        code, _, stderr = lighthouse(self, "worktrees", work, results)
+        self.assertEqual(code, 0, stderr)
+        unrelated = subprocess.Popen(
+            ["/bin/sh", "-c", "sleep 600 & wait"],
+            start_new_session=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        self.addCleanup(ended_session, unrelated)
+        pid_file = os.path.join(results, "feature-start.pid")
+        with open(pid_file, "w", encoding="utf-8") as handle:
+            handle.write("{}\n".format(unrelated.pid))
+        written_before_it_started = time.time() - 60
+        os.utime(pid_file, (written_before_it_started, written_before_it_started))
+
+        code, stdout, stderr = lighthouse(self, "release", work, results)
+
+        self.assertEqual(code, 0, stderr)
+        self.assertEqual(json.loads(stdout)["stopped"], [])
+        self.assertIsNone(unrelated.poll())
+        self.assertTrue(process_tree.runs_as_ours(unrelated.pid))
+
+    def test_release_leaves_an_ancestor_named_by_a_pid_file(self):
+        work = project_with(self, {}, scratch.sample_profile())
+        results = results_folder(self)
+        code, _, stderr = lighthouse(self, "worktrees", work, results)
+        self.assertEqual(code, 0, stderr)
+        marker = os.path.join(scratch.make_home(self), "survived")
+        printed = os.path.join(scratch.make_home(self), "release.json")
+        script = "echo $$ > {pid}; {python} {lighthouse} release --repo {work} --results {results} > {printed}; echo yes > {marker}".format(
+            pid=shlex.quote(os.path.join(results, "feature-start.pid")),
+            python=shlex.quote(sys.executable),
+            lighthouse=shlex.quote(scratch.LIGHTHOUSE),
+            work=shlex.quote(work),
+            results=shlex.quote(results),
+            printed=shlex.quote(printed),
+            marker=shlex.quote(marker),
+        )
+
+        caller = subprocess.run(
+            ["/bin/sh", "-c", script],
+            env=scratch.environment(scratch.make_home(self)),
+            start_new_session=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=120,
+            check=False,
+        )
+
+        self.assertEqual(caller.returncode, 0)
+        self.assertTrue(os.path.exists(marker))
+        self.assertEqual(json.loads(read(os.path.dirname(printed), "release.json"))["stopped"], [])
+
+    def test_release_stops_a_live_process_despite_an_exit_file_older_than_its_pid_file(self):
+        work = project_with(self, {}, scratch.sample_profile())
+        results = results_folder(self)
+        code, _, stderr = lighthouse(self, "worktrees", work, results)
+        self.assertEqual(code, 0, stderr)
+        stale_exit = os.path.join(os.path.realpath(results), "feature-start.exit")
+        with open(stale_exit, "w", encoding="utf-8") as handle:
+            handle.write("0\n")
+        an_earlier_run = time.time() - 60
+        os.utime(stale_exit, (an_earlier_run, an_earlier_run))
+        shell, pid, exit_file = started_server(self, os.path.realpath(results), "feature")
+
+        code, stdout, stderr = lighthouse(self, "release", work, results)
+
+        self.assertEqual(code, 0, stderr)
+        self.assertEqual(json.loads(stdout)["stopped"], ["feature-start.pid"])
+        condition_within(lambda: not process_tree.runs_as_ours(pid), 30, "the end of the started process")
+        self.assertIsNotNone(shell.wait(timeout=30))
 
 
 if __name__ == "__main__":

@@ -12,6 +12,9 @@ from lighthouse_tool import noninteractive
 FORWARDED_SIGNALS = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
 SIGNAL_EXIT_BASE = 128
 LISTING = ["ps", "-A", "-o", "pid=,ppid="]
+START_LISTING = ["ps", "-o", "lstart=", "-p"]
+START_FORMAT = "%a %b %d %H:%M:%S %Y"
+LISTING_SECONDS = 30.0
 UNREAPED_POLL_SECONDS = 0.05
 
 Handler = Any
@@ -41,6 +44,39 @@ def parents() -> Dict[int, int]:
         return {}
     rows = [line.split() for line in listed.stdout.decode("utf-8", errors="replace").splitlines()]
     return {int(row[0]): int(row[1]) for row in rows if len(row) == 2 and row[0].isdigit() and row[1].isdigit()}
+
+
+def lineage() -> Optional[Set[int]]:
+    links = parents()
+    own = os.getpid()
+    if own not in links:
+        return None
+    found = [own]
+    while links.get(found[-1], 0) > 1 and links[found[-1]] not in found:
+        found.append(links[found[-1]])
+    return set(found)
+
+
+def started_at(pid: int) -> Optional[float]:
+    try:
+        listed = subprocess.run(
+            [*START_LISTING, str(pid)],
+            env={**noninteractive.environment(os.environ), "LC_ALL": "C"},
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            timeout=LISTING_SECONDS,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    text = " ".join(listed.stdout.decode("utf-8", errors="replace").split())
+    if listed.returncode != 0 or not text:
+        return None
+    try:
+        return time.mktime(time.strptime(text, START_FORMAT))
+    except (ValueError, OverflowError):
+        return None
 
 
 def send(pid: int, number: int) -> None:

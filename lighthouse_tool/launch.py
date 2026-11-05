@@ -33,6 +33,7 @@ EARLIER_RUN_FILES = (
     run_files.PLAN,
     run_files.RECORD,
     *(name for name in run_record.RESULTS_SOURCES if name != findings_tool.FINDINGS),
+    *(build + suffix for build in suite.BUILDS for suffix in (suite.START_PID_SUFFIX, suite.START_EXIT_SUFFIX)),
 )
 CAFFEINATE = "caffeinate"
 SYSTEMD_INHIBIT = "systemd-inhibit"
