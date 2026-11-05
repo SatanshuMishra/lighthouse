@@ -84,7 +84,7 @@ class LayoutTest(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertEqual(json.loads(stdout)["schema"], "h14-lighthouse-findings")
 
-    def test_version_is_0_2_0(self):
+    def test_version_command_reports_the_plugin_version(self):
         plugin = read_json(".claude-plugin", "plugin.json")
         self.assertRegex(plugin["version"], r"^[0-9]+\.[0-9]+\.[0-9]+$")
 

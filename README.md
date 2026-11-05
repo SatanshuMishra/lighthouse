@@ -57,7 +57,7 @@ The profile a `with-credentials` call reads decides which names are production a
 
 ## Readiness and answers
 
-`lighthouse readiness` lists the open items before an unattended run: a missing profile, each unconfirmed fact without a stored answer, and each credential name absent or empty in the credentials file. `lighthouse answer` stores fact answers in `~/.lighthouse/<repository folder>/answers.json`, and `lighthouse profile publish` folds them into the profile on the FEATURE branch.
+`lighthouse readiness` lists the open items before an unattended run: a missing profile, each unconfirmed fact without a stored answer, and each credential name absent or empty in the credentials file. It also lists a `test-bound:<runner>` item for each test runner the suite command reaches that does not bound each test in the project's own configuration, naming the file to bound it in; bound each test there, or close the item with `lighthouse answer --set test-bound:<runner>=<where each test is bounded>`. `lighthouse answer` stores fact answers in `~/.lighthouse/<repository folder>/answers.json`, and `lighthouse profile publish` folds them into the profile on the FEATURE branch.
 
 ## Verdicts
 

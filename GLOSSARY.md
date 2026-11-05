@@ -130,3 +130,7 @@ A model turn that writes its whole context to the prompt cache again because the
 
 **Seed session**:
 The claude -p session a held-out pass starts once with a fixed history of at least 200,000 tokens, which every case's calling session forks, so lighthouse:test is measured as a pipeline session calls it; its own spend is reported apart and counted in neither total.
+
+**Bounded test**:
+A test the project's own runner configuration ends when it hangs, through a per-test timeout the runner applies by default or that the project sets; readiness lists each runner of the suite command whose tests are not bounded as a test-bound item.
+_Avoid_: test limit, test cap

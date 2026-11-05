@@ -6,6 +6,12 @@ import unittest
 from tests import scratch
 
 PLANTED = "planted-user-value"
+BOUNDED_SUITE_COMMAND = "go test ./..."
+
+
+def bounded_profile(**overrides):
+    base = scratch.sample_profile()
+    return scratch.sample_profile(suite={**base["suite"], "command": BOUNDED_SUITE_COMMAND}, **overrides)
 
 
 def unconfirmed(recheck):
@@ -39,13 +45,39 @@ class ReadinessTest(unittest.TestCase):
         self.assertFalse(report["ready"])
         self.assertEqual([entry["kind"] for entry in report["open"]], ["profile"])
 
+    def test_a_repository_without_a_profile_lists_only_the_profile_item(self):
+        work, _, env = setting(self)
+        scratch.commit_files(
+            work, {"package.json": json.dumps({"scripts": {"test": "node --test"}})}, "add an unbounded script"
+        )
+
+        report, _, _ = readiness(self, work, env)
+
+        self.assertFalse(report["ready"])
+        self.assertEqual(
+            report["open"],
+            [{"kind": "profile", "name": None, "question": "Run lighthouse:init to write the profile.", "file": None}],
+        )
+
+    def test_an_unreadable_profile_lists_only_the_profile_item(self):
+        work, _, env = setting(self)
+        folder = os.path.join(work, ".lighthouse")
+        os.makedirs(folder)
+        with open(os.path.join(folder, "profile.json"), "w", encoding="utf-8") as handle:
+            handle.write('{"suite": {"command": "python3 -m unittest"')
+
+        report, _, _ = readiness(self, work, env)
+
+        self.assertFalse(report["ready"])
+        self.assertEqual([entry["kind"] for entry in report["open"]], ["profile"])
+
     def test_lists_unconfirmed_facts(self):
         facts = {
             "start_port": unconfirmed("Read the port the dev server prints."),
             "admin_path": unconfirmed("Open the router and find the admin route."),
             "api_base": {"value": "/api", "confirmed": True, "recheck": "Read the router."},
         }
-        work, _, env = setting(self, scratch.sample_profile(facts=facts))
+        work, _, env = setting(self, bounded_profile(facts=facts))
 
         report, _, _ = readiness(self, work, env)
 
@@ -55,7 +87,7 @@ class ReadinessTest(unittest.TestCase):
         self.assertIn("What is start_port?", " ".join(entry["question"] for entry in report["open"]))
 
     def test_lists_missing_credentials(self):
-        profile = scratch.sample_profile(
+        profile = bounded_profile(
             credentials={"file": None, "names": {"APP_USER": {"production": False}, "APP_PASSWORD": {"production": False}}}
         )
         work, home, env = setting(self, profile)
@@ -77,7 +109,7 @@ class ReadinessTest(unittest.TestCase):
 
     def test_answer_closes_an_item(self):
         facts = {"start_port": unconfirmed("Read the port the dev server prints.")}
-        work, home, env = setting(self, scratch.sample_profile(facts=facts))
+        work, home, env = setting(self, bounded_profile(facts=facts))
         before, _, _ = readiness(self, work, env)
         self.assertEqual([entry["name"] for entry in before["open"]], ["start_port"])
 

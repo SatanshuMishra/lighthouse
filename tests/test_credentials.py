@@ -14,6 +14,7 @@ def profile_needing_user_and_password(production=False):
     base = scratch.sample_profile()
     surface = {**base["surfaces"][0], "credentials": ["APP_PASSWORD"]}
     return scratch.sample_profile(
+        suite={**base["suite"], "command": "go test ./..."},
         surfaces=[surface],
         credentials={"file": None, "names": {"APP_USER": {"production": False}, "APP_PASSWORD": {"production": production}}},
     )

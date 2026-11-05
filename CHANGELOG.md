@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.6.0
+## 0.8.0
 
 Every hand-off lighthouse writes or reads now has one owned format, checked by its producer before it is written, and lighthouse puts no wall-clock limit on any step.
 
@@ -28,3 +28,7 @@ Every hand-off lighthouse writes or reads now has one owned format, checked by i
 
 - The pull request is composed through pull-request render --fields and opened with that title and body unchanged.
 - The gh pr create fallback is removed; the pull request opens through the create_pull_request tool only.
+
+## 0.7.0
+
+lighthouse readiness lists a `test-bound:<runner>` item for each test runner the suite command reaches that does not bound each test in the project's own configuration, because nothing else ends a hung test.
