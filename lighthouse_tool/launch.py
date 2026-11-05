@@ -47,6 +47,7 @@ class ChildRun(NamedTuple):
     output: bytes
     problem: Optional[str]
     seconds: float
+    errors: bytes = b""
 
 
 class Child(NamedTuple):
@@ -238,7 +239,7 @@ def answered(call: Call, results: str, schema: Dict[str, Any]) -> Answer:
         return Answer(None, call.run.problem, ())
     if call.envelope is None:
         kept = os.path.join(results, CHILD_OUT)
-        write_bytes(kept, call.run.output)
+        write_bytes(kept, call.run.output + call.run.errors)
         return Answer(None, child_reply.no_json_reason(kept), ())
     reading = child_reply.read_reply(call.envelope, results, schema)
     return Answer(reading.line, None, reading.faults)
@@ -362,9 +363,9 @@ def run_child(command: List[str], work: str, keep_awake: str, environment: Dict[
         guard = awake_guard(process.pid) if keep_awake == CAFFEINATE else None
         if guard is not None:
             guarding.callback(release_guard, guard)
-        stdout, _ = process.communicate()
+        stdout, errors = process.communicate()
     seconds = time.monotonic() - started
-    return ChildRun(process.returncode, stdout or b"", None, seconds)
+    return ChildRun(process.returncode, stdout or b"", None, seconds, errors or b"")
 
 
 def awake_guard(pid: int) -> Optional["subprocess.Popen[bytes]"]:

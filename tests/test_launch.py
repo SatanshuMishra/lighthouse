@@ -1,7 +1,9 @@
 import json
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import unittest
 
 from lighthouse_tool import launch as launch_tool
@@ -596,6 +598,25 @@ class NoLimitTest(unittest.TestCase):
             self.assertIs(calls[0]["ended_after_child"], True)
         else:
             self.assertEqual(calls, [])
+
+
+class ChildStderrTest(unittest.TestCase):
+    def test_child_out_keeps_what_the_child_printed_on_stderr(self):
+        results = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, results, True)
+        environment = {"PATH": os.environ.get("PATH", "/usr/bin:/bin")}
+        ran = launch_tool.run_child(
+            ["sh", "-c", 'echo "Error: unknown option --json-schema" >&2; exit 1'],
+            results,
+            launch_tool.NO_KEEP_AWAKE,
+            environment,
+        )
+        self.assertEqual(ran.exit, 1)
+        answer = launch_tool.answered(launch_tool.Call(ran, None), results, {})
+        kept = os.path.join(results, launch_tool.CHILD_OUT)
+        self.assertIn(kept, answer.reason)
+        with open(kept, "rb") as handle:
+            self.assertIn(b"Error: unknown option --json-schema", handle.read())
 
 
 if __name__ == "__main__":
