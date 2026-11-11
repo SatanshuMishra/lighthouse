@@ -8,6 +8,9 @@ from tests import e2e_harness, scratch
 SKILLS = ("init", "doctor", "test")
 FOREGROUND_CALL = "in the foreground, as one Bash call with its timeout argument set to 604800000 and never with run_in_background"
 LONG_LIGHTHOUSE_CALL = re.compile(r"[Rr]un `lighthouse (profile measure|suite|execute) ")
+HOLDING_WAIT = re.compile(r"lighthouse wait --(ready|until) ")
+LONG_TIMEOUT = "timeout argument set to 604800000"
+SENTENCE_END = re.compile(r"(?<=[.:]) ")
 SPLICED_PROFILE_TEXT = re.compile(r"curl -fsS <[^>]*>|grep -qF '<[^>]*>'|--until '<the ready check>'|'<the surface's sign_in command>'")
 
 
@@ -314,10 +317,35 @@ class SkillsTest(unittest.TestCase):
             text,
         )
         self.assertNotIn("When the Bash tool moves a foreground call to the background", text)
+        self.assertIn(
+            "Run each setup and build command in the foreground, as one Bash call with its timeout argument set to 604800000 and never with run_in_background",
+            text,
+        )
         driver = driver_text()
+        self.assertIn("is moved to the background: stop such a command by its id, never by name or pattern", driver)
         self.assertIn("Run the wait in the foreground, as one Bash call with its timeout argument set to 604800000", driver)
         self.assertIn("Never end your turn while the wait or a command you started is still running", driver)
         self.assertNotIn("wait for its completion notice", driver)
+
+    def test_every_hold_on_a_lighthouse_wait_asks_for_the_long_timeout(self):
+        holds = [
+            (path, line)
+            for path in instruction_files()
+            for line in scratch.read_text(path).splitlines()
+            if HOLDING_WAIT.search(line)
+        ]
+        for holder in (scratch.skill_path("test"), driver_path()):
+            with self.subTest(holder=holder):
+                self.assertTrue(any(path == holder for path, _ in holds))
+        for path, line in holds:
+            with self.subTest(path=path, line=line[:80]):
+                self.assertTrue(
+                    any(
+                        "wait" in sentence and "in the foreground" in sentence and LONG_TIMEOUT in sentence
+                        for sentence in SENTENCE_END.split(line)
+                    ),
+                    "a wait here is held under the two-minute default",
+                )
 
     def test_the_child_closes_stdin_of_every_command_it_runs(self):
         steps = section(scratch.skill_text("test"), "## Steps", "## Stopping early")

@@ -13,6 +13,11 @@ from tests import scratch
 
 ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000
 LONGEST_TIMER_MS = 2**31 - 1
+TEN_MINUTES_MS = 10 * 60 * 1000
+ASKED_TIMEOUT = re.compile(r"timeout argument set to (\d+)")
+INSTRUCTIONS = tuple(scratch.skill_path(name) for name in ("test", "init", "doctor")) + (
+    os.path.join(scratch.ROOT, "agents", "driver.md"),
+)
 
 CLAUDE_STUB = """#!{python}
 import json
@@ -298,7 +303,7 @@ class LaunchTest(unittest.TestCase):
         self.assertEqual(os.path.realpath(calls[0]["cwd"]), os.path.realpath(os.path.join(ran["results"], "work")))
 
     def test_the_child_and_its_re_ask_may_hold_a_step_for_a_week_and_keep_the_two_minute_default(self):
-        ran = launch(self, claude_output("I could not finish."), caller={"BASH_DEFAULT_TIMEOUT_MS": str(ONE_WEEK_MS)})
+        ran = launch(self, claude_output("I could not finish."), caller={"BASH_DEFAULT_TIMEOUT_MS": str(ONE_WEEK_MS), "BASH_MAX_TIMEOUT_MS": str(TEN_MINUTES_MS)})
         self.assertEqual(ran["code"], 0, ran["stderr"])
         calls = calls_of(ran["stubs"], "claude")
         self.assertEqual(len(calls), 2)
@@ -308,8 +313,10 @@ class LaunchTest(unittest.TestCase):
             self.assertGreaterEqual(int(longest), ONE_WEEK_MS)
             self.assertLessEqual(int(longest), LONGEST_TIMER_MS)
             self.assertIsNone(default, "a command that hangs in the child is held instead of moved after two minutes")
-            asked = re.search(r"timeout argument set to (\d+)", scratch.skill_text("test"))
-            self.assertLessEqual(int(asked.group(1)), int(longest), "the skill asks for a timeout the child's Bash tool refuses")
+            for path in INSTRUCTIONS:
+                asked = [int(value) for value in ASKED_TIMEOUT.findall(scratch.read_text(path))]
+                self.assertTrue(asked, "{} asks for no timeout".format(path))
+                self.assertLessEqual(max(asked), int(longest), "{} asks for a timeout the child's Bash tool refuses".format(path))
 
     def test_launch_reads_the_reply_from_structured_output_not_the_result_text(self):
         text_line = json.dumps({**json.loads(BLOCKED_LINE), "reason": "text reason"})

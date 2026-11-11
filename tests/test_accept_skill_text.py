@@ -40,17 +40,18 @@ class SkillText(unittest.TestCase):
                 with self.subTest(file=relative, word="timeout_minutes"):
                     self.assertFalse(holds(text, "timeout_minutes"), "{} names timeout_minutes".format(relative))
 
-    def test_long_steps_are_held_by_their_completion_notice(self):
+    def test_the_caller_holds_launch_by_its_completion_notice_and_waits_name_an_exit_file(self):
         test_skill = text_of(TEST_SKILL)
         init_skill = text_of(INIT_SKILL)
         doctor_skill = text_of(DOCTOR_SKILL)
         driver = text_of(DRIVER)
         cost = support.section(test_skill, "Cost")
         stopping = support.section(test_skill, "Stopping early")
+        launching = support.section(test_skill, "Launch")
 
         self.assertNotIn("limit", cost)
-        self.assertTrue(holds(test_skill, "run_in_background"))
-        self.assertTrue(holds_prose(test_skill, "completion notice"))
+        self.assertTrue(holds(launching, "run_in_background"))
+        self.assertTrue(holds_prose(launching, "completion notice"))
         self.assertTrue(holds(test_skill, "--exit-file"))
         self.assertTrue(holds(driver, "--exit-file"))
         self.assertTrue(
