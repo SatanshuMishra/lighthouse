@@ -11,6 +11,9 @@ LONG_LIGHTHOUSE_CALL = re.compile(r"[Rr]un `lighthouse (profile measure|suite|ex
 HOLDING_WAIT = re.compile(r"lighthouse wait --(ready|until) ")
 LONG_TIMEOUT = "timeout argument set to 604800000"
 SENTENCE_END = re.compile(r"(?<=[.:]) ")
+FORBIDS_BACKGROUND = "never with run_in_background"
+CALLER_STARTS = ("Start `lighthouse launch ", "In any other session, start `lighthouse profile measure ")
+CHILD_BACKGROUND_START = "run_in_background and its timeout argument set to 604800000 as `("
 SPLICED_PROFILE_TEXT = re.compile(r"curl -fsS <[^>]*>|grep -qF '<[^>]*>'|--until '<the ready check>'|'<the surface's sign_in command>'")
 
 
@@ -284,7 +287,7 @@ class SkillsTest(unittest.TestCase):
         building = text.split("6. Build and start", 1)[1].split("7. Prove each path", 1)[0]
 
         self.assertIn(
-            "starting it with run_in_background as (<start command>) > <results>/<build>-start.log 2>&1 < /dev/null & echo $! > <results>/<build>-start.pid; wait $!; echo $? > <results>/<build>-start.exit",
+            "starting it with run_in_background and its timeout argument set to 604800000 as (<start command>) > <results>/<build>-start.log 2>&1 < /dev/null & echo $! > <results>/<build>-start.pid; wait $!; echo $? > <results>/<build>-start.exit",
             building,
         )
         self.assertIn("--exit-file <results>/<build>-start.exit", building)
@@ -312,6 +315,10 @@ class SkillsTest(unittest.TestCase):
         self.assertIn("A child session never ends a turn while a command it started is still running", text)
         self.assertIn("A step that is still running is never a reason to stop early", text)
         self.assertIn("Run the wait itself in the foreground with its timeout argument set to 604800000", text)
+        self.assertIn(
+            "A process the child starts in the background gets that timeout too, because the Bash tool stops a background command when its timeout runs out",
+            text,
+        )
         self.assertIn(
             "Every other command keeps the Bash tool's own two-minute default, so one that hangs is moved to the background",
             text,
@@ -345,6 +352,27 @@ class SkillsTest(unittest.TestCase):
                         for sentence in SENTENCE_END.split(line)
                     ),
                     "a wait here is held under the two-minute default",
+                )
+
+    def test_every_background_start_a_child_makes_asks_for_the_long_timeout(self):
+        child_starts = [
+            (path, sentence)
+            for path in instruction_files()
+            for line in scratch.read_text(path).splitlines()
+            for sentence in SENTENCE_END.split(line)
+            if "run_in_background" in sentence
+            and FORBIDS_BACKGROUND not in sentence
+            and not any(start in sentence for start in CALLER_STARTS)
+        ]
+        for starter in (scratch.skill_path("test"), driver_path()):
+            with self.subTest(starter=starter):
+                self.assertTrue(any(path == starter for path, _ in child_starts))
+        for path, sentence in child_starts:
+            with self.subTest(path=path, sentence=sentence[:80]):
+                self.assertIn(
+                    CHILD_BACKGROUND_START,
+                    sentence,
+                    "a process started here is stopped ten minutes after it starts",
                 )
 
     def test_the_child_closes_stdin_of_every_command_it_runs(self):
