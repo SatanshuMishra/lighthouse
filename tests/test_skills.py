@@ -6,6 +6,7 @@ import unittest
 from tests import e2e_harness, scratch
 
 SKILLS = ("init", "doctor", "test")
+FOREGROUND_CALL = "in the foreground, as one Bash call with no timeout argument and never with run_in_background"
 LONG_LIGHTHOUSE_CALL = re.compile(r"[Rr]un `lighthouse (profile measure|suite|execute) ")
 SPLICED_PROFILE_TEXT = re.compile(r"curl -fsS <[^>]*>|grep -qF '<[^>]*>'|--until '<the ready check>'|'<the surface's sign_in command>'")
 
@@ -299,15 +300,20 @@ class SkillsTest(unittest.TestCase):
         )
         self.assertLess(stopping.index("lighthouse release"), stopping.index("lighthouse verdict --blocked"))
 
-    def test_a_moved_foreground_call_is_held_by_its_completion_notice(self):
-        for text in (scratch.skill_text("test"), driver_text()):
-            self.assertIn("never poll", text)
-            self.assertIn("never sleep", text)
-            self.assertIn("never stop", text)
+    def test_the_child_holds_a_long_step_in_one_foreground_call_and_never_ends_a_turn_to_wait(self):
+        text = scratch.skill_text("test")
         self.assertIn(
-            "When the Bash tool moves a foreground call to the background, the session waits for its completion notice, never polls it, never sleeps and never stops it",
-            scratch.skill_text("test"),
+            "The child session holds every long step in the foreground instead: it runs the step as one Bash call with no timeout argument and never with run_in_background",
+            text,
         )
+        self.assertIn("A child session never ends a turn while a command it started is still running", text)
+        self.assertIn("A step that is still running is never a reason to stop early", text)
+        self.assertIn("Run the wait itself in the foreground with no timeout argument", text)
+        self.assertNotIn("When the Bash tool moves a foreground call to the background", text)
+        driver = driver_text()
+        self.assertIn("Run the wait in the foreground, as one Bash call with no timeout argument", driver)
+        self.assertIn("Never end your turn while the wait or a command you started is still running", driver)
+        self.assertNotIn("wait for its completion notice", driver)
 
     def test_the_child_closes_stdin_of_every_command_it_runs(self):
         steps = section(scratch.skill_text("test"), "## Steps", "## Stopping early")
@@ -544,18 +550,20 @@ class SkillsTest(unittest.TestCase):
         )
         self.assertIn("so the name under failures or unproven tells a reader what broke", planning)
 
-    def test_every_long_lighthouse_call_runs_in_the_background_and_is_held_by_its_completion_notice(self):
+    def test_every_long_lighthouse_call_runs_in_the_foreground_in_a_child_session(self):
         calls = long_lighthouse_calls()
         for name in SKILLS:
             with self.subTest(skill=name):
                 self.assertTrue(any(path == scratch.skill_path(name) for path, _ in calls), name)
         for path, line in calls:
-            for phrase in ["run_in_background", "completion notice", "< /dev/null"]:
+            for phrase in [FOREGROUND_CALL, "< /dev/null"]:
                 with self.subTest(path=path, phrase=phrase, line=line[:80]):
                     self.assertIn(phrase, line)
             for retired in ["lighthouse wait", ".done", "600000"]:
                 with self.subTest(path=path, retired=retired, line=line[:80]):
                     self.assertNotIn(retired, line)
+            with self.subTest(path=path, line=line[:80]):
+                self.assertEqual("completion notice" in line, path != scratch.skill_path("test"))
 
     def test_findings_reach_findings_json_only_through_lighthouse_findings(self):
         text = scratch.skill_text("test")

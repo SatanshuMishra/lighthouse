@@ -17,6 +17,11 @@ def holds_prose(text, phrase):
     return phrase.lower() in support.collapsed(text).lower()
 
 
+def released_after_base(heading):
+    numbers = heading[len("## ") :].split()[0].split(".")
+    return all(part.isdigit() for part in numbers) and tuple(int(part) for part in numbers) > BASE_VERSION
+
+
 def shipped_texts():
     skills = sorted(glob.glob(os.path.join(support.ROOT, "skills", "*", "SKILL.md")))
     return [*skills, os.path.join(support.ROOT, "agents", "driver.md"), os.path.join(support.ROOT, "README.md")]
@@ -62,9 +67,13 @@ class Release(unittest.TestCase):
         headings = [index for index, line in enumerate(lines) if line.startswith("## ")]
         self.assertTrue(headings, "CHANGELOG.md holds no ## heading")
         self.assertEqual(lines[headings[0]].strip(), "## " + version)
-        end = headings[1] if len(headings) > 1 else len(lines)
-        entry = "\n".join(lines[headings[0] : end])
-        self.assertTrue(holds_prose(entry, "owned format"), entry)
+        ends = [*headings[1:], len(lines)]
+        since_base = "\n".join(
+            "\n".join(lines[start:end])
+            for start, end in zip(headings, ends)
+            if released_after_base(lines[start])
+        )
+        self.assertTrue(holds_prose(since_base, "owned format"), since_base)
 
 
 if __name__ == "__main__":

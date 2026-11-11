@@ -51,12 +51,18 @@ class SkillInitDoctorTest(unittest.TestCase):
                 name,
             )
 
-    def test_init_and_doctor_hold_measure_by_its_completion_notice(self):
+    def test_init_and_doctor_run_measure_in_the_foreground_in_a_child_session_and_by_its_notice_elsewhere(self):
         for name in ["init", "doctor"]:
             text = scratch.skill_text(name)
 
             self.assertIn(
-                "Start lighthouse profile measure --repo <repo> > <folder>/measure.out 2>&1 < /dev/null with run_in_background, then wait for that command's completion notice",
+                "In a lighthouse:test child session, run lighthouse profile measure --repo <repo> > <folder>/measure.out 2>&1 < /dev/null in the foreground, as one Bash call with no timeout argument and never with run_in_background",
+                text,
+                name,
+            )
+            self.assertIn("never end the turn while it runs", text, name)
+            self.assertIn(
+                "In any other session, start lighthouse profile measure --repo <repo> > <folder>/measure.out 2>&1 < /dev/null with run_in_background, then wait for that command's completion notice",
                 text,
                 name,
             )

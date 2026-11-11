@@ -10,6 +10,9 @@ from lighthouse_tool import launch as launch_tool
 from lighthouse_tool.repo import Refusal
 from tests import scratch
 
+ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000
+LONGEST_TIMER_MS = 2**31 - 1
+
 CLAUDE_STUB = """#!{python}
 import json
 import os
@@ -23,7 +26,7 @@ earlier_names = ("verdict.json", "checks.jsonl", "plan.json", "record.json", "fi
 earlier_files = [name for name in earlier_names if os.path.exists(os.path.join(results, name))]
 calls_path = os.path.join(folder, "claude-calls.jsonl")
 with open(calls_path, "a", encoding="utf-8") as calls:
-    calls.write(json.dumps({{"argv": sys.argv[1:], "cwd": os.getcwd(), "pid": os.getpid(), "saw_launch": os.path.exists(earlier_line), "saw_earlier": earlier_files}}) + "\\n")
+    calls.write(json.dumps({{"argv": sys.argv[1:], "cwd": os.getcwd(), "pid": os.getpid(), "saw_launch": os.path.exists(earlier_line), "saw_earlier": earlier_files, "bash_ceilings": [os.environ.get("BASH_DEFAULT_TIMEOUT_MS"), os.environ.get("BASH_MAX_TIMEOUT_MS")]}}) + "\\n")
 with open(calls_path, encoding="utf-8") as calls:
     index = len([line for line in calls.read().splitlines() if line.strip()]) - 1
 time.sleep(0.5)
@@ -290,6 +293,18 @@ class LaunchTest(unittest.TestCase):
         self.assertNotIn("$schema", schema)
         self.assertNotIn("--resume", argv)
         self.assertEqual(os.path.realpath(calls[0]["cwd"]), os.path.realpath(os.path.join(ran["results"], "work")))
+
+    def test_the_child_and_its_re_ask_get_a_bash_tool_that_outlasts_any_step(self):
+        ran = launch(self, claude_output("I could not finish."))
+        self.assertEqual(ran["code"], 0, ran["stderr"])
+        calls = calls_of(ran["stubs"], "claude")
+        self.assertEqual(len(calls), 2)
+        for call in calls:
+            default, longest = call["bash_ceilings"]
+            self.assertIsNotNone(longest, "the child session keeps the Bash tool's own ten-minute ceiling")
+            self.assertEqual(default, longest)
+            self.assertGreaterEqual(int(longest), ONE_WEEK_MS)
+            self.assertLessEqual(int(longest), LONGEST_TIMER_MS)
 
     def test_launch_reads_the_reply_from_structured_output_not_the_result_text(self):
         text_line = json.dumps({**json.loads(BLOCKED_LINE), "reason": "text reason"})

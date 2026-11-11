@@ -41,6 +41,8 @@ NO_KEEP_AWAKE = "none"
 DARWIN_PROCESS_SELECTOR = 4
 PATH_FLAGS = ("repo", "results", "previous", "spec", "record")
 CHILD_STORE = "plugin-metrics"
+BASH_CEILING_VARIABLES = ("BASH_DEFAULT_TIMEOUT_MS", "BASH_MAX_TIMEOUT_MS")
+BASH_CEILING_MS = 7 * 24 * 60 * 60 * 1000
 
 
 class ChildRun(NamedTuple):
@@ -283,6 +285,7 @@ def spec_path(options: argparse.Namespace) -> Optional[str]:
 def child_environment(results: str) -> Dict[str, str]:
     return {
         **noninteractive.environment(run_record.environment_without_parent()),
+        **{name: str(BASH_CEILING_MS) for name in BASH_CEILING_VARIABLES},
         metrics_writer.ROOT_VARIABLE: os.path.join(results, CHILD_STORE),
     }
 
