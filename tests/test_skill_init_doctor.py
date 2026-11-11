@@ -56,7 +56,7 @@ class SkillInitDoctorTest(unittest.TestCase):
             text = scratch.skill_text(name)
 
             self.assertIn(
-                "In a lighthouse:test child session, run lighthouse profile measure --repo <repo> > <folder>/measure.out 2>&1 < /dev/null in the foreground, as one Bash call with no timeout argument and never with run_in_background",
+                "In a lighthouse:test child session, run lighthouse profile measure --repo <repo> > <folder>/measure.out 2>&1 < /dev/null in the foreground, as one Bash call with its timeout argument set to 604800000 and never with run_in_background",
                 text,
                 name,
             )

@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -237,7 +238,9 @@ def launch_flags(repo, results):
     return ["--repo", repo, "--core", "main", "--feature", "feat/x", "--results", results]
 
 
-def launch(test, output, exit_code=0, nice=None, earlier=False, claude=CLAUDE_STUB, written=None, marks=(), then=()):
+def launch(
+    test, output, exit_code=0, nice=None, earlier=False, claude=CLAUDE_STUB, written=None, marks=(), then=(), caller=None
+):
     repo, _ = scratch.make_repo(test)
     home = scratch.make_home(test)
     store = scratch.temporary_folder(test, "lh-store-")
@@ -248,7 +251,7 @@ def launch(test, output, exit_code=0, nice=None, earlier=False, claude=CLAUDE_ST
     write_stub(stubs, "claude", claude)
     for mark in marks:
         open(os.path.join(stubs, mark), "w", encoding="utf-8").close()
-    env = {**scratch.environment(home, stubs), "PLUGIN_METRICS_DIR": store}
+    env = {**scratch.environment(home, stubs), "PLUGIN_METRICS_DIR": store, **(caller or {})}
     prefix = ["nice", "-n", str(nice)] if nice is not None else []
     completed = subprocess.run(
         [*prefix, sys.executable, scratch.LIGHTHOUSE, "launch", *launch_flags(repo, results)],
@@ -294,17 +297,19 @@ class LaunchTest(unittest.TestCase):
         self.assertNotIn("--resume", argv)
         self.assertEqual(os.path.realpath(calls[0]["cwd"]), os.path.realpath(os.path.join(ran["results"], "work")))
 
-    def test_the_child_and_its_re_ask_get_a_bash_tool_that_outlasts_any_step(self):
-        ran = launch(self, claude_output("I could not finish."))
+    def test_the_child_and_its_re_ask_may_hold_a_step_for_a_week_and_keep_the_two_minute_default(self):
+        ran = launch(self, claude_output("I could not finish."), caller={"BASH_DEFAULT_TIMEOUT_MS": str(ONE_WEEK_MS)})
         self.assertEqual(ran["code"], 0, ran["stderr"])
         calls = calls_of(ran["stubs"], "claude")
         self.assertEqual(len(calls), 2)
         for call in calls:
             default, longest = call["bash_ceilings"]
             self.assertIsNotNone(longest, "the child session keeps the Bash tool's own ten-minute ceiling")
-            self.assertEqual(default, longest)
             self.assertGreaterEqual(int(longest), ONE_WEEK_MS)
             self.assertLessEqual(int(longest), LONGEST_TIMER_MS)
+            self.assertIsNone(default, "a command that hangs in the child is held instead of moved after two minutes")
+            asked = re.search(r"timeout argument set to (\d+)", scratch.skill_text("test"))
+            self.assertLessEqual(int(asked.group(1)), int(longest), "the skill asks for a timeout the child's Bash tool refuses")
 
     def test_launch_reads_the_reply_from_structured_output_not_the_result_text(self):
         text_line = json.dumps({**json.loads(BLOCKED_LINE), "reason": "text reason"})

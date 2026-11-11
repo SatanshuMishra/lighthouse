@@ -6,7 +6,7 @@ import unittest
 from tests import e2e_harness, scratch
 
 SKILLS = ("init", "doctor", "test")
-FOREGROUND_CALL = "in the foreground, as one Bash call with no timeout argument and never with run_in_background"
+FOREGROUND_CALL = "in the foreground, as one Bash call with its timeout argument set to 604800000 and never with run_in_background"
 LONG_LIGHTHOUSE_CALL = re.compile(r"[Rr]un `lighthouse (profile measure|suite|execute) ")
 SPLICED_PROFILE_TEXT = re.compile(r"curl -fsS <[^>]*>|grep -qF '<[^>]*>'|--until '<the ready check>'|'<the surface's sign_in command>'")
 
@@ -303,15 +303,19 @@ class SkillsTest(unittest.TestCase):
     def test_the_child_holds_a_long_step_in_one_foreground_call_and_never_ends_a_turn_to_wait(self):
         text = scratch.skill_text("test")
         self.assertIn(
-            "The child session holds every long step in the foreground instead: it runs the step as one Bash call with no timeout argument and never with run_in_background",
+            "The child session holds every long step in the foreground instead: it runs the step as one Bash call with its timeout argument set to 604800000 and never with run_in_background",
             text,
         )
         self.assertIn("A child session never ends a turn while a command it started is still running", text)
         self.assertIn("A step that is still running is never a reason to stop early", text)
-        self.assertIn("Run the wait itself in the foreground with no timeout argument", text)
+        self.assertIn("Run the wait itself in the foreground with its timeout argument set to 604800000", text)
+        self.assertIn(
+            "Every other command keeps the Bash tool's own two-minute default, so one that hangs is moved to the background",
+            text,
+        )
         self.assertNotIn("When the Bash tool moves a foreground call to the background", text)
         driver = driver_text()
-        self.assertIn("Run the wait in the foreground, as one Bash call with no timeout argument", driver)
+        self.assertIn("Run the wait in the foreground, as one Bash call with its timeout argument set to 604800000", driver)
         self.assertIn("Never end your turn while the wait or a command you started is still running", driver)
         self.assertNotIn("wait for its completion notice", driver)
 
