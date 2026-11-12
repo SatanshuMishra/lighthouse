@@ -75,6 +75,20 @@ class MarkLine(NamedTuple):
     time: datetime.datetime
 
 
+class BashCall(NamedTuple):
+    transcript: str
+    identifier: str
+    started: datetime.datetime
+    ended: datetime.datetime
+    command: str
+    output: str
+
+
+class Written(NamedTuple):
+    by_call: Dict[Tuple[str, str], List[MarkLine]]
+    by_no_one_call: List[MarkLine]
+
+
 class Span(NamedTuple):
     key: Tuple[str, int]
     step: str
@@ -410,38 +424,112 @@ def read_mark_lines(results: str) -> List[MarkLine]:
     return [line for line in found if line is not None]
 
 
-def located(call: MarkCall, marked: List[MarkLine], used: Set[int]) -> Tuple[MarkCall, Set[int]]:
-    candidates = [
-        (index, line)
-        for index, line in enumerate(marked)
-        if index not in used
-        and line.edge == call.edge
-        and line.key == mark_key(call)
-        and line.time >= call.timestamp
-    ]
-    earliest = min(candidates, key=lambda candidate: candidate[1].time, default=None)
-    if earliest is None:
-        return call, used
-    index, line = earliest
-    return call._replace(folder=line.folder, written=line.time), used | {index}
-
-
-def mark_calls(row: Row) -> List[MarkCall]:
-    commands = [
-        block["input"]["command"]
+def bash_blocks(row: Row) -> List[Tuple[Optional[str], str]]:
+    return [
+        (text_or_none(block.get("id")), block["input"]["command"])
         for block in blocks_of(row.entry)
         if block.get("type") == "tool_use"
         and block.get("name") == "Bash"
         and isinstance(block.get("input"), dict)
         and isinstance(block["input"].get("command"), str)
     ]
-    calls = [parsed_mark(arguments, row.timestamp) for command in commands for arguments in mark_arguments(command)]
+
+
+def mark_calls(row: Row) -> List[MarkCall]:
+    calls = [parsed_mark(arguments, row.timestamp) for _, command in bash_blocks(row) for arguments in mark_arguments(command)]
     return [call for call in calls if call is not None]
+
+
+def result_text(block: Dict[str, Any]) -> str:
+    content = block.get("content")
+    if isinstance(content, str):
+        return content
+    parts = content if isinstance(content, list) else []
+    return "\n".join(part["text"] for part in parts if isinstance(part, dict) and isinstance(part.get("text"), str))
+
+
+def bash_calls(transcript: Transcript) -> List[BashCall]:
+    results = {
+        block.get("tool_use_id"): (row.timestamp, result_text(block))
+        for row in transcript.rows
+        for block in blocks_of(row.entry)
+        if block.get("type") == "tool_result"
+    }
+    started = [(row.timestamp, identifier, command) for row in transcript.rows for identifier, command in bash_blocks(row)]
+    unanswered = (transcript.rows[-1].timestamp, "") if transcript.rows else None
+    return [
+        BashCall(transcript.path, identifier, begun, results.get(identifier, unanswered)[0], command, results.get(identifier, unanswered)[1])
+        for begun, identifier, command in started
+        if identifier is not None
+    ]
+
+
+def was_running(call: BashCall, moment: datetime.datetime) -> bool:
+    return call.started <= moment <= call.ended
+
+
+def prints(call: BashCall, line: MarkLine) -> bool:
+    entries = [json_object(text) for text in call.output.splitlines()]
+    return any(entry is not None and mark_line(entry) == line for entry in entries)
+
+
+def fits(call: BashCall, line: MarkLine) -> bool:
+    parsed = [parsed_mark(arguments, call.started) for arguments in mark_arguments(call.command)]
+    return any(
+        found is not None
+        and found.edge == line.edge
+        and found.step == line.key.step
+        and found.build == line.key.build
+        and (found.path == line.key.path or "$" in (found.path or ""))
+        for found in parsed
+    )
+
+
+def possible_writers(line: MarkLine, calls: List[BashCall]) -> List[BashCall]:
+    running = [call for call in calls if was_running(call, line.time)]
+    for narrower in (prints, fits):
+        running = [call for call in running if narrower(call, line)] or running
+    return running
+
+
+def one_transcript(calls: List[BashCall]) -> Optional[str]:
+    transcripts = {call.transcript for call in calls}
+    return next(iter(transcripts)) if len(transcripts) == 1 else None
+
+
+def written_marks(marked: List[MarkLine], transcripts: List[Transcript]) -> Written:
+    calls = [call for transcript in transcripts for call in bash_calls(transcript)]
+    ordered = sorted(marked, key=lambda line: line.time)
+    possible = [possible_writers(line, calls) for line in ordered]
+    known = {(line.key, one_transcript(found)) for line, found in zip(ordered, possible) if one_transcript(found) is not None}
+    settled = [
+        found if one_transcript(found) is not None else [call for call in found if (line.key, call.transcript) in known]
+        for line, found in zip(ordered, possible)
+    ]
+    writers = [
+        (line, max(found, key=lambda call: call.started) if one_transcript(found) is not None else None)
+        for line, found in zip(ordered, settled)
+    ]
+    keys = {(call.transcript, call.identifier) for _, call in writers if call is not None}
+    return Written(
+        {key: [line for line, call in writers if call is not None and (call.transcript, call.identifier) == key] for key in keys},
+        [line for line, call in writers if call is None],
+    )
+
+
+def line_call(line: MarkLine, timestamp: datetime.datetime) -> MarkCall:
+    return MarkCall(line.edge, line.key.step, line.key.build, line.key.path, line.folder, timestamp, line.time)
+
+
+def calls_on(path: str, row: Row, written: Optional[Written]) -> List[MarkCall]:
+    if written is None:
+        return mark_calls(row)
+    return [line_call(line, row.timestamp) for identifier, _ in bash_blocks(row) for line in written.by_call.get((path, identifier or ""), [])]
 
 
 def span_of(key: Tuple[str, int], call: MarkCall, ended: datetime.datetime) -> Span:
     minutes = (ended - call.timestamp).total_seconds() / 60
-    return Span(key, call.step, call.build, call.path, call.folder, call.timestamp, minutes)
+    return Span(key, call.step, call.build, call.path, call.folder, call.written or call.timestamp, minutes)
 
 
 def ended_span(key: Tuple[str, int], start: MarkCall, end: MarkCall) -> Span:
@@ -451,11 +539,11 @@ def ended_span(key: Tuple[str, int], start: MarkCall, end: MarkCall) -> Span:
     return span_of(key, start, end.timestamp)
 
 
-def message_calls(rows: List[Row]) -> Dict[str, List[MarkCall]]:
-    identified = [(message_id(row.entry), row) for row in rows]
+def message_calls(transcript: Transcript, written: Optional[Written]) -> Dict[str, List[MarkCall]]:
+    identified = [(message_id(row.entry), row) for row in transcript.rows]
     identifiers = list(dict.fromkeys(identifier for identifier, _ in identified if identifier is not None))
     return {
-        identifier: [call for found, row in identified if found == identifier for call in mark_calls(row)]
+        identifier: [call for found, row in identified if found == identifier for call in calls_on(transcript.path, row, written)]
         for identifier in identifiers
     }
 
@@ -464,34 +552,51 @@ def mark_key(call: MarkCall) -> MarkKey:
     return MarkKey(call.step, call.build, call.path)
 
 
+Opened = List[Tuple[Tuple[str, int], MarkCall]]
+
+
+def after_call(opened: Opened, key: Tuple[str, int], call: MarkCall) -> Tuple[Opened, Optional[Span]]:
+    if call.edge == "start":
+        return opened + [(key, call)], None
+    matching = [index for index, (_, start) in enumerate(opened) if mark_key(start) == mark_key(call)]
+    if not matching:
+        return opened, None
+    start_key, start = opened[matching[-1]]
+    return opened[: matching[-1]] + opened[matching[-1] + 1 :], ended_span(start_key, start, call)
+
+
+def unowned_spans(lines: List[MarkLine]) -> List[Span]:
+    opened: Opened = []
+    spans: List[Span] = []
+    for index, line in enumerate(lines):
+        opened, ended = after_call(opened, ("", index), line_call(line, line.time))
+        spans = spans + ([ended] if ended is not None else [])
+    return spans + [span_of(key, start, start.timestamp) for key, start in opened]
+
+
 def read_marks(
-    transcript: Transcript, counted: Set[str], marked: List[MarkLine]
+    transcript: Transcript, counted: Set[str], written: Optional[Written]
 ) -> Tuple[List[Span], Dict[str, Tuple[str, int]]]:
-    opened: List[Tuple[Tuple[str, int], MarkCall]] = []
+    opened: Opened = []
     spans: List[Span] = []
     owners: Dict[str, Tuple[str, int]] = {}
-    used: Set[int] = set()
     started = 0
-    calls_of = message_calls(transcript.rows)
+    calls_of = message_calls(transcript, written)
     for row in transcript.rows:
         identifier = message_id(row.entry)
         if identifier is not None and identifier not in calls_of:
             continue
-        calls = mark_calls(row) if identifier is None else calls_of.pop(identifier)
+        calls = calls_on(transcript.path, row, written) if identifier is None else calls_of.pop(identifier)
         holder = opened[-1][0] if opened else None
         opened_here: List[Tuple[str, int]] = []
         for call in calls:
-            found, used = located(call, marked, used)
-            if found.edge == "start":
-                key = (transcript.path, started)
-                opened.append((key, found))
+            key = (transcript.path, started)
+            opened, ended = after_call(opened, key, call)
+            if call.edge == "start":
                 opened_here.append(key)
                 started += 1
-                continue
-            matching = [index for index, (_, start) in enumerate(opened) if mark_key(start) == mark_key(found)]
-            if matching:
-                key, start = opened.pop(matching[-1])
-                spans.append(ended_span(key, start, found))
+            elif ended is not None:
+                spans.append(ended)
         owner = opened_here[-1] if opened_here else holder
         if identifier is not None and identifier in counted and owner is not None:
             owners[identifier] = owner
@@ -536,10 +641,12 @@ def folder_owner(transcript: Transcript, spans: List[Span]) -> Optional[Tuple[st
 def reading(transcripts: List[Transcript], since: datetime.datetime, folders: List[MarkLine]) -> Reading:
     windows = [recent(transcript, since) for transcript in transcripts]
     owned = owned_messages(windows, since)
+    written = written_marks([line for line in folders if line.time > since], windows) if folders else None
     marked = [
-        read_marks(window, {message.identifier for message in messages}, folders) for window, messages in zip(windows, owned)
+        read_marks(window, {message.identifier for message in messages}, written) for window, messages in zip(windows, owned)
     ]
-    spans = [span for transcript_spans, _ in marked for span in transcript_spans]
+    unowned = unowned_spans(written.by_no_one_call) if written is not None else []
+    spans = [span for transcript_spans, _ in marked for span in transcript_spans] + unowned
     folder_owners = [folder_owner(window, spans) for window in windows]
     owners = {
         message.identifier: folder_key if folder_key is not None else transcript_owners[message.identifier]
