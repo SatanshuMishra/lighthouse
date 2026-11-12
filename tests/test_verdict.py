@@ -443,6 +443,26 @@ class VerdictTest(unittest.TestCase):
         pre_existing = report.split("## Pre-existing\n", 1)[1].split("\n## ", 1)[0]
         self.assertIn("model names the file", pre_existing)
 
+    def test_a_neighbour_passing_every_feature_trial_is_proven_with_no_core_trial(self):
+        findings = {
+            "version": 1,
+            "suite": {"result": "passed", "reason": None, "failures": [], "pre_existing": [], "flaky": [], "core": None, "feature": None},
+            "build": {"result": "ok", "reason": None},
+            "paths": [
+                {"name": "export writes a csv", "kind": "new", "surface": "cli", "expected": "a csv with a header row", "evidence": ["evidence/export.txt"], "status": "passed", "retry": None, "core": None, "check": DIRECT_CHECK, "trials": None},
+                {"name": "model names the file", "kind": "neighbour", "surface": "skill", "expected": "a file name", "evidence": ["evidence/names.txt"], "status": "passed", "retry": None, "core": None, "check": DIRECT_CHECK, "trials": {"count": 3, "feature_passed": 3, "core_passed": None}},
+            ],
+            "spend": {"tokens": 5000, "minutes": 2},
+        }
+
+        code, stdout, stderr, results = lighthouse_verdict(self, findings)
+
+        self.assertEqual(code, 0, stderr)
+        line, _ = verdict_line(self, stdout, results)
+        self.assertEqual(line["verdict"], "green")
+        self.assertEqual(line["unproven"], [])
+        self.assertEqual(line["failures"], [])
+
     def test_a_flaky_new_path_is_a_failure(self):
         findings = {
             "version": 1,
