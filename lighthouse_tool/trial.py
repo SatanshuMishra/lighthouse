@@ -22,6 +22,7 @@ SEPARATOR = "--"
 STOP_GRACE_SECONDS = 0.0
 ANOTHER_COPY = "a session loaded another copy of the plugin, or none: its transcript is not a trial of this build"
 FAILED_SESSION = "a session exited with a status other than 0"
+Session = Tuple[ExitStack, "subprocess.Popen[bytes]"]
 
 
 def parser() -> Parser:
@@ -67,13 +68,16 @@ def installed_copies(config: str, name: str) -> List[str]:
 def same_file(one: str, other: str) -> bool:
     try:
         return os.path.samefile(one, other)
-    except OSError:
+    except (OSError, ValueError):
         return False
 
 
-def ancestors(path: str) -> List[str]:
+def ancestors(path: str) -> Iterator[str]:
     parent = os.path.dirname(path)
-    return [path] if parent == path else [path, *ancestors(parent)]
+    yield path
+    while parent != path:
+        path, parent = parent, os.path.dirname(parent)
+        yield path
 
 
 def inside(folder: str, entry: str) -> bool:
@@ -105,6 +109,9 @@ def identity(folder: str) -> Tuple[int, int]:
 
 
 def checked(options: Any, passed_on: List[str]) -> Tuple[str, List[str], str]:
+    given = (options.request, options.name, options.model, options.effort, options.evidence, options.plugin_dir, *options.folder)
+    if any(not isinstance(value, str) or value == SEPARATOR for value in given):
+        raise Refusal("{} is no value for a flag".format(SEPARATOR))
     if not options.request.strip():
         raise Refusal("--request needs the words a person would send")
     if options.request.startswith("-"):
@@ -171,28 +178,37 @@ def loaded_copies(transcript: str, name: str) -> List[str]:
 
 def started(
     owning: ExitStack, argv: List[str], number: int, folder: str, outputs: Tuple[IO[bytes], IO[bytes]], environment: Dict[str, str]
-) -> "subprocess.Popen[bytes]":
+) -> Session:
     transcript, errors = outputs
+    own = owning.enter_context(ExitStack())
     try:
-        return owning.enter_context(
+        return own, own.enter_context(
             process_tree.started(argv, STOP_GRACE_SECONDS, cwd=folder, env=environment, stdin=subprocess.DEVNULL, stdout=transcript, stderr=errors)
         )
     except OSError as error:
         raise Refusal("trial {} cannot start claude in {}: {}".format(number, folder, error.strerror or error))
 
 
+def ended(session: Session) -> int:
+    own, process = session
+    code = process.wait()
+    own.close()
+    return code
+
+
 def run_sessions(argv: List[str], folders: List[str], files: List[Tuple[str, str]], environment: Dict[str, str]) -> List[int]:
     with ExitStack() as owning:
         outputs = owning.enter_context(created(files))
+        owning.enter_context(process_tree.guarded())
         try:
             sessions = [
                 started(owning, argv, number, folder, pair, environment) for number, (folder, pair) in enumerate(zip(folders, outputs), start=1)
             ]
-        except Refusal:
+            return [ended(session) for session in sessions]
+        except BaseException:
             owning.close()
             removed([path for pair in files for path in pair])
             raise
-        return [session.wait() for session in sessions]
 
 
 def problem(rows: List[Dict[str, Any]], build: str) -> Optional[str]:

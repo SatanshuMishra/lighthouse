@@ -3,10 +3,11 @@ import os
 import signal
 import subprocess
 import sys
+import time
 import unittest
 
 from tests import scratch
-from tests.test_process_tree import HOST_SECONDS, PID_SECONDS, is_running, kill_listed_quietly, stop_host, written_pids
+from tests.test_process_tree import HOST_SECONDS, PID_SECONDS, gone_by, is_running, kill_listed_quietly, stop_host, turns_false_by, written_pids
 
 PLUGIN = "demo"
 MARKETPLACE = "market"
@@ -53,11 +54,35 @@ sys.stderr.write("stub stderr\\n")
 sys.exit(plan["exit"])
 """
 
+STAGED_STUB = """#!{python}
+import json
+import os
+import subprocess
+import sys
 
-def write_stub(folder, plan):
+folder = os.path.dirname(os.path.realpath(__file__))
+argv = sys.argv[1:]
+with open(os.path.join(folder, "claude-plan.json"), encoding="utf-8") as handle:
+    plan = json.load(handle)
+init = json.dumps({{"type": "system", "subtype": "init", "plugins": [{{"name": plan["plugin"], "path": argv[argv.index("--plugin-dir") + 1]}}]}})
+if os.getcwd() == plan["first"]:
+    left = subprocess.Popen([sys.executable, "-c", "import signal; signal.pause()"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    with open(plan["left"], "w", encoding="utf-8") as listed:
+        listed.write(str(left.pid) + " ")
+    print(init)
+    sys.exit(0)
+with open(plan["waiting"], "w", encoding="utf-8") as listed:
+    listed.write(str(os.getpid()) + " ")
+with open(plan["release"], encoding="utf-8") as released:
+    released.read()
+print(init)
+"""
+
+
+def write_stub(folder, plan, text=CLAUDE_STUB):
     path = os.path.join(folder, "claude")
     with open(path, "w", encoding="utf-8") as handle:
-        handle.write(CLAUDE_STUB.format(python=sys.executable))
+        handle.write(text.format(python=sys.executable))
     os.chmod(path, 0o755)
     with open(os.path.join(folder, "claude-plan.json"), "w", encoding="utf-8") as handle:
         json.dump(plan, handle)
@@ -132,6 +157,42 @@ class Trial:
 
     def run(self, *extra):
         return run_holding_input(self.arguments(*extra), self.environment)
+
+
+def started_command(test, trial):
+    host = subprocess.Popen(
+        [sys.executable, scratch.LIGHTHOUSE, *trial.arguments()],
+        env=trial.environment,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    test.addCleanup(stop_host, host)
+    return host
+
+
+def staged(test):
+    trial = Trial(test)
+    folder = scratch.temporary_folder(test, "lh-stage-")
+    stage = {name: os.path.join(folder, name) for name in ("left", "waiting", "release")}
+    os.mkfifo(stage["release"])
+    write_stub(trial.stubs, {**trial.plan, **stage, "first": trial.folders[0]}, STAGED_STUB)
+    host = started_command(test, trial)
+    test.addCleanup(kill_listed_quietly, stage["left"])
+    test.addCleanup(kill_listed_quietly, stage["waiting"])
+    return host, stage
+
+
+def let_go(release, seconds):
+    def unread():
+        try:
+            os.close(os.open(release, os.O_WRONLY | os.O_NONBLOCK))
+        except OSError:
+            return True
+        return False
+
+    return turns_false_by(unread, time.monotonic() + seconds)
 
 
 class TrialTest(unittest.TestCase):
@@ -218,6 +279,27 @@ class TrialTest(unittest.TestCase):
         self.assertEqual([row["loaded"] for row in report["trials"]], [[other], [other]])
         self.assertIn("another copy", report["error"])
 
+    def test_a_session_that_loaded_the_build_and_another_copy_fails_the_call(self):
+        trial = Trial(self)
+        other = os.path.join(scratch.temporary_folder(self, "lh-other-"), "copy")
+        write_stub(trial.stubs, {**trial.plan, "loaded": [trial.build, other]})
+        code, stdout, _ = trial.run()
+        self.assertEqual(code, 1)
+        self.assertIn("another copy", json.loads(stdout.strip().splitlines()[-1])["error"])
+
+    def test_a_loaded_path_no_file_can_have_counts_as_another_copy(self):
+        trial = Trial(self, loaded=["no\u0000file"])
+        code, stdout, stderr = trial.run()
+        self.assertEqual(code, 1, stderr)
+        self.assertIn("another copy", json.loads(stdout.strip().splitlines()[-1])["error"])
+
+    def test_a_search_path_entry_of_more_parts_than_python_recurses_is_read(self):
+        trial = Trial(self)
+        deep = os.sep + os.sep.join(["part"] * 1100)
+        environment = {**trial.environment, "PATH": os.pathsep.join([trial.environment["PATH"], deep])}
+        code, _, stderr = run_holding_input(trial.arguments(), environment)
+        self.assertEqual(code, 0, stderr[-300:])
+
     def test_a_session_that_loaded_no_copy_fails_the_call(self):
         trial = Trial(self, loaded=[])
         code, stdout, _ = trial.run()
@@ -227,23 +309,52 @@ class TrialTest(unittest.TestCase):
         self.assertIn("error", report)
 
     def test_stopping_the_command_stops_its_sessions(self):
+        for number in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP, signal.SIGQUIT):
+            with self.subTest(signal=signal.Signals(number).name):
+                pids = os.path.join(scratch.temporary_folder(self, "lh-pids-"), "pids")
+                trial = Trial(self, pids=pids)
+                host = started_command(self, trial)
+                self.addCleanup(kill_listed_quietly, pids)
+                sessions = written_pids(pids, 2, PID_SECONDS)
+                self.assertIsNotNone(sessions)
+                host.send_signal(number)
+                host.wait(timeout=HOST_SECONDS)
+                self.assertEqual([pid for pid in sessions if not gone_by(pid, time.monotonic() + PID_SECONDS)], [])
+
+    def test_a_stopped_call_leaves_no_file_and_keeps_the_name_free(self):
         pids = os.path.join(scratch.temporary_folder(self, "lh-pids-"), "pids")
         trial = Trial(self, pids=pids)
-        host = subprocess.Popen(
-            [sys.executable, scratch.LIGHTHOUSE, *trial.arguments()],
-            env=trial.environment,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True,
-        )
-        self.addCleanup(stop_host, host)
+        host = started_command(self, trial)
         self.addCleanup(kill_listed_quietly, pids)
-        sessions = written_pids(pids, 2, PID_SECONDS)
-        self.assertIsNotNone(sessions)
+        self.assertIsNotNone(written_pids(pids, 2, PID_SECONDS))
         host.send_signal(signal.SIGTERM)
         host.wait(timeout=HOST_SECONDS)
-        self.assertEqual([pid for pid in sessions if is_running(pid)], [])
+        self.assertEqual(os.listdir(trial.evidence), [])
+        write_stub(trial.stubs, {**trial.plan, "pids": None})
+        again, _, stderr = trial.run()
+        self.assertEqual(again, 0, stderr)
+
+    def test_what_an_ended_session_left_running_is_stopped_while_the_others_still_run(self):
+        host, stage = staged(self)
+        left = written_pids(stage["left"], 1, PID_SECONDS)
+        self.assertIsNotNone(left)
+        self.assertIsNotNone(written_pids(stage["waiting"], 1, PID_SECONDS))
+        stopped = gone_by(left[0], time.monotonic() + PID_SECONDS)
+        self.assertIsNone(host.poll())
+        self.assertTrue(stopped, "what the first session left running outlived it while the second still ran")
+        self.assertTrue(let_go(stage["release"], PID_SECONDS))
+        self.assertEqual(host.wait(timeout=HOST_SECONDS), 0)
+
+    def test_stopping_the_command_after_one_session_ended_stops_the_rest(self):
+        host, stage = staged(self)
+        left = written_pids(stage["left"], 1, PID_SECONDS)
+        waiting = written_pids(stage["waiting"], 1, PID_SECONDS)
+        self.assertIsNotNone(left)
+        self.assertIsNotNone(waiting)
+        self.assertTrue(gone_by(left[0], time.monotonic() + PID_SECONDS))
+        host.send_signal(signal.SIGTERM)
+        host.wait(timeout=HOST_SECONDS)
+        self.assertEqual([pid for pid in waiting if not gone_by(pid, time.monotonic() + PID_SECONDS)], [])
 
     def test_a_start_that_fails_leaves_no_file_and_keeps_the_name_free(self):
         def without_claude(trial):
@@ -254,7 +365,9 @@ class TrialTest(unittest.TestCase):
             self.addCleanup(os.chmod, trial.folders[1], 0o700)
             return trial.environment, trial.folders[1]
 
-        for name, broken in (("no claude command to start", without_claude), ("a folder that cannot be entered", with_a_folder_nobody_can_enter)):
+        enters_any_folder = os.geteuid() == 0
+        breakages = (("no claude command to start", without_claude),) + (() if enters_any_folder else (("a folder that cannot be entered", with_a_folder_nobody_can_enter),))
+        for name, broken in breakages:
             with self.subTest(name):
                 trial = Trial(self)
                 environment, named = broken(trial)
@@ -305,6 +418,11 @@ class TrialTest(unittest.TestCase):
                 trial.environment,
             ),
             "a word ahead of the separator that the command does not know": lambda trial: scratch.run_lighthouse([*trial.arguments(), "stray"], trial.environment),
+            "a request that begins with one dash": lambda trial: scratch.run_lighthouse([*trial.arguments(), "--request=-x"], trial.environment),
+            **{
+                "the separator given as the value of {}".format(flag): (lambda flag: lambda trial: scratch.run_lighthouse([*trial.arguments(), flag + "=--"], trial.environment))(flag)
+                for flag in ("--model", "--effort", "--request", "--name")
+            },
             "a missing folder": lambda trial: scratch.run_lighthouse(
                 [*trial.arguments(), "--folder", os.path.join(trial.folders[0], "absent")], trial.environment
             ),

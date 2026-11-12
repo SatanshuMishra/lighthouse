@@ -41,6 +41,9 @@ class LayoutTest(unittest.TestCase):
         self.assertRegex(workflow, r"(?m)run: python -m unittest discover tests$")
         self.assertRegex(workflow, r"(?m)run: npx .*claude-code@\S+ plugin validate --strict \.$")
         self.assertRegex(workflow, r"(?m)plugin validate --strict \.claude-plugin/plugin\.json$")
+        on_macos = workflow.split("\n  trial-on-macos:\n", 1)[1]
+        self.assertRegex(on_macos, r"(?m)^    runs-on: macos-\S+$")
+        self.assertRegex(on_macos, r"(?m)run: python -m unittest tests\.test_trial$")
 
     def test_usage_lists_every_subcommand(self):
         code, stdout, _ = scratch.run_lighthouse([], scratch.environment(scratch.make_home(self)))
