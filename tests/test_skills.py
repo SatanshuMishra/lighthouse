@@ -6,7 +6,14 @@ import unittest
 from tests import e2e_harness, scratch
 
 SKILLS = ("init", "doctor", "test")
+FOREGROUND_CALL = "in the foreground, as one Bash call with its timeout argument set to 604800000 and never with run_in_background"
 LONG_LIGHTHOUSE_CALL = re.compile(r"[Rr]un `lighthouse (profile measure|suite|execute) ")
+HOLDING_WAIT = re.compile(r"lighthouse wait --(ready|until) ")
+LONG_TIMEOUT = "timeout argument set to 604800000"
+SENTENCE_END = re.compile(r"(?<=[.:]) ")
+FORBIDS_BACKGROUND = "never with run_in_background"
+CALLER_STARTS = ("Start `lighthouse launch ", "In any other session, start `lighthouse profile measure ")
+CHILD_BACKGROUND_START = "run_in_background and its timeout argument set to 604800000 as `("
 SPLICED_PROFILE_TEXT = re.compile(r"curl -fsS <[^>]*>|grep -qF '<[^>]*>'|--until '<the ready check>'|'<the surface's sign_in command>'")
 
 
@@ -280,7 +287,7 @@ class SkillsTest(unittest.TestCase):
         building = text.split("6. Build and start", 1)[1].split("7. Prove each path", 1)[0]
 
         self.assertIn(
-            "starting it with run_in_background as (<start command>) > <results>/<build>-start.log 2>&1 < /dev/null & echo $! > <results>/<build>-start.pid; wait $!; echo $? > <results>/<build>-start.exit",
+            "starting it with run_in_background and its timeout argument set to 604800000 as (<start command>) > <results>/<build>-start.log 2>&1 < /dev/null & echo $! > <results>/<build>-start.pid; wait $!; echo $? > <results>/<build>-start.exit",
             building,
         )
         self.assertIn("--exit-file <results>/<build>-start.exit", building)
@@ -299,15 +306,74 @@ class SkillsTest(unittest.TestCase):
         )
         self.assertLess(stopping.index("lighthouse release"), stopping.index("lighthouse verdict --blocked"))
 
-    def test_a_moved_foreground_call_is_held_by_its_completion_notice(self):
-        for text in (scratch.skill_text("test"), driver_text()):
-            self.assertIn("never poll", text)
-            self.assertIn("never sleep", text)
-            self.assertIn("never stop", text)
+    def test_the_child_holds_a_long_step_in_one_foreground_call_and_never_ends_a_turn_to_wait(self):
+        text = scratch.skill_text("test")
         self.assertIn(
-            "When the Bash tool moves a foreground call to the background, the session waits for its completion notice, never polls it, never sleeps and never stops it",
-            scratch.skill_text("test"),
+            "The child session holds every long step in the foreground instead: it runs the step as one Bash call with its timeout argument set to 604800000 and never with run_in_background",
+            text,
         )
+        self.assertIn("A child session never ends a turn while a command it started is still running", text)
+        self.assertIn("A step that is still running is never a reason to stop early", text)
+        self.assertIn("Run the wait itself in the foreground with its timeout argument set to 604800000", text)
+        self.assertIn(
+            "A process the child starts in the background gets that timeout too, because the Bash tool stops a background command when its timeout runs out",
+            text,
+        )
+        self.assertIn(
+            "Every other command keeps the Bash tool's own two-minute default, so one that hangs is moved to the background",
+            text,
+        )
+        self.assertNotIn("When the Bash tool moves a foreground call to the background", text)
+        self.assertIn(
+            "Run each setup and build command in the foreground, as one Bash call with its timeout argument set to 604800000 and never with run_in_background",
+            text,
+        )
+        driver = driver_text()
+        self.assertIn("is moved to the background: stop such a command by its id, never by name or pattern", driver)
+        self.assertIn("Run the wait in the foreground, as one Bash call with its timeout argument set to 604800000", driver)
+        self.assertIn("Never end your turn while the wait or a command you started is still running", driver)
+        self.assertNotIn("wait for its completion notice", driver)
+
+    def test_every_hold_on_a_lighthouse_wait_asks_for_the_long_timeout(self):
+        holds = [
+            (path, line)
+            for path in instruction_files()
+            for line in scratch.read_text(path).splitlines()
+            if HOLDING_WAIT.search(line)
+        ]
+        for holder in (scratch.skill_path("test"), driver_path()):
+            with self.subTest(holder=holder):
+                self.assertTrue(any(path == holder for path, _ in holds))
+        for path, line in holds:
+            with self.subTest(path=path, line=line[:80]):
+                self.assertTrue(
+                    any(
+                        "wait" in sentence and "in the foreground" in sentence and LONG_TIMEOUT in sentence
+                        for sentence in SENTENCE_END.split(line)
+                    ),
+                    "a wait here is held under the two-minute default",
+                )
+
+    def test_every_background_start_a_child_makes_asks_for_the_long_timeout(self):
+        child_starts = [
+            (path, sentence)
+            for path in instruction_files()
+            for line in scratch.read_text(path).splitlines()
+            for sentence in SENTENCE_END.split(line)
+            if "run_in_background" in sentence
+            and FORBIDS_BACKGROUND not in sentence
+            and not any(start in sentence for start in CALLER_STARTS)
+        ]
+        for starter in (scratch.skill_path("test"), driver_path()):
+            with self.subTest(starter=starter):
+                self.assertTrue(any(path == starter for path, _ in child_starts))
+        for path, sentence in child_starts:
+            with self.subTest(path=path, sentence=sentence[:80]):
+                self.assertIn(
+                    CHILD_BACKGROUND_START,
+                    sentence,
+                    "a process started here is stopped ten minutes after it starts",
+                )
 
     def test_the_child_closes_stdin_of_every_command_it_runs(self):
         steps = section(scratch.skill_text("test"), "## Steps", "## Stopping early")
@@ -544,18 +610,20 @@ class SkillsTest(unittest.TestCase):
         )
         self.assertIn("so the name under failures or unproven tells a reader what broke", planning)
 
-    def test_every_long_lighthouse_call_runs_in_the_background_and_is_held_by_its_completion_notice(self):
+    def test_every_long_lighthouse_call_runs_in_the_foreground_in_a_child_session(self):
         calls = long_lighthouse_calls()
         for name in SKILLS:
             with self.subTest(skill=name):
                 self.assertTrue(any(path == scratch.skill_path(name) for path, _ in calls), name)
         for path, line in calls:
-            for phrase in ["run_in_background", "completion notice", "< /dev/null"]:
+            for phrase in [FOREGROUND_CALL, "< /dev/null"]:
                 with self.subTest(path=path, phrase=phrase, line=line[:80]):
                     self.assertIn(phrase, line)
             for retired in ["lighthouse wait", ".done", "600000"]:
                 with self.subTest(path=path, retired=retired, line=line[:80]):
                     self.assertNotIn(retired, line)
+            with self.subTest(path=path, line=line[:80]):
+                self.assertEqual("completion notice" in line, path != scratch.skill_path("test"))
 
     def test_findings_reach_findings_json_only_through_lighthouse_findings(self):
         text = scratch.skill_text("test")

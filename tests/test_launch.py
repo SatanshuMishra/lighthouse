@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -9,6 +10,14 @@ import unittest
 from lighthouse_tool import launch as launch_tool
 from lighthouse_tool.repo import Refusal
 from tests import scratch
+
+ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000
+LONGEST_TIMER_MS = 2**31 - 1
+TEN_MINUTES_MS = 10 * 60 * 1000
+ASKED_TIMEOUT = re.compile(r"timeout argument set to (\d+)")
+INSTRUCTIONS = tuple(scratch.skill_path(name) for name in ("test", "init", "doctor")) + (
+    os.path.join(scratch.ROOT, "agents", "driver.md"),
+)
 
 CLAUDE_STUB = """#!{python}
 import json
@@ -23,7 +32,7 @@ earlier_names = ("verdict.json", "checks.jsonl", "plan.json", "record.json", "fi
 earlier_files = [name for name in earlier_names if os.path.exists(os.path.join(results, name))]
 calls_path = os.path.join(folder, "claude-calls.jsonl")
 with open(calls_path, "a", encoding="utf-8") as calls:
-    calls.write(json.dumps({{"argv": sys.argv[1:], "cwd": os.getcwd(), "pid": os.getpid(), "saw_launch": os.path.exists(earlier_line), "saw_earlier": earlier_files}}) + "\\n")
+    calls.write(json.dumps({{"argv": sys.argv[1:], "cwd": os.getcwd(), "pid": os.getpid(), "saw_launch": os.path.exists(earlier_line), "saw_earlier": earlier_files, "bash_ceilings": [os.environ.get("BASH_DEFAULT_TIMEOUT_MS"), os.environ.get("BASH_MAX_TIMEOUT_MS")]}}) + "\\n")
 with open(calls_path, encoding="utf-8") as calls:
     index = len([line for line in calls.read().splitlines() if line.strip()]) - 1
 time.sleep(0.5)
@@ -234,7 +243,9 @@ def launch_flags(repo, results):
     return ["--repo", repo, "--core", "main", "--feature", "feat/x", "--results", results]
 
 
-def launch(test, output, exit_code=0, nice=None, earlier=False, claude=CLAUDE_STUB, written=None, marks=(), then=()):
+def launch(
+    test, output, exit_code=0, nice=None, earlier=False, claude=CLAUDE_STUB, written=None, marks=(), then=(), caller=None
+):
     repo, _ = scratch.make_repo(test)
     home = scratch.make_home(test)
     store = scratch.temporary_folder(test, "lh-store-")
@@ -245,7 +256,7 @@ def launch(test, output, exit_code=0, nice=None, earlier=False, claude=CLAUDE_ST
     write_stub(stubs, "claude", claude)
     for mark in marks:
         open(os.path.join(stubs, mark), "w", encoding="utf-8").close()
-    env = {**scratch.environment(home, stubs), "PLUGIN_METRICS_DIR": store}
+    env = {**scratch.environment(home, stubs), "PLUGIN_METRICS_DIR": store, **(caller or {})}
     prefix = ["nice", "-n", str(nice)] if nice is not None else []
     completed = subprocess.run(
         [*prefix, sys.executable, scratch.LIGHTHOUSE, "launch", *launch_flags(repo, results)],
@@ -290,6 +301,22 @@ class LaunchTest(unittest.TestCase):
         self.assertNotIn("$schema", schema)
         self.assertNotIn("--resume", argv)
         self.assertEqual(os.path.realpath(calls[0]["cwd"]), os.path.realpath(os.path.join(ran["results"], "work")))
+
+    def test_the_child_and_its_re_ask_may_hold_a_step_for_a_week_and_keep_the_two_minute_default(self):
+        ran = launch(self, claude_output("I could not finish."), caller={"BASH_DEFAULT_TIMEOUT_MS": str(ONE_WEEK_MS), "BASH_MAX_TIMEOUT_MS": str(TEN_MINUTES_MS)})
+        self.assertEqual(ran["code"], 0, ran["stderr"])
+        calls = calls_of(ran["stubs"], "claude")
+        self.assertEqual(len(calls), 2)
+        for call in calls:
+            default, longest = call["bash_ceilings"]
+            self.assertIsNotNone(longest, "the child session keeps the Bash tool's own ten-minute ceiling")
+            self.assertGreaterEqual(int(longest), ONE_WEEK_MS)
+            self.assertLessEqual(int(longest), LONGEST_TIMER_MS)
+            self.assertIsNone(default, "a command that hangs in the child is held instead of moved after two minutes")
+            for path in INSTRUCTIONS:
+                asked = [int(value) for value in ASKED_TIMEOUT.findall(scratch.read_text(path))]
+                self.assertTrue(asked, "{} asks for no timeout".format(path))
+                self.assertLessEqual(max(asked), int(longest), "{} asks for a timeout the child's Bash tool refuses".format(path))
 
     def test_launch_reads_the_reply_from_structured_output_not_the_result_text(self):
         text_line = json.dumps({**json.loads(BLOCKED_LINE), "reason": "text reason"})

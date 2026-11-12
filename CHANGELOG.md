@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.1
+
+- The child session holds every long step, the suite, the acceptance checks and a profile measure, as one foreground Bash call that asks for a timeout of one week, which `lighthouse launch` allows by raising the Bash tool's longest timeout. The tool's default stays two minutes, and launch drops a default it inherits, so a command that hangs is still moved to the background: in a probe, a server started in the foreground held a session with both timeouts raised until the probe ended it at 420 seconds, and a session with only the longest raised finished in 141. Under 0.8.0 the child started a long step in the background and ended its turn to wait; a session with a reply schema is asked for its reply the moment a turn ends, so the first 0.8.0 child released its worktrees and returned a blocked verdict 12 seconds after starting a profile measure. `docs/adr/0015` records the decision.
+- lighthouse:init and lighthouse:doctor run `lighthouse profile measure` in the foreground inside a lighthouse:test child session, and by its completion notice in any other session.
+- The driver agent runs `lighthouse wait` in the foreground and never ends its turn while a wait or a command it started is still running.
+- Every process the child or a driver starts in the background, a build's start command included, asks for the one-week timeout too. The Bash tool stops a background command ten minutes after its start when it asks for no timeout, and a process stopped that way writes no exit file: in a probe, a 780 second step started without the timeout was stopped at about 600 seconds and the hold on it never saw an exit file, and started with the timeout it ran to its end.
+
 ## 0.8.0
 
 Every hand-off lighthouse writes or reads now has one owned format, checked by its producer before it is written, and lighthouse puts no wall-clock limit on any step.
