@@ -66,6 +66,7 @@ class LayoutTest(unittest.TestCase):
                 "runs",
                 "spend",
                 "suite",
+                "trial",
                 "verdict",
                 "version",
                 "wait",

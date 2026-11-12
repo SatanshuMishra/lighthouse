@@ -57,7 +57,7 @@ class SkillExecutorTest(unittest.TestCase):
     def test_command_reference_names_the_new_subcommands(self):
         lines = reference_lines(raw_skill("test"))
 
-        for prefix in ["- `lighthouse execute`:", "- `lighthouse contrast`:", "- `lighthouse profile measure`:"]:
+        for prefix in ["- `lighthouse execute`:", "- `lighthouse contrast`:", "- `lighthouse profile measure`:", "- `lighthouse trial`:"]:
             with self.subTest(prefix=prefix):
                 self.assertTrue(any(line.startswith(prefix) for line in lines), prefix)
 
