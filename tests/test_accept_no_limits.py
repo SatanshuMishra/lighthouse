@@ -180,7 +180,7 @@ class Waits(unittest.TestCase):
         measured = support.last_json(stdout)["measured"]
         self.assertIs(measured["ready"], True, stdout)
         self.assertGreaterEqual(measured["start_seconds"], 3, stdout)
-        self.assertLess(measured["suite_seconds"], 3, stdout)
+        self.assertNotIn("suite_seconds", measured, stdout)
         self.assertFalse(os.path.exists(os.path.join(support.ROOT, "lighthouse_tool", "limits.py")))
 
     def test_release_stops_every_started_process(self):

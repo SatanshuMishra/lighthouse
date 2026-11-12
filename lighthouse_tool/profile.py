@@ -689,7 +689,6 @@ def measure(root: str, profile: Dict[str, Any], holder: str) -> Tuple[Dict[str, 
         for step, command in ((step, suite.step_command(profile, step)) for step in MEASURED_STEPS)
         if command is not None
     }
-    suite_exit, suite_seconds = timed_step(root, "suite", suite.step_command(profile, "suite") or "", log_path, profile, hidden)
     start_seconds, ready = started_ready(root, profile, os.path.join(holder, "start.log"))
     reached = {
         item["name"]: timed_step(root, "reach", command, log_path, profile, hidden)
@@ -701,8 +700,6 @@ def measure(root: str, profile: Dict[str, Any], holder: str) -> Tuple[Dict[str, 
         "measured_at": utc_now(),
         "setup_seconds": preparation.get("setup"),
         "build_seconds": preparation.get("build"),
-        "suite_seconds": suite_seconds,
-        "suite_exit": suite_exit,
         "start_seconds": start_seconds,
         "ready": ready,
         "drivers": {name: {"seconds": seconds, "exit": code} for name, (code, seconds) in reached.items()},
