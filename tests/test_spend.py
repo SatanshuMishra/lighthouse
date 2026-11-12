@@ -15,11 +15,11 @@ def assistant(identifier, timestamp, usage, model="claude-opus-5-5", cwd=None, c
     return json.dumps({**entry, "cwd": cwd} if cwd else entry)
 
 
-def tool_result(tool_use_id, timestamp, cwd=None):
+def tool_result(tool_use_id, timestamp, cwd=None, content="done"):
     entry = {
         "type": "user",
         "timestamp": timestamp,
-        "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": tool_use_id, "content": "done"}]},
+        "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": tool_use_id, "content": content}]},
     }
     return json.dumps({**entry, "cwd": cwd} if cwd else entry)
 
@@ -77,6 +77,26 @@ def write_marks(results, folder, start, end):
     ]
     with open(os.path.join(results, "marks.jsonl"), "w", encoding="utf-8") as handle:
         handle.write("".join(json.dumps(line) + "\n" for line in lines))
+
+
+def drive_line(path, folder, edge, time):
+    return {"step": "drive", "build": "feature", "path": path, "folder": folder, "edge": edge, "time": time}
+
+
+def write_mark_lines(results, lines):
+    with open(os.path.join(results, "marks.jsonl"), "w", encoding="utf-8") as handle:
+        handle.write("".join(json.dumps(line) + "\n" for line in lines))
+
+
+def driver_rows(prefix, work, command, own_output, printed=None):
+    shown = printed or {"start": "done", "end": "done"}
+    return [
+        assistant(prefix + "_start", "2026-10-16T10:00:00Z", {"cache_read_input_tokens": 10}, cwd=work, content=bash(prefix + "_use_start", command + "start")),
+        tool_result(prefix + "_use_start", "2026-10-16T10:00:01Z", cwd=work, content=shown["start"]),
+        assistant(prefix + "_drive", "2026-10-16T10:01:00Z", {"output_tokens": own_output}, cwd=work),
+        assistant(prefix + "_end", "2026-10-16T10:03:00Z", {"cache_read_input_tokens": 10}, cwd=work, content=bash(prefix + "_use_end", command + "end")),
+        tool_result(prefix + "_use_end", "2026-10-16T10:03:01Z", cwd=work, content=shown["end"]),
+    ]
 
 
 class SpendTest(unittest.TestCase):
@@ -467,6 +487,160 @@ class SpendTest(unittest.TestCase):
             ],
         )
         self.assertEqual(path_named(spend, "sign in")["output"], 100)
+
+    def test_a_mark_naming_its_path_by_a_shell_variable_takes_the_path_the_marks_file_holds(self):
+        home = scratch.make_home(self)
+        results = scratch.temporary_folder(self, "lh-results-")
+        work = os.path.join(results, "work")
+        trials = os.path.join(work, "trials", "pick-skill")
+        trial = os.path.join(trials, "feature", "1")
+        command = "P='pick skill'; lighthouse mark --results {} --step drive --build feature --path \"$P\" --folder {} ".format(results, trials)
+        write_session(home, work, "child.jsonl", driver_rows("child", work, command, 100))
+        write_session(home, trial, "trial.jsonl", [assistant("msg_trial", "2026-10-16T10:02:00Z", {"output_tokens": 300}, cwd=trial)])
+        write_marks(results, trials, "2026-10-16T10:00:00.400Z", "2026-10-16T10:03:00.400Z")
+        spend = spend_of(self, ["--results", results], home)
+        self.assertEqual([path["name"] for path in spend["paths"]], ["pick skill"])
+        self.assertEqual(path_named(spend, "pick skill")["output"], 400)
+        self.assertEqual(spend["shared"]["output"], 0)
+
+    def test_marks_written_by_a_loop_each_open_their_own_step(self):
+        home = scratch.make_home(self)
+        results = scratch.temporary_folder(self, "lh-results-")
+        work = os.path.join(results, "work")
+        command = "for s in suite change; do lighthouse mark --results {} --step $s ".format(results)
+        rows = [
+            assistant("msg_start", "2026-10-16T10:00:00Z", {"cache_read_input_tokens": 10}, cwd=work, content=bash("use_start", command + "start; done")),
+            tool_result("use_start", "2026-10-16T10:00:01Z", cwd=work),
+            assistant("msg_build", "2026-10-16T10:01:00Z", {"output_tokens": 100}, cwd=work),
+            assistant("msg_end", "2026-10-16T10:02:00Z", {"cache_read_input_tokens": 10}, cwd=work, content=bash("use_end", command + "end; done")),
+            tool_result("use_end", "2026-10-16T10:02:01Z", cwd=work),
+        ]
+        write_session(home, work, "child.jsonl", rows)
+        write_mark_lines(
+            results,
+            [
+                {"step": step, "build": None, "path": None, "folder": None, "edge": edge, "time": time}
+                for step, edge, time in (
+                    ("suite", "start", "2026-10-16T10:00:00.200Z"),
+                    ("change", "start", "2026-10-16T10:00:00.400Z"),
+                    ("suite", "end", "2026-10-16T10:02:00.200Z"),
+                    ("change", "end", "2026-10-16T10:02:00.400Z"),
+                )
+            ],
+        )
+        spend = spend_of(self, ["--results", results], home)
+        self.assertEqual(
+            [(step["name"], step["minutes"]) for step in spend["steps"]],
+            [("suite", 2.0), ("change", 2.0)],
+        )
+        self.assertEqual(sum(step["output"] for step in spend["steps"]), 100)
+        self.assertEqual(spend["shared"]["output"], 0)
+
+    def test_two_sessions_marking_in_the_same_second_each_keep_the_path_their_result_prints(self):
+        home = scratch.make_home(self)
+        results = scratch.temporary_folder(self, "lh-results-")
+        work = os.path.join(results, "work")
+        command = "lighthouse mark --results {} --step drive --build feature --path \"$P\" ".format(results)
+        lines = {
+            name: {edge: drive_line(name, None, edge, time) for edge, time in times}
+            for name, times in (
+                ("sign in", (("start", "2026-10-16T10:00:00.300Z"), ("end", "2026-10-16T10:03:00.300Z"))),
+                ("sign out", (("start", "2026-10-16T10:00:00.500Z"), ("end", "2026-10-16T10:03:00.500Z"))),
+            )
+        }
+        printed = {name: {edge: json.dumps(line) for edge, line in edges.items()} for name, edges in lines.items()}
+        write_session(home, work, "driver-a.jsonl", driver_rows("a", work, command, 100, printed["sign in"]))
+        write_session(home, work, "driver-b.jsonl", driver_rows("b", work, command, 200, printed["sign out"]))
+        write_mark_lines(results, [line for edges in lines.values() for line in edges.values()])
+        spend = spend_of(self, ["--results", results], home)
+        self.assertEqual(path_named(spend, "sign in")["output"], 100)
+        self.assertEqual(path_named(spend, "sign out")["output"], 200)
+        self.assertEqual(spend["shared"]["output"], 0)
+
+    def test_marks_that_two_sessions_could_each_have_written_still_own_their_folders(self):
+        home = scratch.make_home(self)
+        results = scratch.temporary_folder(self, "lh-results-")
+        work = os.path.join(results, "work")
+        folders = {name: os.path.join(work, "trials", name.replace(" ", "-")) for name in ("sign in", "sign out")}
+        command = "lighthouse mark --results {} --step drive --build feature --path \"$P\" --folder \"$F\" ".format(results)
+        write_session(home, work, "driver-a.jsonl", driver_rows("a", work, command, 100))
+        write_session(home, work, "driver-b.jsonl", driver_rows("b", work, command, 200))
+        for name, output in (("sign in", 300), ("sign out", 500)):
+            trial = os.path.join(folders[name], "feature", "1")
+            write_session(home, trial, "trial.jsonl", [assistant("trial " + name, "2026-10-16T10:02:00Z", {"output_tokens": output}, cwd=trial)])
+        write_mark_lines(
+            results,
+            [
+                drive_line(name, folders[name], edge, time)
+                for name, edge, time in (
+                    ("sign in", "start", "2026-10-16T10:00:00.300Z"),
+                    ("sign out", "start", "2026-10-16T10:00:00.500Z"),
+                    ("sign in", "end", "2026-10-16T10:03:00.300Z"),
+                    ("sign out", "end", "2026-10-16T10:03:00.500Z"),
+                )
+            ],
+        )
+        spend = spend_of(self, ["--results", results], home)
+        self.assertEqual(path_named(spend, "sign in")["output"], 300)
+        self.assertEqual(path_named(spend, "sign out")["output"], 500)
+        self.assertEqual(path_named(spend, "sign in")["minutes"], 3.0)
+        self.assertEqual(spend["shared"]["output"], 300)
+
+    def test_an_end_mark_two_sessions_could_have_written_goes_to_the_session_that_wrote_its_start(self):
+        home = scratch.make_home(self)
+        results = scratch.temporary_folder(self, "lh-results-")
+        work = os.path.join(results, "work")
+        command = "lighthouse mark --results {} --step drive --build feature --path \"$P\" ".format(results)
+        driver = driver_rows("driver", work, command, 100) + [assistant("driver_after", "2026-10-16T10:05:00Z", {"output_tokens": 40}, cwd=work)]
+        other = [
+            assistant("other_wait", "2026-10-16T10:02:30Z", {"cache_read_input_tokens": 10}, cwd=work, content=bash("other_use", "lighthouse suite --repo X; " + command + "end")),
+            tool_result("other_use", "2026-10-16T10:04:00Z", cwd=work),
+        ]
+        write_session(home, work, "driver.jsonl", driver)
+        write_session(home, work, "other.jsonl", other)
+        write_mark_lines(
+            results,
+            [drive_line("sign in", None, "start", "2026-10-16T10:00:00.300Z"), drive_line("sign in", None, "end", "2026-10-16T10:03:00.300Z")],
+        )
+        spend = spend_of(self, ["--results", results], home)
+        self.assertEqual(path_named(spend, "sign in")["output"], 100)
+        self.assertEqual(path_named(spend, "sign in")["minutes"], 3.0)
+        self.assertEqual(spend["shared"]["output"], 40)
+
+    def test_marks_written_before_the_since_time_open_no_step(self):
+        home = scratch.make_home(self)
+        results = scratch.temporary_folder(self, "lh-results-")
+        work = os.path.join(results, "work")
+        write_session(home, work, "child.jsonl", [assistant("msg_later", "2026-10-16T10:00:00Z", {"output_tokens": 100}, cwd=work)])
+        write_mark_lines(
+            results,
+            [
+                {"step": "suite", "build": None, "path": None, "folder": None, "edge": edge, "time": time}
+                for edge, time in (("start", "2026-10-16T08:00:00Z"), ("end", "2026-10-16T08:10:00Z"))
+            ],
+        )
+        spend = spend_of(self, ["--results", results], home)
+        self.assertEqual(spend["steps"], [])
+        self.assertEqual(spend["shared"]["output"], 100)
+
+    def test_a_mark_goes_to_the_session_whose_command_names_its_path(self):
+        home = scratch.make_home(self)
+        results = scratch.temporary_folder(self, "lh-results-")
+        work = os.path.join(results, "work")
+        command = "lighthouse mark --results {} --step drive --build feature --path 'sign in' ".format(results)
+        other = [
+            assistant("other_suite", "2026-10-16T09:59:50Z", {"cache_read_input_tokens": 10}, cwd=work, content=bash("other_use", "lighthouse suite --repo X")),
+            tool_result("other_use", "2026-10-16T10:04:00Z", cwd=work),
+        ]
+        write_session(home, work, "driver.jsonl", driver_rows("driver", work, command, 100))
+        write_session(home, work, "other.jsonl", other)
+        write_mark_lines(
+            results,
+            [drive_line("sign in", None, "start", "2026-10-16T10:00:00.300Z"), drive_line("sign in", None, "end", "2026-10-16T10:03:00.300Z")],
+        )
+        spend = spend_of(self, ["--results", results], home)
+        self.assertEqual(path_named(spend, "sign in")["output"], 100)
+        self.assertEqual(spend["shared"]["output"], 0)
 
     def test_a_mark_on_a_later_row_of_its_message_owns_that_message(self):
         chained = "lighthouse mark --results R --step suite start && lighthouse suite --repo X; lighthouse mark --results R --step suite end"
