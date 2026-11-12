@@ -408,12 +408,13 @@ class SkillsTest(unittest.TestCase):
         self.assertIn("Dispatch every driver through the lighthouse:driver agent", steps)
         self.assertIn("Every driver, and you for a direct call, runs lighthouse mark", steps)
 
-    def test_driver_agent_uses_sonnet_and_a_one_hour_cache(self):
+    def test_driver_agent_uses_sonnet_at_medium_and_a_one_hour_cache(self):
         text = scratch.read_text(os.path.join(scratch.ROOT, "agents", "driver.md"))
         header = frontmatter(text)
 
         self.assertEqual(frontmatter_name(text), "driver")
         self.assertRegex(header, r"(?m)^model:\s*sonnet\s*$")
+        self.assertRegex(header, r"(?m)^effort:\s*medium\s*$")
         self.assertRegex(header, r"(?m)^experimental:\s*\n\s+cacheTtl:\s*1h\s*$")
 
     def test_test_skill_forbids_blind_sleeps_questions_and_narrowing(self):

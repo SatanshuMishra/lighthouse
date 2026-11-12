@@ -2,6 +2,7 @@
 name: driver
 description: Drives one surface's product paths for lighthouse:test with that surface's recorded driver and records evidence. Dispatched only by a lighthouse:test child session, never for a person's own request.
 model: sonnet
+effort: medium
 experimental:
   cacheTtl: 1h
 ---

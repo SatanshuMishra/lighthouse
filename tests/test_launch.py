@@ -32,7 +32,7 @@ earlier_names = ("verdict.json", "checks.jsonl", "plan.json", "record.json", "fi
 earlier_files = [name for name in earlier_names if os.path.exists(os.path.join(results, name))]
 calls_path = os.path.join(folder, "claude-calls.jsonl")
 with open(calls_path, "a", encoding="utf-8") as calls:
-    calls.write(json.dumps({{"argv": sys.argv[1:], "cwd": os.getcwd(), "pid": os.getpid(), "saw_launch": os.path.exists(earlier_line), "saw_earlier": earlier_files, "bash_ceilings": [os.environ.get("BASH_DEFAULT_TIMEOUT_MS"), os.environ.get("BASH_MAX_TIMEOUT_MS")]}}) + "\\n")
+    calls.write(json.dumps({{"argv": sys.argv[1:], "cwd": os.getcwd(), "pid": os.getpid(), "saw_launch": os.path.exists(earlier_line), "saw_earlier": earlier_files, "bash_ceilings": [os.environ.get("BASH_DEFAULT_TIMEOUT_MS"), os.environ.get("BASH_MAX_TIMEOUT_MS")], "effort": os.environ.get("CLAUDE_CODE_EFFORT_LEVEL")}}) + "\\n")
 with open(calls_path, encoding="utf-8") as calls:
     index = len([line for line in calls.read().splitlines() if line.strip()]) - 1
 time.sleep(0.5)
@@ -279,6 +279,12 @@ def launch(
 
 
 class LaunchTest(unittest.TestCase):
+    def test_the_child_takes_no_effort_from_the_callers_environment(self):
+        ran = launch(self, claude_output("Driven every path.\n" + BLOCKED_LINE), caller={"CLAUDE_CODE_EFFORT_LEVEL": "low"})
+        self.assertEqual(ran["code"], 0, ran["stderr"])
+        call = calls_of(ran["stubs"], "claude")[0]
+        self.assertEqual((call["argv"][call["argv"].index("--effort") + 1], call["effort"]), ("high", None))
+
     def test_launch_runs_the_child_with_its_flags(self):
         ran = launch(self, claude_output("Driven every path.\n" + BLOCKED_LINE))
         self.assertEqual(ran["code"], 0, ran["stderr"])
@@ -290,6 +296,7 @@ class LaunchTest(unittest.TestCase):
         )
         self.assertEqual(argv[:2], ["-p", prompt])
         self.assertEqual(argv[argv.index("--model") + 1], "opus")
+        self.assertEqual(argv[argv.index("--effort") + 1], "high")
         self.assertIn("--plugin-dir", argv)
         self.assertTrue(os.path.isfile(os.path.join(argv[argv.index("--plugin-dir") + 1], ".claude-plugin", "plugin.json")))
         self.assertEqual(argv[argv.index("--permission-mode") + 1], "bypassPermissions")
