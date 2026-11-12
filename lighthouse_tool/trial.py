@@ -1,8 +1,10 @@
 import json
 import os
 import subprocess
-from typing import Any, Dict, List, Mapping, Optional, Tuple
+from contextlib import ExitStack, contextmanager
+from typing import IO, Any, Dict, Iterator, List, Mapping, Optional, Tuple
 
+from lighthouse_tool import process_tree
 from lighthouse_tool.repo import Parser, Refusal, read_json_or_refuse
 
 MANIFEST = os.path.join(".claude-plugin", "plugin.json")
@@ -16,6 +18,8 @@ EFFORT_VARIABLE = "CLAUDE_CODE_EFFORT_LEVEL"
 DEFAULT_MODEL = "opus"
 DEFAULT_EFFORT = "high"
 OWNED_FLAGS = ("-p", "--print", "--plugin-dir", "--settings", "--output-format", "--model", "--effort")
+SEPARATOR = "--"
+STOP_GRACE_SECONDS = 0.0
 ANOTHER_COPY = "a session loaded another copy of the plugin, or none: its transcript is not a trial of this build"
 FAILED_SESSION = "a session exited with a status other than 0"
 
@@ -29,8 +33,12 @@ def parser() -> Parser:
     arguments.add_argument("--folder", action="append", required=True)
     arguments.add_argument("--model", default=DEFAULT_MODEL)
     arguments.add_argument("--effort", default=DEFAULT_EFFORT)
-    arguments.add_argument("passed_on", nargs="*")
     return arguments
+
+
+def parsed(words: List[str]) -> Tuple[Any, List[str]]:
+    own = words[: words.index(SEPARATOR)] if SEPARATOR in words else words
+    return parser().parse_args(own), words[len(own) + 1 :]
 
 
 def config_folder(environment: Mapping[str, str]) -> str:
@@ -56,12 +64,24 @@ def installed_copies(config: str, name: str) -> List[str]:
     return sorted(key for key in plugins if key.partition("@")[0] == name)
 
 
+def same_file(one: str, other: str) -> bool:
+    try:
+        return os.path.samefile(one, other)
+    except OSError:
+        return False
+
+
+def ancestors(path: str) -> List[str]:
+    parent = os.path.dirname(path)
+    return [path] if parent == path else [path, *ancestors(parent)]
+
+
 def inside(folder: str, entry: str) -> bool:
-    return bool(entry) and os.path.commonpath([folder, os.path.realpath(entry)]) == folder
+    return bool(entry) and any(same_file(folder, ancestor) for ancestor in ancestors(os.path.realpath(entry)))
 
 
 def search_path(inherited: str, config: str) -> str:
-    cache = os.path.realpath(os.path.join(config, PLUGIN_CACHE))
+    cache = os.path.join(config, PLUGIN_CACHE)
     return os.pathsep.join(entry for entry in inherited.split(os.pathsep) if not inside(cache, entry))
 
 
@@ -70,40 +90,69 @@ def session_environment(inherited: Mapping[str, str], config: str) -> Dict[str, 
     return {**kept, "PATH": search_path(inherited.get("PATH", os.defpath), config), CACHE_VARIABLE: CACHE_LIFETIME}
 
 
-def session_argv(options: Any, build: str, disabled: List[str]) -> List[str]:
+def session_argv(options: Any, passed_on: List[str], build: str, disabled: List[str]) -> List[str]:
     settings = ["--settings", json.dumps({"enabledPlugins": {key: False for key in disabled}})] if disabled else []
     return [
         "claude", "-p", options.request, "--plugin-dir", build, *settings,
         "--output-format", "stream-json", "--verbose", "--model", options.model, "--effort", options.effort,
-        *options.passed_on,
+        *passed_on,
     ]
 
 
-def checked(options: Any) -> Tuple[str, List[str], str]:
+def identity(folder: str) -> Tuple[int, int]:
+    found = os.stat(folder)
+    return found.st_dev, found.st_ino
+
+
+def checked(options: Any, passed_on: List[str]) -> Tuple[str, List[str], str]:
     if not options.request.strip():
         raise Refusal("--request needs the words a person would send")
+    if options.request.startswith("-"):
+        raise Refusal("--request begins with a dash, which claude would read as a flag of its own")
     if options.name != os.path.basename(options.name) or options.name in ("", ".", ".."):
         raise Refusal("--name is one file name, the stem of each transcript")
-    owned = [flag for flag in options.passed_on if flag.partition("=")[0] in OWNED_FLAGS]
+    owned = [flag for flag in passed_on if flag.partition("=")[0] in OWNED_FLAGS]
     if owned:
         raise Refusal("{} is set by lighthouse trial itself".format(owned[0]))
     folders = [os.path.realpath(folder) for folder in options.folder]
     for folder in folders:
         if not os.path.isdir(folder):
             raise Refusal("{} is not a folder: prepare each trial's folder first".format(folder))
-    if len(set(folders)) != len(folders):
+    if len({identity(folder) for folder in folders}) != len(folders):
         raise Refusal("each trial needs a folder of its own")
     build = os.path.realpath(options.plugin_dir)
     return build, folders, os.path.realpath(options.evidence)
 
 
 def trial_files(evidence: str, name: str, count: int) -> List[Tuple[str, str]]:
-    files = [(os.path.join(evidence, "{}-{}.jsonl".format(name, number)), os.path.join(evidence, "{}-{}.stderr".format(name, number))) for number in range(1, count + 1)]
-    for transcript, errors in files:
-        for path in (transcript, errors):
-            if os.path.exists(path):
-                raise Refusal("{} exists: a trial never overwrites evidence, so give this set another --name".format(path))
-    return files
+    return [(os.path.join(evidence, "{}-{}.jsonl".format(name, number)), os.path.join(evidence, "{}-{}.stderr".format(name, number))) for number in range(1, count + 1)]
+
+
+def removed(paths: List[str]) -> None:
+    for path in paths:
+        os.remove(path)
+
+
+def unwritable(path: str, error: OSError) -> Refusal:
+    if isinstance(error, FileExistsError):
+        return Refusal("{} exists: a trial never overwrites evidence, so give this set another --name".format(path))
+    return Refusal("cannot write {}: {}".format(path, error.strerror or error))
+
+
+@contextmanager
+def created(files: List[Tuple[str, str]]) -> Iterator[List[Tuple[IO[bytes], IO[bytes]]]]:
+    handles: List[IO[bytes]] = []
+    try:
+        for path in [path for pair in files for path in pair]:
+            try:
+                handles.append(open(path, "xb"))
+            except OSError as error:
+                removed([handle.name for handle in handles])
+                raise unwritable(path, error)
+        yield list(zip(handles[0::2], handles[1::2]))
+    finally:
+        for handle in handles:
+            handle.close()
 
 
 def loaded_copies(transcript: str, name: str) -> List[str]:
@@ -120,43 +169,50 @@ def loaded_copies(transcript: str, name: str) -> List[str]:
     return []
 
 
-def started(argv: List[str], folder: str, files: Tuple[str, str], environment: Dict[str, str]) -> subprocess.Popen:
-    transcript, errors = files
-    with open(transcript, "x", encoding="utf-8") as output, open(errors, "x", encoding="utf-8") as error_output:
-        return subprocess.Popen(argv, cwd=folder, env=environment, stdin=subprocess.DEVNULL, stdout=output, stderr=error_output)
+def started(
+    owning: ExitStack, argv: List[str], number: int, folder: str, outputs: Tuple[IO[bytes], IO[bytes]], environment: Dict[str, str]
+) -> "subprocess.Popen[bytes]":
+    transcript, errors = outputs
+    try:
+        return owning.enter_context(
+            process_tree.started(argv, STOP_GRACE_SECONDS, cwd=folder, env=environment, stdin=subprocess.DEVNULL, stdout=transcript, stderr=errors)
+        )
+    except OSError as error:
+        raise Refusal("trial {} cannot start claude in {}: {}".format(number, folder, error.strerror or error))
 
 
 def run_sessions(argv: List[str], folders: List[str], files: List[Tuple[str, str]], environment: Dict[str, str]) -> List[int]:
-    sessions: List[subprocess.Popen] = []
-    try:
-        for folder, pair in zip(folders, files):
-            sessions.append(started(argv, folder, pair, environment))
-    except OSError as error:
-        for session in sessions:
-            session.kill()
-            session.wait()
-        raise Refusal("cannot start claude: {}".format(error.strerror or error))
-    return [session.wait() for session in sessions]
+    with ExitStack() as owning:
+        outputs = owning.enter_context(created(files))
+        try:
+            sessions = [
+                started(owning, argv, number, folder, pair, environment) for number, (folder, pair) in enumerate(zip(folders, outputs), start=1)
+            ]
+        except Refusal:
+            owning.close()
+            removed([path for pair in files for path in pair])
+            raise
+        return [session.wait() for session in sessions]
 
 
 def problem(rows: List[Dict[str, Any]], build: str) -> Optional[str]:
     if any(row["exit"] != 0 for row in rows):
         return FAILED_SESSION
-    if any([os.path.realpath(path) for path in row["loaded"]] != [build] for row in rows):
+    if any(len(row["loaded"]) != 1 or not same_file(row["loaded"][0], build) for row in rows):
         return ANOTHER_COPY
     return None
 
 
 def run(argv: List[str]) -> Tuple[int, Optional[str], Optional[str]]:
     try:
-        options = parser().parse_args(argv[1:])
-        build, folders, evidence = checked(options)
+        options, passed_on = parsed(argv[1:])
+        build, folders, evidence = checked(options, passed_on)
         name = plugin_name(build)
         config = config_folder(os.environ)
         disabled = installed_copies(config, name)
         files = trial_files(evidence, options.name, len(folders))
         os.makedirs(evidence, exist_ok=True)
-        exits = run_sessions(session_argv(options, build, disabled), folders, files, session_environment(os.environ, config))
+        exits = run_sessions(session_argv(options, passed_on, build, disabled), folders, files, session_environment(os.environ, config))
     except Refusal as refusal:
         return 2, json.dumps({"error": str(refusal)}), "lighthouse trial: {}".format(refusal)
     except OSError as error:

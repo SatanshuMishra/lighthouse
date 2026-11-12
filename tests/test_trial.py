@@ -1,9 +1,12 @@
 import json
 import os
+import signal
+import subprocess
 import sys
 import unittest
 
 from tests import scratch
+from tests.test_process_tree import HOST_SECONDS, PID_SECONDS, is_running, kill_listed_quietly, stop_host, written_pids
 
 PLUGIN = "demo"
 MARKETPLACE = "market"
@@ -12,6 +15,7 @@ CLAUDE_STUB = """#!{python}
 import json
 import os
 import select
+import signal
 import sys
 import time
 
@@ -21,6 +25,10 @@ with open(os.path.join(folder, "claude-plan.json"), encoding="utf-8") as handle:
     plan = json.load(handle)
 started = os.path.join(folder, "started-" + str(os.getpid()))
 open(started, "w").close()
+if plan["pids"]:
+    with open(plan["pids"], "a", encoding="utf-8") as listed:
+        listed.write(str(os.getpid()) + " ")
+    signal.pause()
 deadline = time.time() + plan["hold_seconds"]
 together = False
 while time.time() < deadline:
@@ -38,7 +46,7 @@ with open(os.path.join(folder, "claude-calls.jsonl"), "a", encoding="utf-8") as 
         "stdin_closed": bool(select.select([sys.stdin], [], [], 0.5)[0]) and sys.stdin.read() == "",
         "together": together,
     }}) + "\\n")
-loaded = plan["loaded"] or [argv[argv.index("--plugin-dir") + 1]]
+loaded = [argv[argv.index("--plugin-dir") + 1]] if plan["loaded"] is None else plan["loaded"]
 print(json.dumps({{"type": "system", "subtype": "init", "plugins": [{{"name": plan["plugin"], "path": path}} for path in loaded]}}))
 print(json.dumps({{"type": "result", "subtype": "success", "result": "done"}}))
 sys.stderr.write("stub stderr\\n")
@@ -53,6 +61,21 @@ def write_stub(folder, plan):
     os.chmod(path, 0o755)
     with open(os.path.join(folder, "claude-plan.json"), "w", encoding="utf-8") as handle:
         json.dump(plan, handle)
+
+
+def run_holding_input(arguments, environment):
+    held, holder = os.pipe()
+    try:
+        completed = subprocess.run([sys.executable, scratch.LIGHTHOUSE, *arguments], env=environment, stdin=held, capture_output=True, text=True)
+    finally:
+        os.close(held)
+        os.close(holder)
+    return completed.returncode, completed.stdout, completed.stderr
+
+
+def respelled(path, old, new):
+    other = path.replace(old, new)
+    return other if other != path and os.path.exists(other) and os.path.samefile(path, other) else None
 
 
 def calls_of(folder):
@@ -81,13 +104,14 @@ def installed_copy(config):
 
 
 class Trial:
-    def __init__(self, test, sessions=2, loaded=None, exit_code=0, config=None, hold_seconds=0):
+    def __init__(self, test, sessions=2, loaded=None, exit_code=0, config=None, hold_seconds=0, pids=None):
         self.home = scratch.make_home(test)
         self.config = config or os.path.join(self.home, ".claude")
         self.installed = installed_copy(self.config)
         self.build = build_copy(test)
         self.stubs = scratch.temporary_folder(test, "lh-stubs-")
-        write_stub(self.stubs, {"sessions": sessions, "hold_seconds": hold_seconds, "plugin": PLUGIN, "loaded": loaded, "exit": exit_code})
+        self.plan = {"sessions": sessions, "hold_seconds": hold_seconds, "plugin": PLUGIN, "loaded": loaded, "exit": exit_code, "pids": pids}
+        write_stub(self.stubs, self.plan)
         self.evidence = os.path.join(scratch.temporary_folder(test, "lh-results-"), "evidence", "skill")
         self.folders = [os.path.realpath(scratch.temporary_folder(test, "lh-trial-")) for _ in range(sessions)]
         base = scratch.environment(self.home, self.stubs)
@@ -102,14 +126,21 @@ class Trial:
         folders = [part for folder in self.folders for part in ("--folder", folder)]
         return ["trial", "--plugin-dir", self.build, "--request", "Prepare the title.", "--evidence", self.evidence, "--name", "feature", *folders, *extra]
 
+    def named(self, name, folders):
+        chosen = [part for folder in folders for part in ("--folder", folder)]
+        return ["trial", "--plugin-dir", self.build, "--request", "Prepare the title.", "--evidence", self.evidence, "--name", name, *chosen]
+
     def run(self, *extra):
-        return scratch.run_lighthouse(self.arguments(*extra), self.environment)
+        return run_holding_input(self.arguments(*extra), self.environment)
 
 
 class TrialTest(unittest.TestCase):
     def test_a_trial_session_cannot_find_the_installed_copy_of_the_plugin_under_test(self):
         trial = Trial(self)
-        code, stdout, stderr = trial.run()
+        linked = os.path.join(scratch.temporary_folder(self, "lh-link-"), "bin")
+        os.symlink(os.path.join(trial.installed, "bin"), linked)
+        environment = {**trial.environment, "PATH": os.pathsep.join([linked, trial.environment["PATH"]])}
+        code, stdout, stderr = run_holding_input(trial.arguments(), environment)
         self.assertEqual(code, 0, stderr)
         calls = calls_of(trial.stubs)
         self.assertEqual(len(calls), 2)
@@ -187,6 +218,77 @@ class TrialTest(unittest.TestCase):
         self.assertEqual([row["loaded"] for row in report["trials"]], [[other], [other]])
         self.assertIn("another copy", report["error"])
 
+    def test_a_session_that_loaded_no_copy_fails_the_call(self):
+        trial = Trial(self, loaded=[])
+        code, stdout, _ = trial.run()
+        self.assertEqual(code, 1)
+        report = json.loads(stdout.strip().splitlines()[-1])
+        self.assertEqual([row["loaded"] for row in report["trials"]], [[], []])
+        self.assertIn("error", report)
+
+    def test_stopping_the_command_stops_its_sessions(self):
+        pids = os.path.join(scratch.temporary_folder(self, "lh-pids-"), "pids")
+        trial = Trial(self, pids=pids)
+        host = subprocess.Popen(
+            [sys.executable, scratch.LIGHTHOUSE, *trial.arguments()],
+            env=trial.environment,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        self.addCleanup(stop_host, host)
+        self.addCleanup(kill_listed_quietly, pids)
+        sessions = written_pids(pids, 2, PID_SECONDS)
+        self.assertIsNotNone(sessions)
+        host.send_signal(signal.SIGTERM)
+        host.wait(timeout=HOST_SECONDS)
+        self.assertEqual([pid for pid in sessions if is_running(pid)], [])
+
+    def test_a_start_that_fails_leaves_no_file_and_keeps_the_name_free(self):
+        def without_claude(trial):
+            return {**trial.environment, "PATH": os.pathsep.join(["/usr/bin", "/bin"])}, "claude"
+
+        def with_a_folder_nobody_can_enter(trial):
+            os.chmod(trial.folders[1], 0)
+            self.addCleanup(os.chmod, trial.folders[1], 0o700)
+            return trial.environment, trial.folders[1]
+
+        for name, broken in (("no claude command to start", without_claude), ("a folder that cannot be entered", with_a_folder_nobody_can_enter)):
+            with self.subTest(name):
+                trial = Trial(self)
+                environment, named = broken(trial)
+                code, stdout, _ = run_holding_input(trial.arguments(), environment)
+                self.assertEqual(code, 2)
+                self.assertIn(named, json.loads(stdout)["error"])
+                self.assertEqual(os.listdir(trial.evidence) if os.path.isdir(trial.evidence) else [], [])
+                os.chmod(trial.folders[1], 0o700)
+                again, _, stderr = trial.run()
+                self.assertEqual(again, 0, stderr)
+                self.assertEqual(sorted(os.listdir(trial.evidence)), ["feature-1.jsonl", "feature-1.stderr", "feature-2.jsonl", "feature-2.stderr"])
+
+    def test_two_spellings_of_one_folder_are_one_folder(self):
+        trial = Trial(self)
+        folder = respelled(trial.folders[0], "lh-trial-", "LH-TRIAL-")
+        build = respelled(trial.build, "lh-build-", "LH-BUILD-")
+        installed = respelled(os.path.join(trial.installed, "bin"), os.path.join("plugins", "cache"), os.path.join("plugins", "CACHE"))
+        if not (folder and build and installed):
+            self.skipTest("this file system tells the spellings of a folder apart")
+        with self.subTest("one folder given in two spellings"):
+            code, stdout, _ = run_holding_input(trial.named("twice", [trial.folders[0], folder]), trial.environment)
+            self.assertEqual(code, 2)
+            self.assertEqual(calls_of(trial.stubs), [])
+        with self.subTest("the installed copy on the search path in another spelling"):
+            environment = {**trial.environment, "PATH": os.pathsep.join([installed, trial.environment["PATH"]])}
+            code, _, stderr = run_holding_input(trial.named("path", trial.folders), environment)
+            self.assertEqual(code, 0, stderr)
+            for call in calls_of(trial.stubs):
+                self.assertEqual([entry for entry in call["path"] if os.path.exists(entry) and os.path.samefile(entry, installed)], [])
+        with self.subTest("the build reported in another spelling"):
+            write_stub(trial.stubs, {**trial.plan, "loaded": [build]})
+            code, _, stderr = run_holding_input(trial.named("loaded", trial.folders), trial.environment)
+            self.assertEqual(code, 0, stderr)
+
     def test_a_session_that_exits_nonzero_fails_the_call(self):
         trial = Trial(self, exit_code=3)
         code, stdout, _ = trial.run()
@@ -194,10 +296,20 @@ class TrialTest(unittest.TestCase):
         self.assertEqual([row["exit"] for row in json.loads(stdout.strip().splitlines()[-1])["trials"]], [3, 3])
 
     def test_it_refuses_before_any_session_starts(self):
+        owned = ("-p", "--print", "--plugin-dir", "--settings", "--output-format", "--model", "--effort")
         refusals = {
-            "a flag the command sets itself": lambda trial: trial.run("--", "--settings", "{}"),
+            **{"{} passed on, which the command sets itself".format(flag): (lambda flag: lambda trial: trial.run("--", flag, "value"))(flag) for flag in owned},
+            "a flag the command sets itself, joined to its value": lambda trial: trial.run("--", "--model=haiku"),
+            "a request that reads as a flag": lambda trial: scratch.run_lighthouse(
+                ["trial", "--plugin-dir", trial.build, "--request=--plugin-dir=/another/copy", "--evidence", trial.evidence, "--name", "feature", "--folder", trial.folders[0]],
+                trial.environment,
+            ),
+            "a word ahead of the separator that the command does not know": lambda trial: scratch.run_lighthouse([*trial.arguments(), "stray"], trial.environment),
             "a missing folder": lambda trial: scratch.run_lighthouse(
                 [*trial.arguments(), "--folder", os.path.join(trial.folders[0], "absent")], trial.environment
+            ),
+            "a file given as a folder": lambda trial: scratch.run_lighthouse(
+                [*trial.arguments(), "--folder", os.path.join(trial.build, ".claude-plugin", "plugin.json")], trial.environment
             ),
             "a folder given twice": lambda trial: scratch.run_lighthouse([*trial.arguments(), "--folder", trial.folders[0]], trial.environment),
             "an empty request": lambda trial: scratch.run_lighthouse(
@@ -218,19 +330,32 @@ class TrialTest(unittest.TestCase):
                 self.assertEqual(calls_of(trial.stubs), [])
                 self.assertFalse(os.path.exists(os.path.dirname(trial.evidence)))
 
-    def test_it_never_overwrites_a_transcript(self):
-        trial = Trial(self)
-        os.makedirs(trial.evidence)
-        kept = os.path.join(trial.evidence, "feature-2.jsonl")
-        with open(kept, "w", encoding="utf-8") as handle:
-            handle.write("earlier\n")
-        code, stdout, _ = trial.run()
-        self.assertEqual(code, 2)
-        self.assertIn("error", json.loads(stdout))
-        self.assertEqual(calls_of(trial.stubs), [])
-        self.assertEqual(os.listdir(trial.evidence), ["feature-2.jsonl"])
-        with open(kept, encoding="utf-8") as handle:
-            self.assertEqual(handle.read(), "earlier\n")
+    def test_it_never_overwrites_evidence(self):
+        for kept_name in ("feature-2.jsonl", "feature-2.stderr"):
+            with self.subTest(kept_name):
+                trial = Trial(self)
+                os.makedirs(trial.evidence)
+                kept = os.path.join(trial.evidence, kept_name)
+                with open(kept, "w", encoding="utf-8") as handle:
+                    handle.write("earlier\n")
+                code, stdout, _ = trial.run()
+                self.assertEqual(code, 2)
+                self.assertIn(kept, json.loads(stdout)["error"])
+                self.assertEqual(calls_of(trial.stubs), [])
+                self.assertEqual(os.listdir(trial.evidence), [kept_name])
+                with open(kept, encoding="utf-8") as handle:
+                    self.assertEqual(handle.read(), "earlier\n")
+        with self.subTest("a link that leads nowhere"):
+            trial = Trial(self)
+            os.makedirs(trial.evidence)
+            link = os.path.join(trial.evidence, "feature-2.jsonl")
+            os.symlink(os.path.join(trial.evidence, "absent"), link)
+            code, stdout, _ = trial.run()
+            self.assertEqual(code, 2)
+            self.assertIn(link, json.loads(stdout)["error"])
+            self.assertEqual(calls_of(trial.stubs), [])
+            self.assertEqual(os.listdir(trial.evidence), ["feature-2.jsonl"])
+            self.assertTrue(os.path.islink(link))
 
     def test_a_build_without_a_plugin_manifest_is_refused(self):
         trial = Trial(self)
