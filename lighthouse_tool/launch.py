@@ -43,6 +43,7 @@ PATH_FLAGS = ("repo", "results", "previous", "spec", "record")
 CHILD_STORE = "plugin-metrics"
 LONGEST_BASH_TIMEOUT = "BASH_MAX_TIMEOUT_MS"
 DEFAULT_BASH_TIMEOUT = "BASH_DEFAULT_TIMEOUT_MS"
+EFFORT_VARIABLE = "CLAUDE_CODE_EFFORT_LEVEL"
 ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000
 
 
@@ -286,7 +287,7 @@ def spec_path(options: argparse.Namespace) -> Optional[str]:
 def child_environment(results: str) -> Dict[str, str]:
     inherited = noninteractive.environment(run_record.environment_without_parent())
     return {
-        **{name: value for name, value in inherited.items() if name != DEFAULT_BASH_TIMEOUT},
+        **{name: value for name, value in inherited.items() if name not in (DEFAULT_BASH_TIMEOUT, EFFORT_VARIABLE)},
         LONGEST_BASH_TIMEOUT: str(ONE_WEEK_MS),
         metrics_writer.ROOT_VARIABLE: os.path.join(results, CHILD_STORE),
     }
@@ -322,6 +323,8 @@ def child_flags(schema: Dict[str, Any]) -> List[str]:
     return [
         "--model",
         "opus",
+        "--effort",
+        "high",
         "--plugin-dir",
         PLUGIN_ROOT,
         "--permission-mode",
