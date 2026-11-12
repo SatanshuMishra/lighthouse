@@ -74,15 +74,11 @@ def surface_named(profile, name):
 
 
 class ProfileMeasureTest(unittest.TestCase):
-    def test_measure_records_suite_start_and_driver_durations(self):
+    def test_measure_records_start_and_driver_durations(self):
         work, printed = measured_repo(self)
 
         profile = read_profile(work)
         measured = profile["measured"]
-        self.assertTrue(is_seconds(measured["suite_seconds"]), measured)
-        self.assertGreaterEqual(measured["suite_seconds"], 1)
-        self.assertIs(type(measured["suite_exit"]), int)
-        self.assertEqual(measured["suite_exit"], 0)
         self.assertTrue(is_seconds(measured["start_seconds"]), measured)
         self.assertGreaterEqual(measured["start_seconds"], 1)
         self.assertEqual(sorted(measured["drivers"]), ["gone", "ready"])
@@ -97,6 +93,26 @@ class ProfileMeasureTest(unittest.TestCase):
         self.assertIs(surface_named(profile, "ready")["available"], True)
         self.assertIs(surface_named(profile, "gone")["available"], False)
         self.assertEqual(printed["available"], {"ready": True, "gone": False})
+
+    def test_measure_runs_no_suite_and_still_marks_each_surface(self):
+        work, _ = scratch.make_repo(self)
+        ran = os.path.join(scratch.temporary_folder(self, "lh-suite-"), "suite.ran")
+        profile = scratch.sample_profile(
+            suite={"command": "touch {}".format(shlex.quote(ran)), "junit": None, "rerun": None, "isolated": False},
+            surfaces=[surface("ready", "true", False), surface("gone", "exit 1", True)],
+        )
+        scratch.commit_files(work, {PROFILE_PATH: json.dumps(profile, indent=2) + "\n"}, "record the profile")
+
+        code, stdout, stderr = lighthouse(self, "profile", "measure", "--repo", work)
+
+        self.assertEqual(code, 0, stdout + stderr)
+        self.assertFalse(os.path.exists(ran), "measure ran the suite command")
+        printed = json.loads(stdout)
+        self.assertEqual(printed["available"], {"ready": True, "gone": False})
+        self.assertNotIn("suite_seconds", printed["measured"])
+        self.assertNotIn("suite_exit", printed["measured"])
+        self.assertIs(surface_named(read_profile(work), "ready")["available"], True)
+        self.assertIs(surface_named(read_profile(work), "gone")["available"], False)
 
     def test_measure_waits_for_readiness_until_the_product_is_ready(self):
         work, _ = scratch.make_repo(self)
@@ -117,7 +133,6 @@ class ProfileMeasureTest(unittest.TestCase):
         measured = json.loads(stdout)["measured"]
         self.assertIs(measured["ready"], True)
         self.assertGreaterEqual(measured["start_seconds"], 3)
-        self.assertLess(measured["suite_seconds"], measured["start_seconds"])
 
     def test_measured_profile_still_passes_the_check(self):
         work, _ = measured_repo(self)

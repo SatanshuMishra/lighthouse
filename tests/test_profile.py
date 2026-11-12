@@ -363,7 +363,8 @@ class ProfileMeasureTest(unittest.TestCase):
 
         self.assertEqual(code, 0, printed)
         measured = printed["measured"]
-        self.assertEqual(measured["suite_exit"], 3)
+        self.assertNotIn("suite_exit", measured)
+        self.assertNotIn("suite_seconds", measured)
         self.assertIsInstance(measured["setup_seconds"], float)
         self.assertIsNone(measured["build_seconds"])
         self.assertIs(measured["ready"], True)

@@ -52,6 +52,7 @@ class NothingWaits(unittest.TestCase):
             os.path.join(inputs, "measured-profile.json"),
             scratch.sample_profile(
                 suite=recorded_suite(recorder, "measure-suite"),
+                setup={"command": recorder.command("measure-setup")},
                 start={"command": recorder.command("start"), "ready": "test -e " + recorder.record_path("start")},
             ),
         )
@@ -74,7 +75,7 @@ class NothingWaits(unittest.TestCase):
         ]
 
         shown = "\n".join(stdout + stderr for _, stdout, stderr in outcomes)
-        for name in ("suite", "check", "measure-suite", "start", "wait"):
+        for name in ("suite", "check", "measure-setup", "start", "wait"):
             with self.subTest(record=name):
                 self.assertTrue(os.path.exists(recorder.record_path(name)), "no {} record\n{}".format(name, shown))
                 support.assert_noninteractive(self, recorder.read(name), name)

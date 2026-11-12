@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.2
+
+- `lighthouse profile measure` no longer runs the project's suite. Its `suite_seconds` and `suite_exit` were written into the profile for the time limits 0.8.0 removed, and no step, skill or query has read them since, while each run's record already holds how long its own suite took on each build. In an unattended run on a project whose suite takes about ten minutes, the measure lighthouse:doctor ran after a profile repair spent 576 of the profile step's 601 seconds on that one suite run, before the run's suite step ran the same suite on both builds. Measure still runs setup, build, the start command with its readiness check and each surface's `reach` command, and still sets each surface's `available`. A profile that already holds the two keys still passes the check.
+
 ## 0.8.1
 
 - The child session holds every long step, the suite, the acceptance checks and a profile measure, as one foreground Bash call that asks for a timeout of one week, which `lighthouse launch` allows by raising the Bash tool's longest timeout. The tool's default stays two minutes, and launch drops a default it inherits, so a command that hangs is still moved to the background: in a probe, a server started in the foreground held a session with both timeouts raised until the probe ended it at 420 seconds, and a session with only the longest raised finished in 141. Under 0.8.0 the child started a long step in the background and ended its turn to wait; a session with a reply schema is asked for its reply the moment a turn ends, so the first 0.8.0 child released its worktrees and returned a blocked verdict 12 seconds after starting a profile measure. `docs/adr/0015` records the decision.

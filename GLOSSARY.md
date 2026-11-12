@@ -93,7 +93,7 @@ A check result or measurement that neither passed nor failed because the check c
 A surface's command that exits 0 when this machine can drive that surface with its recorded driver; its exit sets the surface's available.
 
 **Measured durations**:
-The seconds lighthouse profile measure recorded in the profile for setup, build, the suite, the start command until ready and each reach command; no time limit is derived from them.
+The seconds lighthouse profile measure recorded in the profile for setup, build, the start command until ready and each reach command, never for the suite; no time limit is derived from them.
 
 **Exit file**:
 The file a process lighthouse waits on writes its exit status to when it ends; every wait names one and ends, not ready, once it appears.
