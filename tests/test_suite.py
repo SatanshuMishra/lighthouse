@@ -259,6 +259,10 @@ def interval_of(outside, build):
     return float(read(outside, build + ".start")), float(read(outside, build + ".end"))
 
 
+FEATURE_FAILS = 'test "$LIGHTHOUSE_BUILD" = core'
+CLEAN_REPORT = "cp reports/clean.xml report.xml"
+
+
 class SuiteTest(unittest.TestCase):
     def test_counts_a_new_failure(self):
         work = junit_project(
@@ -387,7 +391,6 @@ class SuiteTest(unittest.TestCase):
         work = project_with(self, {}, profile)
         result = suite_of(self, work)
         self.assertEqual(result["result"], "passed")
-        self.assertEqual(result["core"]["exit"], 0)
         self.assertEqual(result["feature"]["exit"], 0)
 
     def test_blocked_when_feature_does_not_build(self):
@@ -463,7 +466,7 @@ class SuiteTest(unittest.TestCase):
     def test_suite_logs_hide_credential_values(self):
         planted = "s3cret-value"
         profile = scratch.sample_profile(
-            suite={"command": 'echo "signing in with $APP_PASSWORD"', "junit": None},
+            suite={"command": 'echo "signing in with $APP_PASSWORD"; ' + FEATURE_FAILS, "junit": None},
             credentials={"file": None, "names": {"APP_PASSWORD": {"production": False}}},
         )
         work = project_with(self, {}, profile)
@@ -481,7 +484,7 @@ class SuiteTest(unittest.TestCase):
     def test_suite_logs_hide_filled_credentials_the_profile_does_not_name(self):
         planted = "t0ken-value"
         profile = scratch.sample_profile(
-            suite={"command": 'echo "calling with $API_TOKEN"', "junit": None},
+            suite={"command": 'echo "calling with $API_TOKEN"; ' + FEATURE_FAILS, "junit": None},
             credentials={"file": ".env.test", "names": {"APP_PASSWORD": {"production": False}}},
         )
         work = project_with(self, {}, profile)
@@ -501,7 +504,7 @@ class SuiteTest(unittest.TestCase):
     def test_suite_logs_hide_values_filled_from_the_checkout_profiles_file(self):
         planted = "ch3ckout-value"
         checkout_profile = scratch.sample_profile(
-            suite={"command": 'echo "signing in with $APP_PASSWORD"', "junit": None},
+            suite={"command": 'echo "signing in with $APP_PASSWORD"; ' + FEATURE_FAILS, "junit": None},
             credentials={"file": ".env.test", "names": {"APP_PASSWORD": {"production": False}}},
         )
         feature_profile = {**checkout_profile, "credentials": {"file": None, "names": {}}}
@@ -533,13 +536,13 @@ class SuiteTest(unittest.TestCase):
     def test_a_step_that_leaves_a_process_running_still_finishes(self):
         profile = scratch.sample_profile(
             setup={"command": "sleep 20 & echo $! > background.pid; echo service started"},
-            suite={"command": "true", "junit": None},
+            suite={"command": FEATURE_FAILS, "junit": None},
         )
         work = project_with(self, {}, profile)
         started = time.monotonic()
         result = suite_of(self, work)
         self.assertLess(time.monotonic() - started, 15)
-        self.assertEqual(result["result"], "passed")
+        self.assertEqual(result["result"], "failures")
         results = os.path.dirname(result["feature"]["log"])
         self.assertIn("service started", read(results, "suite-feature.log"))
         for build in ("core", "feature"):
@@ -553,11 +556,11 @@ class SuiteTest(unittest.TestCase):
         listener.close()
         profile = scratch.sample_profile(
             suite={
-                "command": "python3 serve.py {0} & python3 fetch.py {0}".format(port),
-                "junit": None,
+                "command": "python3 serve.py {0} & python3 fetch.py {0}; fetched=$?; {1}; exit $fetched".format(port, CLEAN_REPORT),
+                "junit": "report.xml",
             }
         )
-        work = project_with(self, {"serve.py": SERVE, "fetch.py": FETCH}, profile)
+        work = project_with(self, {"serve.py": SERVE, "fetch.py": FETCH, "reports/clean.xml": junit({"test_a": "passed"})}, profile)
         result = suite_of(self, work)
         self.assertNotEqual(result["core"]["exit"], 0)
         self.assertEqual(result["feature"]["exit"], 0)
@@ -583,9 +586,9 @@ class SuiteTest(unittest.TestCase):
         profile = scratch.sample_profile(
             setup={"command": "true"},
             build={"command": "true"},
-            suite={"command": "true", "junit": None},
+            suite={"command": CLEAN_REPORT, "junit": "report.xml"},
         )
-        work = project_with(self, {}, profile)
+        work = project_with(self, {"reports/clean.xml": junit({"test_a": "passed"})}, profile)
         result = suite_of(self, work)
         for build in ("core", "feature"):
             for phase in ("prepare_minutes", "suite_minutes"):
@@ -596,7 +599,7 @@ class SuiteTest(unittest.TestCase):
 
     def test_same_core_commit_reuses_core_suite(self):
         counter = os.path.join(scratch.temporary_folder(self, "lh-counter-"), "runs")
-        profile = scratch.sample_profile(suite={"command": counting_suite(counter), "junit": None})
+        profile = scratch.sample_profile(suite={"command": counting_suite(counter, FEATURE_FAILS), "junit": None})
         work = project_with(self, {}, profile)
         home = scratch.make_home(self)
         first = suite_in(self, work, home)
@@ -607,7 +610,7 @@ class SuiteTest(unittest.TestCase):
 
     def test_an_uncreatable_state_folder_runs_both_suites_without_storing_core(self):
         counter = os.path.join(scratch.temporary_folder(self, "lh-counter-"), "runs")
-        profile = scratch.sample_profile(suite={"command": counting_suite(counter), "junit": None})
+        profile = scratch.sample_profile(suite={"command": counting_suite(counter, FEATURE_FAILS), "junit": None})
         work = project_with(self, {}, profile)
         home = scratch.make_home(self)
         open(os.path.join(home, ".lighthouse"), "w").close()
@@ -618,18 +621,18 @@ class SuiteTest(unittest.TestCase):
 
     def test_changed_suite_command_runs_core_again(self):
         counter = os.path.join(scratch.temporary_folder(self, "lh-counter-"), "runs")
-        profile = scratch.sample_profile(suite={"command": counting_suite(counter), "junit": None})
+        profile = scratch.sample_profile(suite={"command": counting_suite(counter, FEATURE_FAILS), "junit": None})
         work = project_with(self, {}, profile)
         home = scratch.make_home(self)
         suite_in(self, work, home)
-        changed = {**profile, "suite": {**profile["suite"], "command": counting_suite(counter, "echo changed")}}
+        changed = {**profile, "suite": {**profile["suite"], "command": counting_suite(counter, "echo changed; " + FEATURE_FAILS)}}
         change_feature_profile(work, changed)
         suite_in(self, work, home)
         self.assertEqual(runs_of(counter, "core"), 2)
 
     def test_moved_core_commit_runs_core_again(self):
         counter = os.path.join(scratch.temporary_folder(self, "lh-counter-"), "runs")
-        profile = scratch.sample_profile(suite={"command": counting_suite(counter), "junit": None})
+        profile = scratch.sample_profile(suite={"command": counting_suite(counter, FEATURE_FAILS), "junit": None})
         work = project_with(self, {}, profile)
         home = scratch.make_home(self)
         suite_in(self, work, home)
@@ -637,6 +640,13 @@ class SuiteTest(unittest.TestCase):
         scratch.run_git(work, "push", "-q", "origin", "main")
         suite_in(self, work, home)
         self.assertEqual(runs_of(counter, "core"), 2)
+
+    def test_a_passing_feature_suite_with_no_report_runs_no_core_suite(self):
+        counter = os.path.join(scratch.temporary_folder(self, "lh-counter-"), "runs")
+        profile = scratch.sample_profile(suite={"command": counting_suite(counter), "junit": None})
+        result = suite_of(self, project_with(self, {}, profile))
+        self.assertEqual((result["result"], result["core"]), ("passed", None))
+        self.assertEqual((runs_of(counter, "core"), runs_of(counter, "feature")), (0, 1))
 
     def test_feature_suite_always_runs(self):
         counter = os.path.join(scratch.temporary_folder(self, "lh-counter-"), "runs")
@@ -653,7 +663,7 @@ class SuiteTest(unittest.TestCase):
         ready = os.path.join(scratch_folder, "ready")
         profile = scratch.sample_profile(
             setup={"command": 'test "$LIGHTHOUSE_BUILD" = feature || test -f {}'.format(ready)},
-            suite={"command": counting_suite(counter), "junit": None},
+            suite={"command": counting_suite(counter, FEATURE_FAILS), "junit": None},
         )
         work = project_with(self, {}, profile)
         home = scratch.make_home(self)
@@ -815,8 +825,8 @@ class SuiteTest(unittest.TestCase):
 
     def test_unisolated_profile_runs_builds_one_after_another(self):
         outside = scratch.temporary_folder(self, "lh-times-")
-        suite = {"command": timed_suite(outside), "junit": None}
-        work = project_with(self, {}, scratch.sample_profile(suite=suite))
+        suite = {"command": timed_suite(outside) + "; " + CLEAN_REPORT, "junit": "report.xml"}
+        work = project_with(self, {"reports/clean.xml": junit({"test_a": "passed"})}, scratch.sample_profile(suite=suite))
         suite_of(self, work)
         _, core_end = interval_of(outside, "core")
         feature_start, _ = interval_of(outside, "feature")
@@ -836,7 +846,7 @@ class SuiteTest(unittest.TestCase):
         self.assertEqual(result["core"]["tests"], {"passed": ["tests.T.test_a"], "failed": ["tests.T.test_b"]})
 
     def test_suite_without_a_report_records_no_test_ids(self):
-        profile = scratch.sample_profile(suite={"command": "true", "junit": None})
+        profile = scratch.sample_profile(suite={"command": FEATURE_FAILS, "junit": None})
         work = project_with(self, {}, profile)
         result = suite_of(self, work)
         self.assertIsNone(result["core"]["tests"])
@@ -870,7 +880,7 @@ class SuiteTest(unittest.TestCase):
 
     def test_the_retired_time_limit_does_not_change_the_core_store_key(self):
         counter = os.path.join(scratch.temporary_folder(self, "lh-counter-"), "runs")
-        profile = scratch.sample_profile(suite={"command": counting_suite(counter), "junit": None})
+        profile = scratch.sample_profile(suite={"command": counting_suite(counter, FEATURE_FAILS), "junit": None})
         work = project_with(self, {}, profile)
         home = scratch.make_home(self)
         suite_in(self, work, home)

@@ -73,6 +73,7 @@ class FeatureBuild(NamedTuple):
 
 
 NOTHING_FOUND = Classification([], [], [])
+CORE_NOT_RUN = CoreBuild(None, None, None)
 
 
 def parser(subcommand: str) -> Parser:
@@ -652,6 +653,11 @@ def feature_build(profile: Dict[str, Any], hidden: credentials.Secrets, worktree
     return FeatureBuild(None, first, prepare_minutes, suite_minutes)
 
 
+def needs_baseline(feature_built: FeatureBuild) -> bool:
+    first = feature_built.first
+    return first is not None and first.problem is None and has_failures(first)
+
+
 def both_builds(
     profile: Dict[str, Any],
     hidden: credentials.Secrets,
@@ -665,11 +671,14 @@ def both_builds(
     def build_feature() -> FeatureBuild:
         return feature_build(profile, hidden, worktrees["feature"]["path"], logs["feature"])
 
-    if not runs_isolated(profile):
+    if runs_isolated(profile):
+        core_built, feature_built = process_tree.in_parallel([build_core, build_feature])
+        return core_built, feature_built
+    if junit_report(profile) is not None:
         core_built = build_core()
         return core_built, build_feature()
-    core_built, feature_built = process_tree.in_parallel([build_core, build_feature])
-    return core_built, feature_built
+    feature_built = build_feature()
+    return (build_core() if needs_baseline(feature_built) else CORE_NOT_RUN), feature_built
 
 
 def compare_builds(
