@@ -242,6 +242,16 @@ class TrialTest(unittest.TestCase):
             self.assertIsNone(call["effort"])
             self.assertTrue(call["stdin_closed"])
 
+    def test_each_session_starts_without_the_settings_and_instructions_of_the_person_running_it(self):
+        trial = Trial(self)
+        code, _, stderr = trial.run()
+        self.assertEqual(code, 0, stderr)
+        calls = calls_of(trial.stubs)
+        self.assertEqual(len(calls), 2)
+        for call in calls:
+            argv = call["argv"]
+            self.assertEqual(argv[argv.index("--setting-sources") + 1], "project,local")
+
     def test_the_sessions_of_one_call_run_at_the_same_time(self):
         trial = Trial(self, sessions=3, hold_seconds=20)
         code, _, stderr = trial.run()
@@ -409,7 +419,7 @@ class TrialTest(unittest.TestCase):
         self.assertEqual([row["exit"] for row in json.loads(stdout.strip().splitlines()[-1])["trials"]], [3, 3])
 
     def test_it_refuses_before_any_session_starts(self):
-        owned = ("-p", "--print", "--plugin-dir", "--settings", "--output-format", "--model", "--effort")
+        owned = ("-p", "--print", "--plugin-dir", "--settings", "--setting-sources", "--output-format", "--model", "--effort")
         refusals = {
             **{"{} passed on, which the command sets itself".format(flag): (lambda flag: lambda trial: trial.run("--", flag, "value"))(flag) for flag in owned},
             "a flag the command sets itself, joined to its value": lambda trial: trial.run("--", "--model=haiku"),

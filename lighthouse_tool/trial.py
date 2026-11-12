@@ -17,7 +17,8 @@ CACHE_LIFETIME = "5m"
 EFFORT_VARIABLE = "CLAUDE_CODE_EFFORT_LEVEL"
 DEFAULT_MODEL = "opus"
 DEFAULT_EFFORT = "high"
-OWNED_FLAGS = ("-p", "--print", "--plugin-dir", "--settings", "--output-format", "--model", "--effort")
+SOURCES_OF_THE_FOLDER = "project,local"
+OWNED_FLAGS = ("-p", "--print", "--plugin-dir", "--settings", "--setting-sources", "--output-format", "--model", "--effort")
 SEPARATOR = "--"
 STOP_GRACE_SECONDS = 0.0
 ANOTHER_COPY = "a session loaded another copy of the plugin, or none: its transcript is not a trial of this build"
@@ -97,7 +98,7 @@ def session_environment(inherited: Mapping[str, str], config: str) -> Dict[str, 
 def session_argv(options: Any, passed_on: List[str], build: str, disabled: List[str]) -> List[str]:
     settings = ["--settings", json.dumps({"enabledPlugins": {key: False for key in disabled}})] if disabled else []
     return [
-        "claude", "-p", options.request, "--plugin-dir", build, *settings,
+        "claude", "-p", options.request, "--plugin-dir", build, "--setting-sources", SOURCES_OF_THE_FOLDER, *settings,
         "--output-format", "stream-json", "--verbose", "--model", options.model, "--effort", options.effort,
         *passed_on,
     ]
