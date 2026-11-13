@@ -10,7 +10,7 @@ from typing import Any, Callable, Dict, Iterator, List, NamedTuple, Optional, Se
 
 from lighthouse_tool import noninteractive
 
-FORWARDED_SIGNALS = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
+FORWARDED_SIGNALS = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP, signal.SIGQUIT)
 SIGNAL_EXIT_BASE = 128
 LISTING = ["ps", "-A", "-o", "pid=,ppid="]
 START_LISTING = ["ps", "-o", "lstart=", "-p"]

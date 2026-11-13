@@ -28,6 +28,7 @@ COMMANDS = {
     "metrics": "ledger_import",
     "execute": "execute",
     "contrast": "contrast",
+    "trial": "trial",
 }
 
 SUBCOMMANDS = sorted([*COMMANDS, "version"])

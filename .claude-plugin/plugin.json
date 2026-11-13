@@ -1,6 +1,6 @@
 {
   "name": "lighthouse",
-  "version": "0.8.5",
+  "version": "0.8.6",
   "description": "Tests a FEATURE branch of any kind of software as a person uses it, then opens its pull request.",
   "author": {
     "name": "Satanshu Mishra",
