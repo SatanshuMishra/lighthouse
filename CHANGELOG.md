@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.1
+
+- The vendored copies of h15-pr-fields and h16-pr-render follow what `pull-request render` accepts. h16 refuses a title holding a single quote, a backtick, `;`, `&`, `|`, `<`, `>` or a flag word the create command refuses, so `lighthouse pr` refuses such a `--summary` with exit 2 before it writes `pr-fields.json`, whether or not render is on PATH. When lighthouse composed the body itself, such a title was accepted and then refused when the pull request was opened. h15 no longer refuses a prose value that opens with `Verified:`, `Not verified:`, `Door:` or `Blast radius:`, which render accepts.
+- The vendored copies of h11-interphase-record and k2-locked match their canonical files: h11 takes an optional `draft` text on a test, and k2's description says the spec lists no locked path in a Step's files.
+
 ## 0.9.0
 
 - `lighthouse launch --no-pr`, and `--no-pr` on the test skill, open no pull request, so a caller that opens the FEATURE pull request itself reads the verdict line as the run's whole result. Given beside `--final`, launch refuses with exit 2 before it starts the child.

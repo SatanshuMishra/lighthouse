@@ -308,6 +308,9 @@
               "$ref": "#/$defs/text"
             }
           }
+        },
+        "draft": {
+          "$ref": "#/$defs/text"
         }
       }
     },

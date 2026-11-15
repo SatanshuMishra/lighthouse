@@ -11,7 +11,7 @@
   ],
   "properties": {
     "title": {
-      "description": "type(scope): summary, at most 72 characters, lowercase summary, no trailing period (PR_TITLE_PATTERN).",
+      "description": "type(scope): summary, at most 72 characters, lowercase summary, no trailing period (PR_TITLE_PATTERN), holding nothing the create command cannot carry (TITLE_COMMAND_PATTERNS).",
       "type": "string",
       "minLength": 1,
       "maxLength": 72,
@@ -21,6 +21,18 @@
         },
         {
           "$ref": "h15-pr-fields.schema.json#/$defs/inert"
+        },
+        {
+          "not": {
+            "anyOf": [
+              {
+                "pattern": "[`;&|<>']"
+              },
+              {
+                "pattern": " (?:--body|-b|--fill|--fill-first|--fill-verbose|-f|--web|-w|--editor|-e|--template|-T|--recover)[ =]"
+              }
+            ]
+          }
         }
       ]
     },

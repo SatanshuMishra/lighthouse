@@ -140,9 +140,6 @@
                 "pattern": "^[=-]+$"
               },
               {
-                "pattern": "^(?:[Vv][Ee][Rr][Ii][Ff][Ii][Ee][Dd]|[Nn][Oo][Tt] [Vv][Ee][Rr][Ii][Ff][Ii][Ee][Dd]|[Dd][Oo][Oo][Rr]|[Bb][Ll][Aa][Ss][Tt] [Rr][Aa][Dd][Ii][Uu][Ss]):"
-              },
-              {
                 "pattern": "^Supersedes "
               }
             ]
