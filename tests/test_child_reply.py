@@ -38,6 +38,9 @@ FAILURES_REPLY = {
     "dollars": 1.5,
     "pr": PULL_REQUEST,
 }
+NOT_OPENED = "no pull request was opened: this session has no create_pull_request tool"
+SUITE_BLOCKED = "the suite is blocked: build: npm run build exited 1"
+COMPUTED_BLOCKED = {**GREEN, "verdict": "blocked", "reason": SUITE_BLOCKED}
 FINDINGS = {
     "version": 1,
     "suite": {
@@ -164,6 +167,25 @@ class ReadReplyTest(unittest.TestCase):
         write(self.results, "verdict.json", GREEN)
         write(self.results, "findings.json", FINDINGS)
         self.assertEqual(self.read(envelope(FAILURES_REPLY)), Reading({**GREEN, "pr": PULL_REQUEST}, ()))
+
+    def test_a_verdict_replys_reason_reaches_the_printed_line(self):
+        write(self.results, "verdict.json", GREEN)
+        write(self.results, "findings.json", FINDINGS)
+        self.assertEqual(self.read(envelope({**GREEN, "reason": NOT_OPENED})), Reading({**GREEN, "reason": NOT_OPENED}, ()))
+
+    def test_the_replys_reason_follows_the_computed_reason(self):
+        write(self.results, "verdict.json", COMPUTED_BLOCKED)
+        write(self.results, "findings.json", FINDINGS)
+        told = {
+            None: SUITE_BLOCKED,
+            SUITE_BLOCKED: SUITE_BLOCKED,
+            NOT_OPENED: SUITE_BLOCKED + "; " + NOT_OPENED,
+            SUITE_BLOCKED + "; " + NOT_OPENED: SUITE_BLOCKED + "; " + NOT_OPENED,
+        }
+        for reason, printed in told.items():
+            reply = COMPUTED_BLOCKED if reason is None else {**COMPUTED_BLOCKED, "reason": reason}
+            with self.subTest(reason=reason):
+                self.assertEqual(self.read(envelope(reply)), Reading({**COMPUTED_BLOCKED, "reason": printed}, ()))
 
     def test_a_verdict_reply_without_its_files_names_each_file(self):
         reading = self.read(envelope(GREEN))

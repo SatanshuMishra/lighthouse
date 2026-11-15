@@ -104,6 +104,10 @@ PLAIN_BODY = "\n".join(
 )
 
 
+REST_OF_ONE = "Lighthouse left 1 more failing, unproven or flaky name out of this section; verdict.json in its results folder lists every one."
+REST_OF_TWO = "Lighthouse left 2 more failing, unproven or flaky names out of this section; verdict.json in its results folder lists every one."
+
+
 def suite(failures=()):
     return {
         "result": "failures" if failures else "passed",
@@ -240,9 +244,12 @@ class PullRequestTest(unittest.TestCase):
 
         self.assertEqual(code, 0, stdout + stderr)
         composed = json.loads(stdout)
-        self.assertEqual(sorted(composed), ["base", "body", "draft", "head", "title"])
+        self.assertEqual(sorted(composed), ["base", "body", "body_file", "draft", "head", "title"])
         self.assertEqual(composed["title"], "feat(work): add csv export and import")
         self.assertEqual(composed["body"], GREEN_BODY)
+        self.assertEqual(composed["body_file"], os.path.join(run.results, "pr-body.md"))
+        with open(composed["body_file"], "rb") as handle:
+            self.assertEqual(handle.read(), GREEN_BODY.encode("utf-8"))
         self.assertEqual((composed["base"], composed["head"]), ("main", "feat/x"))
         self.assertIs(composed["draft"], False)
         self.assertEqual(read_json(run.fields_path()), GREEN_FIELDS)
@@ -359,16 +366,46 @@ class PullRequestTest(unittest.TestCase):
         self.assertTrue(any(error.startswith("#/impact") for error in printed["errors"]), printed["errors"])
         self.assertFalse(os.path.exists(run.fields_path()))
 
-    def test_a_flaky_name_missing_from_the_tradeoffs_is_refused(self):
-        draft = {**GREEN_DRAFT, "tradeoffs": ["Unproven: settings page loads was not driven."]}
-        run = Run(self, green_line(), draft=draft)
+    def test_names_left_out_of_the_tradeoffs_are_counted_in_one_sentence(self):
+        named = "Unproven: settings page loads was not driven."
+        line = verdict_line("green", unproven=["settings page loads", "a name with a \\ in it"], flaky=["import reads the csv back"])
+        run = Run(self, line, draft={**GREEN_DRAFT, "tradeoffs": [named]})
+
+        code, stdout, stderr = run.pr()
+
+        self.assertEqual(code, 0, stdout + stderr)
+        self.assertEqual(read_json(run.fields_path())["tradeoffs"], [named, REST_OF_TWO])
+        self.assertIn("- " + named + "\n- " + REST_OF_TWO + "\n", json.loads(stdout)["body"])
+
+    def test_a_draft_naming_every_name_gains_no_sentence(self):
+        run = Run(self, green_line())
+
+        code, stdout, stderr = run.pr()
+
+        self.assertEqual(code, 0, stdout + stderr)
+        self.assertEqual(read_json(run.fields_path())["tradeoffs"], GREEN_DRAFT["tradeoffs"])
+
+    def test_the_counting_sentence_keeps_the_fields_in_order_when_the_draft_has_no_tradeoffs(self):
+        draft = {key: value for key, value in GREEN_DRAFT.items() if key != "tradeoffs"}
+        run = Run(self, verdict_line("unproven", unproven=["C2.1"]), draft=draft)
+
+        code, stdout, stderr = run.pr()
+
+        self.assertEqual(code, 0, stdout + stderr)
+        fields = read_json(run.fields_path())
+        self.assertEqual(list(fields), ["title", "problem", "change", "approach", "impact", "tradeoffs", "testing"])
+        self.assertEqual(fields["tradeoffs"], [REST_OF_ONE])
+
+    def test_a_full_tradeoffs_list_with_names_left_out_is_refused_by_h15(self):
+        full = ["Open problem number {} stays.".format(number) for number in "ABCDEFGH"]
+        run = Run(self, green_line(), draft={**GREEN_DRAFT, "tradeoffs": full})
 
         code, stdout, stderr = run.pr()
 
         self.assertEqual(code, 2, stdout + stderr)
-        error = json.loads(stdout)["error"]
-        self.assertIn("missing: import reads the csv back", error)
-        self.assertNotIn("missing: settings page loads", error)
+        printed = json.loads(stdout)
+        self.assertEqual(printed["schema"], "h15-pr-fields.schema.json")
+        self.assertTrue(any(error.startswith("#/tradeoffs maxItems") for error in printed["errors"]), printed["errors"])
         self.assertFalse(os.path.exists(run.fields_path()))
 
     def test_a_verdict_breaking_h13_is_refused(self):
@@ -398,16 +435,28 @@ class PullRequestTest(unittest.TestCase):
         self.assertEqual(render_calls(calls), [{"argv": ["render", "--fields", run.fields_path()], "stdin": ""}])
         composed = json.loads(stdout)
         self.assertEqual((composed["title"], composed["body"]), (GREEN_FIELDS["title"], GREEN_BODY))
+        with open(composed["body_file"], "rb") as handle:
+            self.assertEqual(handle.read(), GREEN_BODY.encode("utf-8"))
 
-    def test_render_exiting_non_zero_is_refused(self):
+    def test_render_exiting_non_zero_is_refused_with_every_problem_it_named(self):
         run = Run(self, green_line())
-        stub_render(run.stubs, "", code=3, error="render: the fields are stale\n")
+        stub_render(run.stubs, "", code=3, error="--tradeoff: over 150 words\n\n--impact: over 100 words\n")
 
         code, stdout, stderr = run.pr()
 
         self.assertEqual(code, 2, stdout + stderr)
         printed = json.loads(stdout)
-        self.assertEqual(printed, {"error": "pull-request render exited 3: render: the fields are stale"})
+        self.assertEqual(printed, {"error": "pull-request render exited 3: --tradeoff: over 150 words; --impact: over 100 words"})
+        self.assertFalse(os.path.exists(os.path.join(run.results, "pr-body.md")))
+
+    def test_render_exiting_non_zero_without_a_message_says_so(self):
+        run = Run(self, green_line())
+        stub_render(run.stubs, "", code=3)
+
+        code, stdout, stderr = run.pr()
+
+        self.assertEqual(code, 2, stdout + stderr)
+        self.assertEqual(json.loads(stdout), {"error": "pull-request render exited 3: no message"})
 
     def test_render_printing_two_lines_is_refused(self):
         run = Run(self, green_line())

@@ -20,7 +20,7 @@ Drive the product paths you are given on one surface of one build, and report wh
 - For a path whose trial sessions start `claude -p`, the folder they start in and the number of trials.
 - The exit file of each process you may hold on, such as `<results>/<build>-start.exit` for a build's start command.
 
-Every `lighthouse` below means the path you were given: run lighthouse only by the absolute path you were given, written out in each command, never a `lighthouse` found on PATH, which may be an older installed copy.
+Every `lighthouse` below means the path you were given, the installed copy: run lighthouse only by that absolute path, written out in each command.
 
 Everything a run needs from lighthouse is in these instructions, in what you are given and in what its commands print, including their refusals: never read lighthouse's own code, profile schema or README, and never run its `--help`.
 

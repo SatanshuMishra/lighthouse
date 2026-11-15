@@ -32,7 +32,7 @@ earlier_names = ("verdict.json", "checks.jsonl", "plan.json", "record.json", "fi
 earlier_files = [name for name in earlier_names if os.path.exists(os.path.join(results, name))]
 calls_path = os.path.join(folder, "claude-calls.jsonl")
 with open(calls_path, "a", encoding="utf-8") as calls:
-    calls.write(json.dumps({{"argv": sys.argv[1:], "cwd": os.getcwd(), "pid": os.getpid(), "saw_launch": os.path.exists(earlier_line), "saw_earlier": earlier_files, "bash_ceilings": [os.environ.get("BASH_DEFAULT_TIMEOUT_MS"), os.environ.get("BASH_MAX_TIMEOUT_MS")], "effort": os.environ.get("CLAUDE_CODE_EFFORT_LEVEL")}}) + "\\n")
+    calls.write(json.dumps({{"argv": sys.argv[1:], "cwd": os.getcwd(), "pid": os.getpid(), "saw_launch": os.path.exists(earlier_line), "saw_earlier": earlier_files, "bash_ceilings": [os.environ.get("BASH_DEFAULT_TIMEOUT_MS"), os.environ.get("BASH_MAX_TIMEOUT_MS")], "effort": os.environ.get("CLAUDE_CODE_EFFORT_LEVEL"), "unattended": os.environ.get("HARNESS_UNATTENDED")}}) + "\\n")
 with open(calls_path, encoding="utf-8") as calls:
     index = len([line for line in calls.read().splitlines() if line.strip()]) - 1
 time.sleep(0.5)
@@ -284,6 +284,30 @@ class LaunchTest(unittest.TestCase):
         self.assertEqual(ran["code"], 0, ran["stderr"])
         call = calls_of(ran["stubs"], "claude")[0]
         self.assertEqual((call["argv"][call["argv"].index("--effort") + 1], call["effort"]), ("high", None))
+
+    def test_the_child_and_its_re_ask_are_marked_unattended(self):
+        ran = launch(self, claude_output("I could not finish."), caller={"HARNESS_UNATTENDED": "0"})
+        self.assertEqual(ran["code"], 0, ran["stderr"])
+        calls = calls_of(ran["stubs"], "claude")
+        self.assertEqual([call["unattended"] for call in calls], ["1", "1"])
+
+    def test_no_pr_reaches_the_child_and_is_refused_beside_final(self):
+        repo, _ = scratch.make_repo(self)
+        stubs = stub_folder(self, claude_output(BLOCKED_LINE))
+        env = launch_environment(self, scratch.make_home(self), stubs)
+        results = os.path.join(scratch.temporary_folder(self, "lh-results-"), "results")
+        code, _, stderr = scratch.run_lighthouse(["launch", *launch_flags(repo, results), "--no-pr"], env)
+        self.assertEqual(code, 0, stderr)
+        calls = calls_of(stubs, "claude")
+        self.assertEqual(len(calls), 1)
+        self.assertTrue(calls[0]["argv"][1].endswith(" --results {} --no-pr".format(results)), calls[0]["argv"][1])
+        both = os.path.join(scratch.temporary_folder(self, "lh-results-"), "results")
+        code, stdout, stderr = scratch.run_lighthouse(["launch", *launch_flags(repo, both), "--no-pr", "--final"], env)
+        self.assertEqual(code, 2, stderr)
+        error = json.loads(stdout.strip().splitlines()[-1])["error"]
+        self.assertIn("--no-pr", error)
+        self.assertIn("--final", error)
+        self.assertEqual(len(calls_of(stubs, "claude")), 1)
 
     def test_launch_runs_the_child_with_its_flags(self):
         ran = launch(self, claude_output("Driven every path.\n" + BLOCKED_LINE))

@@ -35,11 +35,16 @@ class SkillFormats(unittest.TestCase):
         self.assertTrue(holds(text, "lighthouse findings --results"))
         self.assertFalse(holds(text, "Write `<results>/findings.json`"))
 
-    def test_no_gh_pr_create_fallback(self):
+    def test_the_pull_request_opens_by_one_plain_command_with_the_tool_as_fallback(self):
+        openers = (TEST_SKILL, os.path.join(support.ROOT, "README.md"))
         for path in shipped_texts():
             with self.subTest(file=os.path.relpath(path, support.ROOT)):
-                self.assertFalse(holds(support.plain_text(path), "gh pr create"))
+                self.assertEqual(holds(support.plain_text(path), "gh pr create"), path in openers)
         text = support.plain_text(TEST_SKILL)
+        self.assertTrue(
+            holds(text, "`gh pr create --repo <owner>/<name> --title '<printed title>' --body-file <printed body_file> --base <base> --head <head>`")
+        )
+        self.assertLess(text.index("gh pr create"), text.index("create_pull_request"))
         self.assertTrue(holds(text, "--draft-fields"))
         self.assertTrue(holds(text, "create_pull_request"))
         self.assertFalse(holds(text, "--why"))

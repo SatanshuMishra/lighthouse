@@ -82,7 +82,7 @@ class SkillsTest(unittest.TestCase):
     def test_test_skill_states_its_contract(self):
         text = scratch.skill_text("test")
 
-        for flag in ["--repo", "--core", "--feature", "--results", "--spec", "--final"]:
+        for flag in ["--repo", "--core", "--feature", "--results", "--spec", "--final", "--no-pr"]:
             self.assertIn(flag, text)
         for subcommand in [
             "worktrees",
@@ -221,7 +221,8 @@ class SkillsTest(unittest.TestCase):
 
     def test_a_blocked_launch_line_is_printed_with_its_reason_and_never_ledgered_twice(self):
         launching = section(scratch.skill_text("test"), "## Launch", "## Steps")
-        self.assertIn("When that line's verdict is blocked, say in one line the reason lighthouse launch printed", launching)
+        self.assertIn("When that line holds a reason, say it in one line.", launching)
+        self.assertNotIn("read from the background command's output", launching)
         self.assertIn("lighthouse launch has already recorded the run in the metrics store, so never run Stopping early for it", launching)
 
     def test_test_skill_records_runs_in_the_store(self):
@@ -248,15 +249,23 @@ class SkillsTest(unittest.TestCase):
 
     def test_the_reference_names_the_blocked_reason(self):
         reference = scratch.read_text(scratch.skill_path("test")).split("## Command reference", 1)[1]
-        for subcommand in ("launch", "verdict"):
+        named = {
+            "launch": "and `reason` when the run is blocked, opened no pull request that was due or did not publish the profile",
+            "verdict": "a blocked line adds `reason`",
+        }
+        for subcommand, phrase in named.items():
             with self.subTest(subcommand=subcommand):
-                self.assertIn("a blocked line has no `dollars` and adds `reason`", reference_line(reference, subcommand))
+                self.assertIn(phrase, reference_line(reference, subcommand))
 
     def test_the_reference_says_a_blocked_line_has_no_dollars(self):
         reference = scratch.read_text(scratch.skill_path("test")).split("## Command reference", 1)[1]
-        for subcommand in ("launch", "verdict"):
+        named = {
+            "launch": "the line of a run that stopped early has no `dollars`",
+            "verdict": "the one `--blocked` prints has no `dollars`",
+        }
+        for subcommand, phrase in named.items():
             with self.subTest(subcommand=subcommand):
-                self.assertIn("a blocked line has no `dollars`", reference_line(reference, subcommand))
+                self.assertIn(phrase, reference_line(reference, subcommand))
 
     def test_no_skill_splices_profile_text_into_a_shell_line(self):
         agents = os.path.join(scratch.ROOT, "agents")
@@ -476,9 +485,10 @@ class SkillsTest(unittest.TestCase):
             text = scratch.skill_text(name)
             with self.subTest(skill=name):
                 self.assertIn(
-                    "lighthouse in this skill always means ${CLAUDE_PLUGIN_ROOT}/bin/lighthouse: run it by that full path, written out in each command, never a lighthouse found on PATH, which may be an older installed copy",
+                    "lighthouse in this skill always means ${CLAUDE_PLUGIN_ROOT}/bin/lighthouse, the installed copy: run it by that full path, written out in each command.",
                     text,
                 )
+                self.assertNotIn("found on PATH", text)
                 self.assertNotIn("when it is on PATH", text)
 
     def test_drivers_get_the_command_path(self):
@@ -493,9 +503,10 @@ class SkillsTest(unittest.TestCase):
         )
         self.assertIn("- The absolute path of the lighthouse command.", given)
         self.assertIn(
-            "run lighthouse only by the absolute path you were given, written out in each command, never a lighthouse found on PATH",
+            "Every lighthouse below means the path you were given, the installed copy: run lighthouse only by that absolute path, written out in each command.",
             driver,
         )
+        self.assertNotIn("found on PATH", driver)
 
     def test_skills_never_send_a_run_into_lighthouse_itself(self):
         texts = {**{name: scratch.skill_text(name) for name in SKILLS}, "driver": driver_text()}
@@ -552,7 +563,7 @@ class SkillsTest(unittest.TestCase):
             "execute": ["checks", "neighbours"],
             "contrast": ["ratio", "threshold", "status", "source", "reason"],
             "profile measure": ["measured", "available"],
-            "pr": ["title", "body", "base", "head", "draft", "error", "schema", "errors"],
+            "pr": ["title", "body", "body_file", "base", "head", "draft", "error", "schema", "errors"],
             "findings": ["written", "error", "schema", "errors"],
             "retest": ["full", "changed", "retest", "surfaces", "carried"],
             "profile check": ["problems", "upgrades"],
@@ -632,7 +643,11 @@ class SkillsTest(unittest.TestCase):
 
         self.assertIn("9. Write the findings as the draft <results>/findings.draft.json:", writing)
         self.assertIn("Then run lighthouse findings --results <results>, marked as the verdict step", writing)
-        self.assertIn("fix the draft by every error it names and run it again, until it exits 0", writing)
+        self.assertIn(
+            "When it exits 2, fix the draft by every error it names and run it again. When it refuses twice with the same errors, stop as Stopping early says, with that refusal as the reason.",
+            writing,
+        )
+        self.assertNotIn("until it exits 0", text)
         self.assertIn("Never write <results>/findings.json yourself", writing)
         self.assertNotIn("Write <results>/findings.json", text)
         self.assertLess(writing.index("lighthouse findings --results"), writing.index("lighthouse verdict --results"))
@@ -676,12 +691,19 @@ class SkillsTest(unittest.TestCase):
 
         self.assertIn("Write the pull request's prose as the fields draft <results>/pr-draft.json", opening)
         self.assertIn("each starting with a capital letter and ending with a full stop, with no markup, no links and no @", opening)
-        self.assertIn("Name every failures, unproven and flaky name of the verdict line, exactly as the line spells it, in a tradeoffs sentence", opening)
+        self.assertIn(
+            "Name the verdict line's failures, unproven and flaky names in tradeoffs sentences, each exactly as the line spells it: as many as fit in 7 sentences and 125 words, leaving out any name the format refuses.",
+            opening,
+        )
+        self.assertIn("lighthouse pr adds one sentence that counts the names left out and points to verdict.json, which lists them all.", opening)
         self.assertIn(
             "lighthouse pr --repo <repo> --core <core> --feature <feature> --results <results> --summary '<a lowercase summary of the feature>' --draft-fields <results>/pr-draft.json",
             opening,
         )
-        self.assertIn("When it exits 2, it prints error, and schema and errors when the fields break their format: fix the draft by every error it names and run it again", opening)
+        self.assertIn(
+            "When it exits 2, fix the draft by every error it names and run it again. When it refuses twice with the same error, open nothing and keep that error as the reason for step 12.",
+            opening,
+        )
         self.assertNotIn("--why", text)
 
     def test_the_skills_example_fields_draft_meets_h15(self):
@@ -699,26 +721,41 @@ class SkillsTest(unittest.TestCase):
         self.assertEqual(handoff.schema_errors("h15-pr-fields", fields), [])
         self.assertEqual(pr_fields.missing_names(line, fields), [])
 
-    def test_test_skill_opens_the_pull_request_only_through_create_pull_request(self):
+    def test_test_skill_opens_the_pull_request_by_one_plain_command_with_the_tool_as_fallback(self):
         text = scratch.skill_text("test")
         opening = text.split("10. When the verdict", 1)[1].split("11. Run lighthouse release", 1)[0]
 
+        self.assertIn("With --no-pr, skip this step.", opening)
         self.assertIn(
-            "open the pull request only through the GitHub MCP create_pull_request tool, with the printed title, body, base and head unchanged, as a draft when draft is true and ready for review otherwise",
+            "open the pull request with gh pr create --repo <owner>/<name> --title '<printed title>' --body-file <printed body_file> --base <base> --head <head>, adding --draft when draft is true",
             opening,
         )
-        self.assertIn("When this session has no create_pull_request tool, or the remote is not on GitHub, open nothing and say why in one line", opening)
-        for path in instruction_files() + [os.path.join(scratch.ROOT, "README.md")]:
+        self.assertIn("Run it as a Bash call that holds that one command and nothing else, neither a mark nor < /dev/null", opening)
+        self.assertIn(
+            "When that command cannot open it, use the GitHub MCP create_pull_request tool with the printed title, body, base and head unchanged, as a draft when draft is true.",
+            opening,
+        )
+        self.assertIn(
+            "When neither opens it, or the remote is not on GitHub, open nothing and keep why as the reason for step 12; never open a pull request any other way",
+            opening,
+        )
+        test_skill = scratch.skill_path("test")
+        for path in instruction_files():
             with self.subTest(path=os.path.relpath(path, scratch.ROOT)):
-                self.assertNotIn("gh pr create", " ".join(scratch.read_text(path).split()))
+                self.assertEqual("gh pr create" in " ".join(scratch.read_text(path).split()), path == test_skill)
 
     def test_the_child_ends_with_its_verdict_line_as_structured_output(self):
         text = scratch.skill_text("test")
-        ending = text.split("12. When publish exited non-zero", 1)[1].split("## Stopping early", 1)[0]
+        ending = text.split("11. Run lighthouse release", 1)[1].split("## Stopping early", 1)[0]
         stopping = text.split("## Stopping early", 1)[1].split("## Cost", 1)[0]
 
-        self.assertIn("End the reply with the verdict line as structured output: set verdict_line to the line from <results>/verdict.json", ending)
+        self.assertIn("12. End the reply with the verdict line as structured output: set verdict_line to the line from <results>/verdict.json", ending)
         self.assertIn("pr, set to the pull request's URL or null", ending)
+        self.assertIn(
+            "and for reason: when publish exited non-zero in step 3, or step 10 opened no pull request that was due, add as reason one line saying that the profile was not published and why, or why no pull request was opened, after any reason the line already holds, joined by ;",
+            ending,
+        )
+        self.assertNotIn("say in one line", ending)
         self.assertIn("reads the reply only from that structured output, never from the reply's text", ending)
         self.assertIn("running lighthouse findings --results <results> and then lighthouse verdict --results <results> again", ending)
         self.assertIn("It asks once; a second failure blocks the run.", ending)
@@ -736,11 +773,13 @@ class SkillsTest(unittest.TestCase):
             "The child session hands its verdict line to lighthouse launch as structured output, never as text",
             "whose required verdict_line is h13-lighthouse-verdict-line's verdict or blocked form",
             "launch asks the same session once more with --resume and every error",
-            "The child opens the pull request only through the GitHub MCP create_pull_request tool",
+            "The child opens the pull request with one plain gh pr create command that passes the printed title and the body file unchanged",
+            "and falls back to the GitHub MCP create_pull_request tool with the printed values unchanged",
+            "With --no-pr the child opens no pull request and skips this step",
+            "the verdict line's reason says why",
         ]:
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, readme)
-        self.assertNotIn("gh pr create", readme)
 
 
 if __name__ == "__main__":

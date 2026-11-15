@@ -43,23 +43,16 @@ class PrUnprovenTest(unittest.TestCase):
         self.assertEqual(code, 0, stdout + stderr)
         self.assertIs(json.loads(stdout).get("draft"), False)
 
-    def test_an_unproven_name_missing_from_the_tradeoffs_is_refused(self):
+    def test_an_unproven_name_no_tradeoffs_sentence_holds_is_counted(self):
         draft = {**UNPROVEN_DRAFT, "tradeoffs": ["Nothing is left open."]}
         run = pull_requests.Run(self, pull_requests.verdict_line("unproven", unproven=["C2.1"]), draft=draft)
 
         code, stdout, stderr = run.pr()
 
-        self.assertEqual(code, 2, stdout + stderr)
-        self.assertIn("missing: C2.1", json.loads(stdout)["error"])
-
-    def test_an_unproven_name_with_no_tradeoffs_is_refused(self):
-        draft = {key: value for key, value in UNPROVEN_DRAFT.items() if key != "tradeoffs"}
-        run = pull_requests.Run(self, pull_requests.verdict_line("unproven", unproven=["C2.1"]), draft=draft)
-
-        code, stdout, stderr = run.pr()
-
-        self.assertEqual(code, 2, stdout + stderr)
-        self.assertIn("missing: C2.1", json.loads(stdout)["error"])
+        self.assertEqual(code, 0, stdout + stderr)
+        lines = json.loads(stdout)["body"].splitlines()
+        self.assertIn("- Nothing is left open.", lines)
+        self.assertIn("- " + pull_requests.REST_OF_ONE, lines)
 
 
 if __name__ == "__main__":

@@ -12,6 +12,7 @@ from lighthouse_tool.repo import Refusal
 H15 = "h15-pr-fields"
 H16 = "h16-pr-render"
 FIELDS = "pr-fields.json"
+BODY = "pr-body.md"
 RENDER_PROGRAM = "pull-request"
 RENDER = "pull-request render"
 COMPOSER = "lighthouse pr"
@@ -21,6 +22,7 @@ UNRESOLVED_KEYS = ("failures", "unproven", "flaky")
 SCOPE_OUTSIDER = re.compile(r"[^a-z0-9-]")
 SCOPE_LENGTH = 16
 TABLE_HEAD = ("| Check | Result |", "|---|---|")
+REST_SENTENCE = "Lighthouse left {} more failing, unproven or flaky {} out of this section; verdict.json in its results folder lists every one."
 
 
 def read_draft(path: str) -> Dict[str, Any]:
@@ -71,6 +73,18 @@ def build_fields(title: str, draft: Dict[str, Any], rows: List[Dict[str, str]]) 
     return {"title": title, **drafted, "testing": rows}
 
 
+def rest_sentence(count: int) -> str:
+    return REST_SENTENCE.format(count, "name" if count == 1 else "names")
+
+
+def with_rest_counted(line: Dict[str, Any], fields: Dict[str, Any]) -> Dict[str, Any]:
+    rest = missing_names(line, fields)
+    if not rest:
+        return fields
+    tradeoffs = [*fields.get("tradeoffs", []), rest_sentence(len(rest))]
+    return build_fields(fields["title"], {**fields, "tradeoffs": tradeoffs}, fields["testing"])
+
+
 def unresolved_names(line: Dict[str, Any]) -> List[str]:
     names = [name for key in UNRESOLVED_KEYS for name in line[key]]
     return [name for index, name in enumerate(names) if name not in names[:index]]
@@ -79,16 +93,6 @@ def unresolved_names(line: Dict[str, Any]) -> List[str]:
 def missing_names(line: Dict[str, Any], fields: Dict[str, Any]) -> List[str]:
     sentences = fields.get("tradeoffs", [])
     return [name for name in unresolved_names(line) if not any(name in sentence for sentence in sentences)]
-
-
-def refuse_missing_names(line: Dict[str, Any], fields: Dict[str, Any], draft_path: str) -> None:
-    missing = missing_names(line, fields)
-    if missing:
-        raise Refusal(
-            "every failures, unproven and flaky name of verdict.json must appear in a tradeoffs sentence of the fields draft {}; missing: {}".format(
-                draft_path, ", ".join(missing)
-            )
-        )
 
 
 def checked_fields(target: str, fields: Dict[str, Any]) -> Dict[str, Any]:
@@ -103,11 +107,23 @@ def write_fields(target: str, fields: Dict[str, Any]) -> str:
     return target
 
 
-def written_fields(results: str, draft_path: str, line: Dict[str, Any], fields: Dict[str, Any]) -> str:
-    target = os.path.join(results, FIELDS)
-    checked = checked_fields(target, fields)
-    refuse_missing_names(line, checked, draft_path)
-    return write_fields(target, checked)
+def fields_target(results: str) -> str:
+    return os.path.join(results, FIELDS)
+
+
+def counted_fields(target: str, line: Dict[str, Any], fields: Dict[str, Any]) -> Dict[str, Any]:
+    drafted = checked_fields(target, fields)
+    counted = with_rest_counted(line, drafted)
+    return drafted if counted is drafted else checked_fields(target, counted)
+
+
+def written_body(results: str, body: str) -> str:
+    target = os.path.join(results, BODY)
+    try:
+        write_atomically(target, body)
+    except OSError as error:
+        raise Refusal("cannot write {}: {}".format(target, error.strerror or error))
+    return target
 
 
 def render_program() -> Optional[str]:
@@ -137,8 +153,8 @@ def run_render(program: str, fields_path: str) -> Tuple[int, str, str]:
 
 def rendered_line(code: int, stdout: str, stderr: str) -> Any:
     if code != 0:
-        reason = stderr.strip().splitlines()[-1] if stderr.strip() else "no message"
-        raise Refusal("{} exited {}: {}".format(RENDER, code, reason))
+        problems = [text.strip() for text in stderr.splitlines() if text.strip()]
+        raise Refusal("{} exited {}: {}".format(RENDER, code, handoff.joined(problems) or "no message"))
     lines = [text for text in stdout.splitlines() if text.strip()]
     if len(lines) != 1:
         raise Refusal("{} printed {} lines where {} needs one JSON line".format(RENDER, len(lines), handoff.schema_file(H16)))

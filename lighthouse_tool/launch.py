@@ -44,6 +44,9 @@ CHILD_STORE = "plugin-metrics"
 LONGEST_BASH_TIMEOUT = "BASH_MAX_TIMEOUT_MS"
 DEFAULT_BASH_TIMEOUT = "BASH_DEFAULT_TIMEOUT_MS"
 EFFORT_VARIABLE = "CLAUDE_CODE_EFFORT_LEVEL"
+UNATTENDED_VARIABLE = "HARNESS_UNATTENDED"
+UNATTENDED = "1"
+SWITCHES = ("final", "no_pr")
 ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000
 
 
@@ -91,16 +94,24 @@ def parser() -> Parser:
     arguments.add_argument("--spec")
     arguments.add_argument("--record")
     arguments.add_argument("--parent")
-    arguments.add_argument("--final", action="store_true")
-    return arguments
+    return with_switches(arguments)
 
 
 def located_parser() -> Parser:
     arguments = Parser(prog="lighthouse launch", add_help=False)
     for flag in ("--repo", "--core", "--feature", "--results", "--previous", "--spec", "--record", "--parent"):
         arguments.add_argument(flag)
-    arguments.add_argument("--final", action="store_true")
+    return with_switches(arguments)
+
+
+def with_switches(arguments: Parser) -> Parser:
+    for switch in SWITCHES:
+        arguments.add_argument(switch_flag(switch), action="store_true")
     return arguments
+
+
+def switch_flag(switch: str) -> str:
+    return "--" + switch.replace("_", "-")
 
 
 class Located(NamedTuple):
@@ -140,6 +151,7 @@ def run(argv: List[str]) -> Outcome:
             clear_earlier_run(located.results)
             cleared = located.results
         options = parser().parse_args(argv[1:])
+        refuse_final_beside_no_pr(options)
         return launch(options, recording)
     except (Refusal, OSError) as problem:
         reason = refusal_reason(problem)
@@ -167,6 +179,11 @@ def refuse_previous_as_results(located: Located) -> None:
     previous = located.options.previous if located.options is not None else None
     if previous is not None and os.path.realpath(previous) == located.results:
         raise Refusal("the --previous and --results folders must differ; give the new run its own results folder")
+
+
+def refuse_final_beside_no_pr(options: argparse.Namespace) -> None:
+    if options.final and options.no_pr:
+        raise Refusal("--final opens the pull request whatever the verdict and --no-pr opens none; give one of them")
 
 
 def clear_earlier_run(results: str) -> None:
@@ -289,6 +306,7 @@ def child_environment(results: str) -> Dict[str, str]:
     return {
         **{name: value for name, value in inherited.items() if name not in (DEFAULT_BASH_TIMEOUT, EFFORT_VARIABLE)},
         LONGEST_BASH_TIMEOUT: str(ONE_WEEK_MS),
+        UNATTENDED_VARIABLE: UNATTENDED,
         metrics_writer.ROOT_VARIABLE: os.path.join(results, CHILD_STORE),
     }
 
@@ -308,7 +326,7 @@ def test_flags(options: argparse.Namespace) -> List[str]:
         if value is not None
     ]
     quoted = [part for flag, value in named for part in (flag, shlex.quote(value))]
-    return quoted + (["--final"] if options.final else [])
+    return quoted + [switch_flag(switch) for switch in SWITCHES if getattr(options, switch)]
 
 
 def child_command(options: argparse.Namespace, schema: Dict[str, Any]) -> List[str]:

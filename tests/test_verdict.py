@@ -52,11 +52,12 @@ def write_matching_suite(results, findings):
         handle.write(json.dumps({**copy, **recorded}, indent=2) + "\n")
 
 
+VERDICT_KEYS = ("dollars", "failures", "flaky", "minutes", "pr", "tokens", "unproven", "verdict")
+
+
 def verdict_line(test, stdout, results):
     line = json.loads(stdout.strip().splitlines()[-1])
-    test.assertEqual(
-        sorted(line), ["dollars", "failures", "flaky", "minutes", "pr", "tokens", "unproven", "verdict"]
-    )
+    test.assertEqual(sorted(line), sorted(VERDICT_KEYS + (("reason",) if line["verdict"] == "blocked" else ())))
     with open(os.path.join(results, "verdict.json"), encoding="utf-8") as handle:
         test.assertEqual(json.load(handle), line)
     with open(os.path.join(results, "report.md"), encoding="utf-8") as handle:
@@ -498,6 +499,27 @@ class VerdictTest(unittest.TestCase):
         self.assertEqual(code, 0, stderr)
         line, _ = verdict_line(self, stdout, results)
         self.assertEqual(line["verdict"], "blocked")
+        self.assertEqual(line["reason"], "the suite is blocked: build: npm run build exited 1")
+
+    def test_a_blocked_verdict_names_every_blocked_part_on_one_line(self):
+        findings = {
+            "version": 1,
+            "suite": {"result": "blocked", "reason": None, "failures": [], "pre_existing": [], "flaky": [], "core": None, "feature": None},
+            "build": {"result": "blocked", "reason": "start: port never opened\n  after 30 tries "},
+            "paths": [
+                {"name": "export writes a csv", "kind": "new", "surface": "cli", "expected": "a csv with a header row", "evidence": [], "status": "unproven", "retry": None, "core": None, "check": DIRECT_CHECK, "trials": None},
+            ],
+            "spend": {"tokens": 3000, "minutes": 1},
+        }
+
+        code, stdout, stderr, results = lighthouse_verdict(self, findings)
+
+        self.assertEqual(code, 0, stderr)
+        line, _ = verdict_line(self, stdout, results)
+        self.assertEqual(
+            line["reason"],
+            "the suite is blocked: no reason given; the FEATURE build is blocked: start: port never opened after 30 tries",
+        )
 
     def test_unproven(self):
         findings = {
@@ -549,6 +571,7 @@ class VerdictTest(unittest.TestCase):
         self.assertEqual(code, 0, stderr)
         line, report = verdict_line(self, stdout, results)
         self.assertEqual(line["verdict"], "blocked")
+        self.assertEqual(line["reason"], "the FEATURE build is blocked: start: port never opened")
         self.assertIn("start: port never opened", report)
 
     def test_missing_retest_path_is_unproven(self):
