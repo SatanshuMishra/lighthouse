@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "harness-redesign/k2-locked.schema.json",
   "title": "K2 locked checks",
-  "description": "The record's locked field and the receipts lock that seals it. No Worker write-set may include a locked path, nor any test configuration, baseline, allowlist, snapshot or skip list.",
+  "description": "The record's locked field and the receipts lock that seals it. The spec lists no locked path in a Step's files; the builder keeps every locked path, test configuration, baseline, allowlist, snapshot and skip list out of what a Worker may change.",
   "type": "object",
   "additionalProperties": false,
   "required": ["locked", "receipt_lock", "commit"],

@@ -286,6 +286,22 @@ class PullRequestTest(unittest.TestCase):
         self.assertEqual(code, 0, stdout + stderr)
         self.assertEqual(json.loads(stdout)["title"], "feat: add csv export and import")
 
+    def test_a_summary_the_create_command_cannot_carry_is_refused(self):
+        for summary in ("keep the user's rows", "keep `rows`", "keep rows; drop none", "keep rows & dates", "keep rows | dates", "keep a <b> row", "keep rows --body now", "keep rows -f now"):
+            with self.subTest(summary=summary):
+                run = Run(self, verdict_line("green"), draft=PLAIN_DRAFT)
+                flags = [summary if value == SUMMARY else value for value in run.flags()]
+
+                code, stdout, stderr = run.pr(flags=flags)
+
+                self.assertEqual(code, 2, stdout + stderr)
+                printed = json.loads(stdout)
+                self.assertEqual(printed["schema"], "h15-pr-fields.schema.json")
+                self.assertTrue(printed["errors"])
+                self.assertTrue(all(error.startswith("#/title not:") for error in printed["errors"]), printed["errors"])
+                self.assertFalse(os.path.exists(run.fields_path()))
+                self.assertFalse(os.path.exists(os.path.join(run.results, "pr-body.md")))
+
     def test_failures_wait(self):
         run = Run(self, verdict_line("failures", failures=["report totals match"]))
 
