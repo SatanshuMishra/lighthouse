@@ -16,7 +16,7 @@
   ],
   "$defs": {
     "verdict": {
-      "description": "verdict.verdict_line, written to verdict.json with pr null; launch.printed_verdict prints it with pr taken from the child's line.",
+      "description": "verdict.verdict_line, written to verdict.json with pr null and, when the verdict is blocked, the reason the suite or the FEATURE build is blocked; lighthouse launch prints it with pr taken from the child's line and the child's reason after its own.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -64,6 +64,9 @@
         },
         "pr": {
           "$ref": "#/$defs/pr"
+        },
+        "reason": {
+          "$ref": "#/$defs/reason"
         }
       },
       "if": {
@@ -86,7 +89,7 @@
       }
     },
     "blocked": {
-      "description": "verdict.blocked_line, printed by lighthouse verdict --blocked and by launch when the child stops early: no dollars, adds reason.",
+      "description": "verdict.blocked_line, printed by lighthouse verdict --blocked and by launch when the child stops early: no dollars, and reason is required.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -125,9 +128,7 @@
           "type": "null"
         },
         "reason": {
-          "type": "string",
-          "minLength": 1,
-          "pattern": "^\\S(?:.*\\S)?$"
+          "$ref": "#/$defs/reason"
         }
       }
     },
@@ -169,6 +170,12 @@
           "pattern": "^https://[^\\s/]+/[^\\s/]+/[^\\s/]+/pull/[1-9][0-9]*$"
         }
       ]
+    },
+    "reason": {
+      "description": "One line saying why the run stopped or is blocked, why no pull request was opened, or why the profile was not published; several reasons are joined by '; '.",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^\\S(?:.*\\S)?$"
     }
   }
 }

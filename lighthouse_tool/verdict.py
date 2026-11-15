@@ -46,6 +46,8 @@ PRE_EXISTING = "pre-existing"
 FLAKY = "flaky"
 UNPROVEN = "unproven"
 VERDICTS = ("green", "failures", "blocked", "unproven")
+BLOCKED_PART = "{} is blocked: {}"
+NO_REASON = "no reason given"
 
 JudgedPath = Tuple[Dict[str, Any], str, Optional[str]]
 
@@ -633,9 +635,18 @@ def unproven_neighbours(judgement: Judgement) -> List[str]:
     return ["neighbour {}".format(surface) for surface in judgement.neighbours if surface not in proven]
 
 
+def blocked_reasons(judgement: Judgement) -> List[str]:
+    parts = (("the suite", judgement.suite.summary), ("the FEATURE build", judgement.findings["build"]))
+    return [
+        BLOCKED_PART.format(subject, " ".join((part["reason"] or "").split()) or NO_REASON)
+        for subject, part in parts
+        if part["result"] == "blocked"
+    ]
+
+
 def verdict_of(judgement: Judgement) -> str:
     suite = judgement.suite.summary
-    if suite["result"] == "blocked" or judgement.findings["build"]["result"] == "blocked":
+    if blocked_reasons(judgement):
         return "blocked"
     checks = judgement.checks
     paths = judgement.paths
@@ -672,6 +683,7 @@ def unproven_names(judgement: Judgement) -> List[str]:
 def verdict_line(judgement: Judgement) -> Dict[str, Any]:
     suite = judgement.suite.summary
     spend = judgement.findings["spend"]
+    reasons = blocked_reasons(judgement)
     return {
         "verdict": verdict_of(judgement),
         "failures": suite_ids(suite, "failures")
@@ -683,6 +695,7 @@ def verdict_line(judgement: Judgement) -> Dict[str, Any]:
         "minutes": spend["minutes"],
         "dollars": spend.get("dollars"),
         "pr": None,
+        **({"reason": handoff.joined(reasons)} if reasons else {}),
     }
 
 

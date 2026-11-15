@@ -101,7 +101,14 @@ def verdict_reading(line: Dict[str, Any], results: str) -> Reading:
     faults = findings_faults + verdict_faults
     if faults or written is None:
         return Reading(None, faults)
-    return Reading({**written, "pr": line["pr"]}, ())
+    reason = joined_reason(written.get("reason"), line.get("reason"))
+    return Reading({**written, "pr": line["pr"], **({} if reason is None else {"reason": reason})}, ())
+
+
+def joined_reason(computed: Optional[str], told: Optional[str]) -> Optional[str]:
+    if told is None or computed is None:
+        return told or computed
+    return told if computed in told else handoff.joined([computed, told])
 
 
 def checked_file(

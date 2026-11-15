@@ -12,7 +12,7 @@ Bring `.lighthouse/profile.json` in the repository `--repo` names back in line w
 - `--repo <path>`: the repository to repair. Default: the current working directory.
 - `--unattended`: ask nothing. Treat a run that lighthouse:test invoked the same way.
 
-`lighthouse` in this skill always means `${CLAUDE_PLUGIN_ROOT}/bin/lighthouse`: run it by that full path, written out in each command, never a `lighthouse` found on PATH, which may be an older installed copy.
+`lighthouse` in this skill always means `${CLAUDE_PLUGIN_ROOT}/bin/lighthouse`, the installed copy: run it by that full path, written out in each command.
 
 Everything a run needs from lighthouse is in this skill and in what its commands print, including their refusals: never read lighthouse's own code, profile schema or README, and never run its `--help`.
 

@@ -43,8 +43,10 @@ def run(argv: List[str]) -> Outcome:
         title = pr_fields.compose_title(options.change_type, scope_of(root, options.scope), options.summary)
         draft = pr_fields.read_draft(options.draft_fields)
         fields = pr_fields.build_fields(title, draft, pr_fields.testing_rows(line, findings))
-        fields_path = pr_fields.written_fields(results, options.draft_fields, line, fields)
-        shown = pr_fields.pull_request(fields_path, fields)
+        target = pr_fields.fields_target(results)
+        counted = pr_fields.counted_fields(target, line, fields)
+        shown = pr_fields.pull_request(pr_fields.write_fields(target, counted), counted)
+        body_file = pr_fields.written_body(results, shown["body"])
     except handoff.FormatRefusal as refusal:
         printed = {"error": str(refusal), "schema": refusal.schema, "errors": list(refusal.errors)}
         return 2, json.dumps(printed), "lighthouse pr: {}".format(refusal)
@@ -54,6 +56,7 @@ def run(argv: List[str]) -> Outcome:
         {
             "title": shown["title"],
             "body": shown["body"],
+            "body_file": body_file,
             "base": options.core,
             "head": options.feature,
             "draft": line["verdict"] != READY_VERDICT,

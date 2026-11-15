@@ -145,14 +145,23 @@ class PrRender(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(composed.results, "pr-fields.json")))
         self.assertEqual(composed.render_calls(), [])
 
-    def test_every_unresolved_name_must_appear(self):
+    def test_render_is_given_the_count_of_the_names_left_out(self):
         composed = Composed(self, draft={**DRAFT, "tradeoffs": ["Nothing is left open."]})
 
         code, stdout, stderr = composed.pr()
 
-        self.assertEqual(code, 2, stdout + stderr)
-        self.assertIn("C1.2", support.last_json(stdout)["error"])
-        self.assertEqual(composed.render_calls(), [])
+        self.assertEqual(code, 0, stdout + stderr)
+        calls = composed.render_calls()
+        self.assertEqual(len(calls), 1, stdout + stderr)
+        fields = json.loads(calls[0]["fields"])
+        self.assertEqual(support.referee_errors(support.H15, fields), ())
+        self.assertEqual(
+            fields["tradeoffs"],
+            [
+                "Nothing is left open.",
+                "Lighthouse left 1 more failing, unproven or flaky name out of this section; verdict.json in its results folder lists every one.",
+            ],
+        )
 
 
 if __name__ == "__main__":
